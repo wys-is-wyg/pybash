@@ -193,11 +193,15 @@ rm ~/test-file.txt
     python-dotenv
     gunicorn
     aiohttp
+    pytest
+    pytest-cov
+    requests-mock
     ```
 
 ## Phase 3: Python App - Main Application
 
 16. Create `app/main.py` with Flask initialization and endpoints:
+
     - Health check endpoint: `@app.route('/health', methods=['GET'])`
     - News feed endpoint: `@app.route('/api/news', methods=['GET'])` – returns current feed.json
     - Refresh trigger: `@app.route('/api/refresh', methods=['POST'])` – accepts merged feed data and updates feed.json
@@ -206,9 +210,21 @@ rm ~/test-file.txt
     - CORS setup for web frontend
     - Error handling and JSON responses
 
+17. Create API tests in `app/tests/`:
+    - Create `app/tests/__init__.py` (empty file for package initialization)
+    - Create `app/tests/conftest.py` with pytest fixtures:
+      - Flask test client fixture
+      - Mock feed.json data fixture
+      - Temporary data directory fixture
+    - Create `app/tests/test_api.py` with tests for:
+      - `GET /health` – returns 200 with status
+      - `GET /api/news` – returns feed.json data or empty array if missing
+      - `POST /api/refresh` – accepts JSON and updates feed.json
+      - Error handling for invalid requests
+
 ## Phase 4: Bash Orchestration and Cron
 
-17. Create `app/scripts/run_pipeline.sh` (executable):
+18. Create `app/scripts/run_pipeline.sh` (executable):
 
     ```bash
     #!/bin/bash
@@ -230,7 +246,7 @@ rm ~/test-file.txt
     } 2>&1 | tee -a "$LOG_FILE"
     ```
 
-18. Create `app/scripts/webhook_trigger.sh` (executable):
+19. Create `app/scripts/webhook_trigger.sh` (executable):
     ```bash
     #!/bin/bash
     PAYLOAD='{"trigger":"scheduled","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
@@ -241,7 +257,7 @@ rm ~/test-file.txt
 
 ## Phase 5: Web Frontend - HTML and Assets
 
-19. Create `web/public/index.html` with:
+20. Create `web/public/index.html` with:
 
     - HTML5 boilerplate, charset UTF-8, viewport meta tag
     - Title: "AI News Tracker & Video Ideas"
@@ -250,7 +266,7 @@ rm ~/test-file.txt
     - Script tag: `<script src="js/app.js"></script>`
     - Link to stylesheet: `<link rel="stylesheet" href="css/style.css">`
 
-20. Create `web/public/css/style.css` with:
+21. Create `web/public/css/style.css` with:
 
     - CSS reset: `*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }`
     - CSS variables for dark theme: `--primary: #0a0e27`, `--accent: #00d9ff`, `--text: #e0e0e0`, `--card-bg: #1a1f3a`
@@ -261,7 +277,7 @@ rm ~/test-file.txt
     - Thumbnail styles: responsive `max-width: 100%`, lazy loading
     - Media query for mobile: `@media (max-width: 768px)` – single column grid
 
-21. Create `web/public/js/app.js` with:
+22. Create `web/public/js/app.js` with:
 
     - `async fetchFeed()` – GET request to `/api/news`, returns feed data
     - `renderFeed(feedData)` – populates feed container with card elements (title, summary, thumbnail, source link)
@@ -270,30 +286,30 @@ rm ~/test-file.txt
     - Error handling: displays user-friendly messages in feed container
     - Initialize on document ready
 
-22. Create `web/public/dashboard.html` with:
+23. Create `web/public/dashboard.html` with:
 
     - n8n dashboard iframe: `<iframe src="http://localhost:5678" style="width:100%; height:100vh;"></iframe>`
 
-23. Create `web/public/rationale.html` with:
+24. Create `web/public/rationale.html` with:
 
     - Architecture overview describing scraper → summarizer → video idea generator → thumbnail generation pipeline
     - Automation description: n8n webhook triggers cron/bash scripts
     - Data flow diagram (ASCII or image)
 
-24. Create `web/public/video-ideas.html` with:
+25. Create `web/public/video-ideas.html` with:
 
     - Section to display video ideas in detail (title, description, suggested thumbnail)
     - Filtering/sorting controls (by date, source, category)
     - Fetch from `/api/news` and filter for video_ideas entries
 
-25. Create `web/public/feed-output.html` with:
+26. Create `web/public/feed-output.html` with:
     - Raw JSON feed viewer in `<pre>` tag
     - Download button for feed.json
     - Fetch endpoint `/api/news` and display as formatted JSON
 
 ## Phase 6: Web Server
 
-26. Create `web/server.js` with:
+27. Create `web/server.js` with:
 
     - Express app initialization: `const express = require('express'); const app = express();`
     - Static middleware: `app.use(express.static('public'))`
@@ -302,13 +318,13 @@ rm ~/test-file.txt
     - Root route: `app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')))`
     - Listen on port from `process.env.WEB_PORT || 8080`
 
-27. Create `web/package.json` with:
+28. Create `web/package.json` with:
 
     - Dependencies: `express`, `cors`, `express-http-proxy`, `path`
     - Start script: `"start": "node server.js"`
     - Dev script: `"dev": "nodemon server.js"` (optional)
 
-28. Create `web/public/config.js` with API base URL configuration:
+29. Create `web/public/config.js` with API base URL configuration:
     ```javascript
     const API_BASE_URL =
       process.env.NODE_ENV === "production"
@@ -318,7 +334,7 @@ rm ~/test-file.txt
 
 ## Phase 7: Dockerfiles
 
-29. Create `Dockerfile.python`:
+30. Create `Dockerfile.python`:
 
     ```dockerfile
     FROM python:3.11-slim
@@ -334,7 +350,7 @@ rm ~/test-file.txt
     CMD ["gunicorn", "--bind", "0.0.0.0:5001", "main:app"]
     ```
 
-30. Create `Dockerfile.web`:
+31. Create `Dockerfile.web`:
     ```dockerfile
     FROM node:18-alpine
     WORKDIR /app
@@ -349,7 +365,7 @@ rm ~/test-file.txt
 
 ## Phase 8: Docker Compose
 
-31. Create `docker-compose.yml` with services:
+32. Create `docker-compose.yml` with services:
     - **python-app**: build `Dockerfile.python`, container name `ai-news-python`, port `5001:5001`, env from `.env`, volumes `./app:/app` and `./data:/app/data`, network `ai-network`, restart `always`
     - **web-server**: build `Dockerfile.web`, container name `ai-news-web`, port `8080:8080`, depends_on `python-app`, network `ai-network`, restart `always`
     - **n8n**: image `n8nio/n8n:latest`, container name `ai-news-n8n`, port `5678:5678`, env vars `N8N_BASIC_AUTH_ACTIVE=true`, `N8N_BASIC_AUTH_USER=admin`, `N8N_BASIC_AUTH_PASSWORD` from `.env`, volume `n8n_data:/home/node/.n8n`, network `ai-network`, restart `always`
@@ -358,26 +374,26 @@ rm ~/test-file.txt
 
 ## Phase 9: Local Development Testing
 
-32. Install dependencies and build images:
+33. Install dependencies and build images:
 
     ```bash
     docker-compose build
     npm install --prefix web/
     ```
 
-33. Start containers:
+34. Start containers:
 
     ```bash
     docker-compose up -d
     ```
 
-34. Verify all services:
+35. Verify all services:
 
     - Python health: `curl http://localhost:5001/health`
     - Web server: `curl http://localhost:8080`
     - n8n: `curl http://localhost:5678` (should return HTML)
 
-35. View logs:
+36. View logs:
 
     ```bash
     docker-compose logs -f python-app
@@ -385,18 +401,24 @@ rm ~/test-file.txt
     docker-compose logs -f n8n
     ```
 
-36. Test API endpoints:
+37. Test API endpoints:
 
     - News feed: `curl http://localhost:5001/api/news`
     - Refresh trigger: `curl -X POST http://localhost:5001/api/refresh -H "Content-Type: application/json" -d '{"status":"test"}'`
 
-37. Open web UI: navigate to `http://localhost:8080` in browser
+38. Open web UI: navigate to `http://localhost:8080` in browser
+
+39. Run API tests:
+    ```bash
+    cd ~/projects/pybash
+    pytest app/tests/test_api.py -v
+    ```
 
 ## Phase 10: n8n Workflow Configuration
 
-38. Access n8n UI at `http://localhost:5678` (credentials: admin / password from `.env`)
+40. Access n8n UI at `http://localhost:5678` (credentials: admin / password from `.env`)
 
-39. Create new workflow named `AI News Pipeline` with nodes:
+41. Create new workflow named `AI News Pipeline` with nodes:
 
     - **Webhook trigger**: POST `/webhook/run-pipeline` – entry point
     - **HTTP Request**: GET `http://python-app:5001/api/scrape` – fetch and parse RSS feeds
@@ -406,15 +428,15 @@ rm ~/test-file.txt
     - **HTTP Request**: POST `http://python-app:5001/api/refresh` – merge data and update feed.json
     - **Webhook response**: return success status
 
-40. Configure webhook node with `PUT /webhook/run-pipeline` for manual triggering from UI
+42. Configure webhook node with `PUT /webhook/run-pipeline` for manual triggering from UI
 
-41. Save and activate workflow
+43. Save and activate workflow
 
-42. Test workflow manually from n8n UI
+44. Test workflow manually from n8n UI
 
 ## Phase 11: Cron and Automation Setup (Local Docker)
 
-43. Create cron job script in host machine crontab (outside container):
+45. Create cron job script in host machine crontab (outside container):
 
     ```bash
     crontab -e
@@ -422,13 +444,13 @@ rm ~/test-file.txt
     # Runs every 6 hours
     ```
 
-44. Alternatively, create systemd timer unit (optional, for host scheduling):
+46. Alternatively, create systemd timer unit (optional, for host scheduling):
     - Unit file: `/etc/systemd/system/ai-news-tracker.service`
     - Timer file: `/etc/systemd/system/ai-news-tracker.timer` with `OnCalendar=*-*-* 00/6:00:00`
 
 ## Phase 12: VPS Deployment Preparation
 
-45. Create `deployment/vps-setup/setup.sh` (executable) with steps:
+47. Create `deployment/vps-setup/setup.sh` (executable) with steps:
 
     ```bash
     #!/bin/bash
@@ -449,7 +471,7 @@ rm ~/test-file.txt
     ssh-keygen -t ed25519 -f ~/.ssh/vps_deploy -N ""
     ```
 
-46. Create `deployment/vps-setup/README.md` documenting:
+48. Create `deployment/vps-setup/README.md` documenting:
     - VPS system requirements: Ubuntu 20.04+, 2GB RAM min, 20GB storage
     - Network ports required: 80 (HTTP), 443 (HTTPS), 5678 (n8n)
     - Recommended: Nginx reverse proxy for HTTPS and load balancing
@@ -458,7 +480,7 @@ rm ~/test-file.txt
 
 ## Phase 13: VPS Deployment Script
 
-47. Create `deployment/deploy.sh` (executable):
+49. Create `deployment/deploy.sh` (executable):
 
     ```bash
     #!/bin/bash
@@ -491,7 +513,7 @@ rm ~/test-file.txt
     echo "Deployment complete!"
     ```
 
-48. Create `deployment/vps-commands.md` documenting essential VPS sysadmin commands:
+50. Create `deployment/vps-commands.md` documenting essential VPS sysadmin commands:
 
     ```markdown
     # VPS Administration Commands
@@ -541,7 +563,7 @@ rm ~/test-file.txt
 
 ## Phase 14: Production Nginx Reverse Proxy (VPS)
 
-49. Create `deployment/nginx.conf` with:
+51. Create `deployment/nginx.conf` with:
 
     - Upstream blocks for python-app (5001), web-server (8080), n8n (5678)
     - Server block for HTTP → HTTPS redirect
@@ -549,7 +571,7 @@ rm ~/test-file.txt
     - Proxy passes for `/`, `/api/*`, `/webhook/*`, `/dashboard` routes
     - Gzip compression enabled
 
-50. Create `deployment/certbot-setup.sh` for SSL certificate generation via Let's Encrypt:
+52. Create `deployment/certbot-setup.sh` for SSL certificate generation via Let's Encrypt:
     ```bash
     sudo certbot certonly --standalone -d your.domain.com
     sudo systemctl start nginx
@@ -557,7 +579,7 @@ rm ~/test-file.txt
 
 ## Phase 15: Final Checklist and Documentation
 
-51. Create `README.md` in project root with:
+53. Create `README.md` in project root with:
 
     - Project overview and architecture diagram
     - Local setup instructions: clone, `.env` setup, `docker-compose up`
@@ -566,33 +588,42 @@ rm ~/test-file.txt
     - n8n workflow export (manual: export JSON from UI)
     - Troubleshooting common issues
 
-52. Create `ARCHITECTURE.md` documenting:
+54. Create `ARCHITECTURE.md` documenting:
 
     - Data flow: Scraper → Summarizer → Video Idea Gen → Leonardo API → Feed Merge → Web Display
     - Container network: all services on `ai-network` bridge
     - Volume mounts: persistent `n8n_data`, shared `./app/data`
     - Webhook flow: n8n → Python Flask endpoints
 
-53. Test full pipeline end-to-end locally, then on VPS:
+55. Create output validation tests in `app/tests/test_output.py`:
+
+    - Test feed.json structure validation (required fields: title, summary, source, thumbnail_url)
+    - Test feed.json contains expected number of items after pipeline run
+    - Test video ideas have required fields (title, description, source, thumbnail_path)
+    - Test data integrity (no null/empty required fields)
+    - Test JSON schema validation
+
+56. Test full pipeline end-to-end locally, then on VPS:
 
     - Trigger manual pipeline run: `bash app/scripts/run_pipeline.sh`
     - Verify feed.json generated: `cat app/data/feed.json`
     - Check web UI displays feed: `curl http://localhost:8080/api/news`
     - Trigger n8n workflow and observe logs
+    - Run output validation tests: `pytest app/tests/test_output.py -v`
 
-54. Document VPS credentials securely (password manager):
+57. Document VPS credentials securely (password manager):
 
     - VPS SSH key location and passphrase
     - n8n admin username and password
     - Leonardo API key (in `.env`)
     - Any third-party API credentials
 
-55. Set up automated backups for n8n data and feed history:
+58. Set up automated backups for n8n data and feed history:
 
     - Cron job on VPS: `0 2 * * * docker exec ai-news-n8n tar -czf /home/ubuntu/backups/n8n-$(date +%Y%m%d).tar.gz /home/node/.n8n`
     - Store backups remotely (S3, rsync to secondary storage)
 
-56. Monitor and log production health:
+59. Monitor and log production health:
     - Check container health: `docker-compose ps` (shows health status)
     - Monitor disk space: `df -h` on VPS
     - Track API response times and error rates
