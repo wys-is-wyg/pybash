@@ -2,3 +2,7 @@
 .cursorrules
 .env
 
+
+# Project-specific ignores
+data/*.json
+logs/*.log
