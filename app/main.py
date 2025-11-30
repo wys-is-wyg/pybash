@@ -4,11 +4,12 @@ Flask application for AI News Tracker API.
 Provides REST API endpoints for news feed access, pipeline triggers, and webhooks.
 """
 
+import subprocess
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from app.config import settings
 from app.scripts.logger import setup_logger
-from app.scripts.data_manager import load_json, save_json
+from app.scripts.data_manager import load_json, save_json, merge_feeds, generate_feed_json
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -96,6 +97,214 @@ def refresh_feed():
     except Exception as e:
         logger.error(f"Error refreshing feed: {e}")
         return jsonify({'error': 'Failed to refresh feed'}), 500
+
+
+@app.route('/api/scrape', methods=['GET'])
+def scrape_feeds():
+    """
+    Trigger RSS feed scraping.
+    
+    Returns:
+        JSON response with scraping status
+    """
+    try:
+        logger.info("Triggering RSS feed scraping")
+        result = subprocess.run(
+            ['python', '/app/scripts/rss_scraper.py'],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("RSS scraping completed successfully")
+            return jsonify({
+                'status': 'success',
+                'message': 'RSS feeds scraped successfully'
+            }), 200
+        else:
+            logger.error(f"RSS scraping failed: {result.stderr}")
+            return jsonify({
+                'status': 'error',
+                'message': 'RSS scraping failed',
+                'error': result.stderr
+            }), 500
+            
+    except subprocess.TimeoutExpired:
+        logger.error("RSS scraping timed out")
+        return jsonify({'error': 'Scraping timed out'}), 500
+    except Exception as e:
+        logger.error(f"Error triggering RSS scraping: {e}")
+        return jsonify({'error': 'Failed to trigger scraping'}), 500
+
+
+@app.route('/api/summarize', methods=['POST'])
+def summarize_articles():
+    """
+    Trigger article summarization.
+    
+    Returns:
+        JSON response with summarization status
+    """
+    try:
+        logger.info("Triggering article summarization")
+        result = subprocess.run(
+            ['python', '/app/scripts/summarizer.py'],
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+        
+        if result.returncode == 0:
+            logger.info("Summarization completed successfully")
+            return jsonify({
+                'status': 'success',
+                'message': 'Articles summarized successfully'
+            }), 200
+        else:
+            logger.error(f"Summarization failed: {result.stderr}")
+            return jsonify({
+                'status': 'error',
+                'message': 'Summarization failed',
+                'error': result.stderr
+            }), 500
+            
+    except subprocess.TimeoutExpired:
+        logger.error("Summarization timed out")
+        return jsonify({'error': 'Summarization timed out'}), 500
+    except Exception as e:
+        logger.error(f"Error triggering summarization: {e}")
+        return jsonify({'error': 'Failed to trigger summarization'}), 500
+
+
+@app.route('/api/generate-ideas', methods=['POST'])
+def generate_ideas():
+    """
+    Trigger video idea generation.
+    
+    Returns:
+        JSON response with generation status
+    """
+    try:
+        logger.info("Triggering video idea generation")
+        result = subprocess.run(
+            ['python', '/app/scripts/video_idea_generator.py'],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info("Video idea generation completed successfully")
+            return jsonify({
+                'status': 'success',
+                'message': 'Video ideas generated successfully'
+            }), 200
+        else:
+            logger.error(f"Video idea generation failed: {result.stderr}")
+            return jsonify({
+                'status': 'error',
+                'message': 'Video idea generation failed',
+                'error': result.stderr
+            }), 500
+            
+    except subprocess.TimeoutExpired:
+        logger.error("Video idea generation timed out")
+        return jsonify({'error': 'Generation timed out'}), 500
+    except Exception as e:
+        logger.error(f"Error triggering video idea generation: {e}")
+        return jsonify({'error': 'Failed to trigger generation'}), 500
+
+
+@app.route('/api/generate-thumbnails', methods=['POST'])
+def generate_thumbnails():
+    """
+    Trigger thumbnail generation via Leonardo API.
+    
+    Returns:
+        JSON response with generation status
+    """
+    try:
+        logger.info("Triggering thumbnail generation")
+        result = subprocess.run(
+            ['python', '/app/scripts/leonardo_api.py'],
+            capture_output=True,
+            text=True,
+            timeout=1800  # 30 minutes for batch thumbnail generation
+        )
+        
+        if result.returncode == 0:
+            logger.info("Thumbnail generation completed successfully")
+            return jsonify({
+                'status': 'success',
+                'message': 'Thumbnails generated successfully'
+            }), 200
+        else:
+            logger.error(f"Thumbnail generation failed: {result.stderr}")
+            return jsonify({
+                'status': 'error',
+                'message': 'Thumbnail generation failed',
+                'error': result.stderr
+            }), 500
+            
+    except subprocess.TimeoutExpired:
+        logger.error("Thumbnail generation timed out")
+        return jsonify({'error': 'Generation timed out'}), 500
+    except Exception as e:
+        logger.error(f"Error triggering thumbnail generation: {e}")
+        return jsonify({'error': 'Failed to trigger generation'}), 500
+
+
+@app.route('/webhook/n8n', methods=['POST'])
+def n8n_webhook():
+    """
+    Receive webhook callbacks from n8n workflows.
+    
+    Expected JSON body:
+        {
+            "workflow": "ai-news-pipeline",
+            "status": "completed",
+            "data": {...}
+        }
+    
+    Returns:
+        JSON response acknowledging receipt
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        workflow = data.get('workflow', 'unknown')
+        status = data.get('status', 'unknown')
+        
+        logger.info(f"Received n8n webhook: workflow={workflow}, status={status}")
+        
+        # If workflow completed successfully, merge data and update feed
+        if status == 'completed' and 'data' in data:
+            try:
+                # Load all pipeline outputs
+                news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
+                video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
+                thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
+                
+                # Merge and generate feed
+                merged_data = merge_feeds(news_items, video_ideas, thumbnails)
+                generate_feed_json(merged_data)
+                
+                logger.info(f"Feed updated from n8n webhook: {len(merged_data)} items")
+            except Exception as e:
+                logger.error(f"Error processing webhook data: {e}")
+        
+        return jsonify({
+            'status': 'received',
+            'message': 'Webhook processed successfully'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error processing n8n webhook: {e}")
+        return jsonify({'error': 'Failed to process webhook'}), 500
 
 
 @app.errorhandler(404)
