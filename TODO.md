@@ -12,13 +12,100 @@
    - Create project in WSL2 native filesystem (`~/projects/`) for best Docker performance
 
 **For Linux VPS deployment:**
+
 - All commands below work identically in bash on the Linux host
+
+---
+
+## Phase 0: Docker Verification in WSL2 Ubuntu
+
+**Purpose:** Verify Docker Desktop WSL2 integration is working correctly before creating project files.
+
+0.1. Open WSL2 Ubuntu terminal (from Windows Terminal or PowerShell: `wsl`)
+
+0.2. Verify Docker is accessible:
+
+```bash
+docker --version
+docker-compose --version
+```
+
+- Expected: Should show Docker version (e.g., "Docker version 24.x.x") and Docker Compose version
+- If errors: Ensure Docker Desktop is running on Windows and WSL2 integration is enabled
+
+  0.3. Test Docker daemon connection:
+
+```bash
+docker ps
+```
+
+- Expected: Should show running containers (may be empty list, but no errors)
+- If "Cannot connect to Docker daemon": Docker Desktop may not be running or WSL2 integration not enabled
+
+  0.4. Run a simple test container:
+
+```bash
+docker run --rm hello-world
+```
+
+- Expected: Should download (if first time) and run hello-world image, print "Hello from Docker!" message
+- This verifies: Docker can pull images, run containers, and communicate with Docker Desktop
+
+  0.5. Test Docker Compose with a minimal test:
+
+```bash
+mkdir -p ~/docker-test
+cd ~/docker-test
+cat > docker-compose.test.yml << 'EOF'
+version: '3.8'
+services:
+  test:
+    image: alpine:latest
+    command: echo "Docker Compose works!"
+EOF
+docker-compose -f docker-compose.test.yml up
+```
+
+- Expected: Should pull alpine image and print "Docker Compose works!"
+- Cleanup: `cd ~ && rm -rf ~/docker-test`
+
+  0.6. Verify Docker network creation:
+
+```bash
+docker network create test-network
+docker network ls | grep test-network
+docker network rm test-network
+```
+
+- Expected: Should create, list, and remove network successfully
+- This verifies: Docker networking works (needed for `ai-network` in Phase 8)
+
+  0.7. Test volume mounting (WSL2 filesystem):
+
+```bash
+echo "test content" > ~/test-file.txt
+docker run --rm -v ~/test-file.txt:/test.txt alpine cat /test.txt
+rm ~/test-file.txt
+```
+
+- Expected: Should print "test content"
+- This verifies: Docker can mount WSL2 filesystem paths (critical for volume mounts in docker-compose.yml)
+
+**If all steps pass:** Docker is ready for project development. Proceed to Phase 1.
+
+**If any step fails:**
+
+- Check Docker Desktop is running on Windows
+- Verify WSL2 integration: Docker Desktop → Settings → Resources → WSL Integration → Ubuntu toggle ON
+- Restart Docker Desktop if needed
+- Restart WSL2: `wsl --shutdown` in PowerShell, then reopen Ubuntu terminal
 
 ---
 
 ## Phase 1: Project Structure and Initial Setup
 
 1. Create project structure:
+
    ```bash
    mkdir -p ~/projects/ai-news-tracker/{app/{scripts,config,data,logs},web/{public/{css,js},src},n8n/{workflows,data},deployment/vps-setup}
    cd ~/projects/ai-news-tracker
@@ -28,6 +115,7 @@
 2. Create `.gitignore` with entries: `*.pyc`, `__pycache__/`, `.env`, `node_modules/`, `data/*.json`, `logs/*.log`, `.DS_Store`, `venv/`
 
 3. Create `.env.example` template with placeholders:
+
    ```
    LEONARDO_API_KEY=your_key_here
    N8N_API_KEY=your_key_here
@@ -42,6 +130,7 @@
 ## Phase 2: Python App - Core Configuration and Scripts
 
 5. Create `app/config/settings.py` with configuration class containing:
+
    - Leonardo API endpoint and model defaults
    - List of RSS feed URLs to scrape
    - File paths for data directories
@@ -53,24 +142,29 @@
 7. Create `app/scripts/__init__.py` (empty file for package initialization)
 
 8. Create `app/scripts/rss_scraper.py` with function skeletons:
+
    - `fetch_rss_feeds(feed_urls: list) -> list`
    - `parse_feed_entries(entries: list) -> list`
    - `save_raw_news(news_items: list, output_file: str) -> None`
    - Command-line execution for direct invocation
 
 9. Create `app/scripts/social_media_scraper.py` with function skeleton:
+
    - `fetch_twitter_ai_news(hashtags: list) -> list` (placeholder for future implementation)
 
 10. Create `app/scripts/summarizer.py` with function skeletons:
+
     - `summarize_article(text: str, max_words: int = 150) -> str`
     - `batch_summarize_news(news_items: list) -> list`
     - Integration with chosen summarization library (transformers, etc.)
 
 11. Create `app/scripts/video_idea_generator.py` with function skeletons:
+
     - `generate_video_ideas(summaries: list) -> list`
     - `format_video_idea(title: str, description: str, source: str) -> dict`
 
 12. Create `app/scripts/leonardo_api.py` with function skeletons:
+
     - `initialize_leonardo_client(api_key: str)` – sets up client with API key
     - `generate_thumbnail(prompt: str, model_id: str = "default") -> dict` – POST request to Leonardo API with prompt, returns generation_id
     - `get_generation_status(generation_id: str) -> dict` – polls generation status until complete
@@ -78,12 +172,14 @@
     - `batch_generate_thumbnails(video_ideas: list, output_dir: str) -> list` – orchestrates batch thumbnail generation with retry/rate-limit handling
 
 13. Create `app/scripts/data_manager.py` with function skeletons:
+
     - `load_json(file_path: str) -> dict`
     - `save_json(data: dict, file_path: str) -> None`
     - `merge_feeds(news_items: list, video_ideas: list, thumbnails: list) -> list` – combines all data into unified structure
     - `generate_feed_json(merged_data: list, output_file: str) -> None` – outputs final feed.json
 
 14. Create `app/scripts/logger.py` with logging setup:
+
     - Console and file handlers
     - Log level configuration via environment variable
     - Logs directory: `app/logs/`
@@ -113,12 +209,13 @@
 ## Phase 4: Bash Orchestration and Cron
 
 17. Create `app/scripts/run_pipeline.sh` (executable):
+
     ```bash
     #!/bin/bash
     set -euo pipefail
     source /app/.env
     LOG_FILE="/app/logs/pipeline_$(date +%Y%m%d_%H%M%S).log"
-    
+
     {
       echo "Starting pipeline..."
       python /app/scripts/rss_scraper.py > /app/data/raw_news.json
@@ -145,6 +242,7 @@
 ## Phase 5: Web Frontend - HTML and Assets
 
 19. Create `web/public/index.html` with:
+
     - HTML5 boilerplate, charset UTF-8, viewport meta tag
     - Title: "AI News Tracker & Video Ideas"
     - Navigation menu with links to: `N8N Dashboard`, `Rationale / Workflow`, `Video Ideas`, `Output Feed`
@@ -153,6 +251,7 @@
     - Link to stylesheet: `<link rel="stylesheet" href="css/style.css">`
 
 20. Create `web/public/css/style.css` with:
+
     - CSS reset: `*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }`
     - CSS variables for dark theme: `--primary: #0a0e27`, `--accent: #00d9ff`, `--text: #e0e0e0`, `--card-bg: #1a1f3a`
     - Body styles: dark background, sans-serif, smooth transitions
@@ -163,6 +262,7 @@
     - Media query for mobile: `@media (max-width: 768px)` – single column grid
 
 21. Create `web/public/js/app.js` with:
+
     - `async fetchFeed()` – GET request to `/api/news`, returns feed data
     - `renderFeed(feedData)` – populates feed container with card elements (title, summary, thumbnail, source link)
     - `setupNavigation()` – click handlers for menu items to show/hide corresponding sections
@@ -171,14 +271,17 @@
     - Initialize on document ready
 
 22. Create `web/public/dashboard.html` with:
+
     - n8n dashboard iframe: `<iframe src="http://localhost:5678" style="width:100%; height:100vh;"></iframe>`
 
 23. Create `web/public/rationale.html` with:
+
     - Architecture overview describing scraper → summarizer → video idea generator → thumbnail generation pipeline
     - Automation description: n8n webhook triggers cron/bash scripts
     - Data flow diagram (ASCII or image)
 
 24. Create `web/public/video-ideas.html` with:
+
     - Section to display video ideas in detail (title, description, suggested thumbnail)
     - Filtering/sorting controls (by date, source, category)
     - Fetch from `/api/news` and filter for video_ideas entries
@@ -191,6 +294,7 @@
 ## Phase 6: Web Server
 
 26. Create `web/server.js` with:
+
     - Express app initialization: `const express = require('express'); const app = express();`
     - Static middleware: `app.use(express.static('public'))`
     - CORS middleware: `app.use(cors())`
@@ -199,20 +303,23 @@
     - Listen on port from `process.env.WEB_PORT || 8080`
 
 27. Create `web/package.json` with:
+
     - Dependencies: `express`, `cors`, `express-http-proxy`, `path`
     - Start script: `"start": "node server.js"`
     - Dev script: `"dev": "nodemon server.js"` (optional)
 
 28. Create `web/public/config.js` with API base URL configuration:
     ```javascript
-    const API_BASE_URL = process.env.NODE_ENV === 'production' 
-      ? 'http://python-app:5001' 
-      : 'http://localhost:5001';
+    const API_BASE_URL =
+      process.env.NODE_ENV === "production"
+        ? "http://python-app:5001"
+        : "http://localhost:5001";
     ```
 
 ## Phase 7: Dockerfiles
 
 29. Create `Dockerfile.python`:
+
     ```dockerfile
     FROM python:3.11-slim
     WORKDIR /app
@@ -252,22 +359,26 @@
 ## Phase 9: Local Development Testing
 
 32. Install dependencies and build images:
+
     ```bash
     docker-compose build
     npm install --prefix web/
     ```
 
 33. Start containers:
+
     ```bash
     docker-compose up -d
     ```
 
 34. Verify all services:
+
     - Python health: `curl http://localhost:5001/health`
     - Web server: `curl http://localhost:8080`
     - n8n: `curl http://localhost:5678` (should return HTML)
 
 35. View logs:
+
     ```bash
     docker-compose logs -f python-app
     docker-compose logs -f web-server
@@ -275,6 +386,7 @@
     ```
 
 36. Test API endpoints:
+
     - News feed: `curl http://localhost:5001/api/news`
     - Refresh trigger: `curl -X POST http://localhost:5001/api/refresh -H "Content-Type: application/json" -d '{"status":"test"}'`
 
@@ -285,6 +397,7 @@
 38. Access n8n UI at `http://localhost:5678` (credentials: admin / password from `.env`)
 
 39. Create new workflow named `AI News Pipeline` with nodes:
+
     - **Webhook trigger**: POST `/webhook/run-pipeline` – entry point
     - **HTTP Request**: GET `http://python-app:5001/api/scrape` – fetch and parse RSS feeds
     - **HTTP Request**: POST `http://python-app:5001/api/summarize` – summarize articles
@@ -302,6 +415,7 @@
 ## Phase 11: Cron and Automation Setup (Local Docker)
 
 43. Create cron job script in host machine crontab (outside container):
+
     ```bash
     crontab -e
     # Add line: 0 */6 * * * /path/to/projects/ai-news-tracker/app/scripts/run_pipeline.sh
@@ -315,21 +429,22 @@
 ## Phase 12: VPS Deployment Preparation
 
 45. Create `deployment/vps-setup/setup.sh` (executable) with steps:
+
     ```bash
     #!/bin/bash
     set -euo pipefail
-    
+
     # System updates
     sudo apt update && sudo apt upgrade -y
-    
+
     # Install Docker and Docker Compose
     sudo apt install -y docker.io docker-compose
     sudo usermod -aG docker $USER
     newgrp docker
-    
+
     # Create deployment directory
     mkdir -p ~/ai-news-tracker
-    
+
     # Generate SSH keys for VPS CI/CD (if needed)
     ssh-keygen -t ed25519 -f ~/.ssh/vps_deploy -N ""
     ```
@@ -344,16 +459,17 @@
 ## Phase 13: VPS Deployment Script
 
 47. Create `deployment/deploy.sh` (executable):
+
     ```bash
     #!/bin/bash
     set -euo pipefail
-    
+
     VPS_USER="ubuntu"
     VPS_HOST="your.vps.ip.address"
     DEPLOY_DIR="/home/$VPS_USER/ai-news-tracker"
-    
+
     echo "Deploying to VPS..."
-    
+
     # Copy project files via SCP
     ssh -i ~/.ssh/vps_key $VPS_USER@$VPS_HOST "mkdir -p $DEPLOY_DIR"
     scp -r -i ~/.ssh/vps_key .env $VPS_USER@$VPS_HOST:$DEPLOY_DIR/
@@ -362,7 +478,7 @@
     scp -r -i ~/.ssh/vps_key n8n/ $VPS_USER@$VPS_HOST:$DEPLOY_DIR/
     scp -i ~/.ssh/vps_key docker-compose.yml $VPS_USER@$VPS_HOST:$DEPLOY_DIR/
     scp -i ~/.ssh/vps_key Dockerfile.python Dockerfile.web $VPS_USER@$VPS_HOST:$DEPLOY_DIR/
-    
+
     # Execute remote deployment
     ssh -i ~/.ssh/vps_key $VPS_USER@$VPS_HOST << 'EOF'
     cd $DEPLOY_DIR
@@ -371,53 +487,62 @@
     docker-compose up -d
     docker-compose ps
     EOF
-    
+
     echo "Deployment complete!"
     ```
 
 48. Create `deployment/vps-commands.md` documenting essential VPS sysadmin commands:
+
     ```markdown
     # VPS Administration Commands
-    
+
     ## Connect to VPS
+
     ssh -i ~/.ssh/vps_key ubuntu@your.vps.ip
-    
+
     ## Docker Management
-    docker ps                          # List running containers
-    docker logs -f container_name      # View live logs
-    docker-compose down                # Stop all services
-    docker-compose up -d               # Start all services
-    docker-compose restart python-app  # Restart specific service
-    docker system prune -a             # Clean up unused images
-    
+
+    docker ps # List running containers
+    docker logs -f container_name # View live logs
+    docker-compose down # Stop all services
+    docker-compose up -d # Start all services
+    docker-compose restart python-app # Restart specific service
+    docker system prune -a # Clean up unused images
+
     ## File/Data Management
-    scp -i key file ubuntu@vps:/path   # Copy file to VPS
-    scp -i key ubuntu@vps:/path ./     # Copy file from VPS
-    
+
+    scp -i key file ubuntu@vps:/path # Copy file to VPS
+    scp -i key ubuntu@vps:/path ./ # Copy file from VPS
+
     ## Monitoring
-    df -h                              # Disk usage
-    free -h                            # Memory usage
-    docker stats                       # Container resource usage
-    
+
+    df -h # Disk usage
+    free -h # Memory usage
+    docker stats # Container resource usage
+
     ## Reverse Proxy (Nginx)
-    sudo systemctl status nginx        # Check Nginx status
-    sudo nginx -t                      # Test Nginx config
-    sudo systemctl reload nginx        # Reload config
-    
+
+    sudo systemctl status nginx # Check Nginx status
+    sudo nginx -t # Test Nginx config
+    sudo systemctl reload nginx # Reload config
+
     ## Firewall (ufw)
-    sudo ufw status                    # Show firewall rules
-    sudo ufw allow 80/tcp              # Allow HTTP
-    sudo ufw allow 443/tcp             # Allow HTTPS
-    sudo ufw allow 5678/tcp            # Allow n8n
-    
+
+    sudo ufw status # Show firewall rules
+    sudo ufw allow 80/tcp # Allow HTTP
+    sudo ufw allow 443/tcp # Allow HTTPS
+    sudo ufw allow 5678/tcp # Allow n8n
+
     ## Logs
-    tail -f /var/log/syslog           # System logs
-    docker-compose logs -f --tail=100  # App logs (last 100 lines)
+
+    tail -f /var/log/syslog # System logs
+    docker-compose logs -f --tail=100 # App logs (last 100 lines)
     ```
 
 ## Phase 14: Production Nginx Reverse Proxy (VPS)
 
 49. Create `deployment/nginx.conf` with:
+
     - Upstream blocks for python-app (5001), web-server (8080), n8n (5678)
     - Server block for HTTP → HTTPS redirect
     - Server block for HTTPS with SSL certificates
@@ -433,6 +558,7 @@
 ## Phase 15: Final Checklist and Documentation
 
 51. Create `README.md` in project root with:
+
     - Project overview and architecture diagram
     - Local setup instructions: clone, `.env` setup, `docker-compose up`
     - VPS deployment instructions: run `deployment/deploy.sh`
@@ -441,24 +567,28 @@
     - Troubleshooting common issues
 
 52. Create `ARCHITECTURE.md` documenting:
+
     - Data flow: Scraper → Summarizer → Video Idea Gen → Leonardo API → Feed Merge → Web Display
     - Container network: all services on `ai-network` bridge
     - Volume mounts: persistent `n8n_data`, shared `./app/data`
     - Webhook flow: n8n → Python Flask endpoints
 
 53. Test full pipeline end-to-end locally, then on VPS:
+
     - Trigger manual pipeline run: `bash app/scripts/run_pipeline.sh`
     - Verify feed.json generated: `cat app/data/feed.json`
     - Check web UI displays feed: `curl http://localhost:8080/api/news`
     - Trigger n8n workflow and observe logs
 
 54. Document VPS credentials securely (password manager):
+
     - VPS SSH key location and passphrase
     - n8n admin username and password
     - Leonardo API key (in `.env`)
     - Any third-party API credentials
 
 55. Set up automated backups for n8n data and feed history:
+
     - Cron job on VPS: `0 2 * * * docker exec ai-news-n8n tar -czf /home/ubuntu/backups/n8n-$(date +%Y%m%d).tar.gz /home/node/.n8n`
     - Store backups remotely (S3, rsync to secondary storage)
 
