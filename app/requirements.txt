@@ -1,0 +1,12 @@
+flask
+flask-cors
+requests
+feedparser
+transformers
+python-dotenv
+gunicorn
+aiohttp
+pytest
+pytest-cov
+requests-mock
+
