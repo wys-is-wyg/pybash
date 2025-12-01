@@ -398,3 +398,289 @@ def validate_feed_item(item: Dict[str, str]) -> bool:
     sanitizer = ContentSanitizer(strict_mode=True)
     sanitized = sanitizer.sanitize_feed_item(item)
     return sanitized is not None
+
+
+# ============================================================================
+# Guardrail Integration & Pipeline Orchestration
+# ============================================================================
+
+
+class FeedAwareSanitizer:
+    """
+    Feed-aware content sanitizer with guardrail integration.
+    
+    Applies feed-specific sanitization rules and integrates with
+    guardrails system for comprehensive content validation.
+    """
+
+    # Feed-specific token limits
+    FEED_TOKEN_LIMITS = {
+        "google_news": 2000,
+        "reddit": 2000,
+        "twitter": 1000,  # Tweets are shorter
+    }
+
+    # Feed-specific boilerplate patterns
+    FEED_BOILERPLATE = {
+        "google_news": [
+            r"(newsapi\.org|news api)",
+            r"(originally published|republished|reposted)",
+        ],
+        "reddit": [
+            r"(edit:|update:|edit\d|tl;dr)",
+            r"(source:|permalink|/r/[a-z_]+)",
+            r"(thanks for (the )?gold|helpful award)",
+        ],
+        "twitter": [
+            r"(retweets?|likes?|replies?)",
+            r"(quote tweet|@|#[a-z]+)",
+            r"(thread:|1/\d+|2/\d+)",
+        ],
+    }
+
+    def __init__(self, feed_name: str = "generic"):
+        """
+        Initialize feed-aware sanitizer.
+
+        Args:
+            feed_name: Name of the feed (google_news, reddit, twitter)
+        """
+        self.feed_name = feed_name
+        self.base_sanitizer = ContentSanitizer()
+        self.token_limit = self.FEED_TOKEN_LIMITS.get(feed_name, 2000)
+        self.feed_boilerplate = self.FEED_BOILERPLATE.get(feed_name, [])
+
+    def remove_feed_specific_boilerplate(self, text: str) -> str:
+        """
+        Remove feed-specific boilerplate patterns.
+
+        Args:
+            text: Text to clean
+
+        Returns:
+            Text with feed-specific boilerplate removed
+        """
+        for pattern in self.feed_boilerplate:
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+
+        return re.sub(r"\s+", " ", text).strip()
+
+    def sanitize_for_feed(self, item: Dict[str, str]) -> Optional[Dict[str, str]]:
+        """
+        Sanitize content with feed-specific rules.
+
+        Args:
+            item: Raw feed item dict
+
+        Returns:
+            Sanitized item dict, or None if validation failed
+        """
+        if not item:
+            return None
+
+        try:
+            # Extract fields
+            title = item.get("title", "").strip()
+            body = item.get("body", "").strip()
+            source = item.get("source", "Unknown")
+            url = item.get("url", "")
+
+            if not title or not body:
+                logger.warning("Feed item missing title or body")
+                return None
+
+            # Step 1: Base sanitization (HTML, Markdown, boilerplate)
+            title = self.base_sanitizer.remove_html_markdown(title)
+            title = self.base_sanitizer.remove_boilerplate(title)
+
+            body = self.base_sanitizer.remove_html_markdown(body)
+            body = self.base_sanitizer.remove_boilerplate(body)
+
+            # Step 2: Feed-specific boilerplate removal
+            body = self.remove_feed_specific_boilerplate(body)
+
+            # Step 3: Token truncation (feed-specific limits)
+            body = self.base_sanitizer.truncate_by_tokens(body, self.token_limit)
+
+            # Step 4: Content validation (injection patterns)
+            is_valid, reason = self.base_sanitizer.validate_content(body)
+            if not is_valid:
+                logger.warning(f"Content validation failed for {self.feed_name}: {reason}")
+                return None
+
+            # Step 5: Source domain validation
+            is_safe, reason = self.base_sanitizer.validate_source_domain(url)
+            if not is_safe:
+                logger.warning(f"Source validation failed for {self.feed_name}: {reason}")
+                return None
+
+            sanitized = {
+                "title": title,
+                "body": body,
+                "source": source,
+                "url": url,
+                "feed": self.feed_name,
+            }
+
+            logger.debug(f"Sanitized for {self.feed_name}: {title[:50]}...")
+            return sanitized
+
+        except Exception as e:
+            logger.error(f"Error sanitizing feed item for {self.feed_name}: {str(e)}", exc_info=True)
+            return None
+
+
+class PipelineOrchestrator:
+    """
+    Orchestrates full content processing pipeline.
+    
+    Coordinates:
+    1. Guardrail validation (domain, topic)
+    2. Content sanitization (HTML, boilerplate, injection patterns)
+    3. Metrics collection (pass/fail rates, rejection reasons)
+    """
+
+    def __init__(self):
+        """Initialize pipeline orchestrator."""
+        try:
+            from app.config.feed_sources import get_guardrails_config
+            self.guardrails = get_guardrails_config()
+        except ImportError:
+            logger.warning("GuardrailsConfig not available; using basic sanitization only")
+            self.guardrails = None
+
+        self.metrics = {
+            "total_processed": 0,
+            "passed_validation": 0,
+            "failed_domain": 0,
+            "failed_topic": 0,
+            "failed_sanitization": 0,
+            "failed_other": 0,
+            "rejection_reasons": {},
+        }
+
+    def process_feed_items(
+        self, items: List[Dict[str, str]], feed_name: str
+    ) -> Tuple[List[Dict[str, str]], Dict]:
+        """
+        Process batch of feed items through full pipeline.
+
+        Args:
+            items: List of raw feed items
+            feed_name: Feed source name (google_news, reddit, twitter)
+
+        Returns:
+            Tuple of (processed_items, metrics_dict)
+        """
+        logger.info(f"Processing {len(items)} items from {feed_name}")
+
+        processed = []
+        metrics = {
+            "total": len(items),
+            "passed": 0,
+            "failed": 0,
+            "rejection_reasons": {},
+        }
+
+        sanitizer = FeedAwareSanitizer(feed_name)
+
+        for i, item in enumerate(items):
+            try:
+                title = item.get("title", "")
+                body = item.get("body", "")
+                url = item.get("url", "")
+
+                # Step 1: Guardrail domain validation
+                if self.guardrails:
+                    is_valid, reason = self.guardrails.domain_filter.is_domain_safe(url, feed_name)
+                    if not is_valid:
+                        logger.warning(f"Item {i}: Domain validation failed - {reason}")
+                        metrics["rejection_reasons"][reason] = metrics["rejection_reasons"].get(reason, 0) + 1
+                        self.metrics["failed_domain"] += 1
+                        continue
+
+                # Step 2: Guardrail topic validation
+                if self.guardrails:
+                    is_relevant, reason = self.guardrails.topic_filter.is_topic_relevant(title, body)
+                    if not is_relevant:
+                        logger.warning(f"Item {i}: Topic validation failed - {reason}")
+                        metrics["rejection_reasons"][reason] = metrics["rejection_reasons"].get(reason, 0) + 1
+                        self.metrics["failed_topic"] += 1
+                        continue
+
+                # Step 3: Content sanitization
+                sanitized = sanitizer.sanitize_for_feed(item)
+                if not sanitized:
+                    logger.warning(f"Item {i}: Sanitization failed")
+                    metrics["rejection_reasons"]["Sanitization failed"] = (
+                        metrics["rejection_reasons"].get("Sanitization failed", 0) + 1
+                    )
+                    self.metrics["failed_sanitization"] += 1
+                    continue
+
+                # All validations passed
+                processed.append(sanitized)
+                metrics["passed"] += 1
+                self.metrics["passed_validation"] += 1
+
+            except Exception as e:
+                logger.error(f"Error processing item {i}: {str(e)}", exc_info=True)
+                metrics["rejection_reasons"]["Exception"] = metrics["rejection_reasons"].get("Exception", 0) + 1
+                self.metrics["failed_other"] += 1
+                continue
+
+        metrics["failed"] = len(items) - metrics["passed"]
+        self.metrics["total_processed"] += len(items)
+
+        pass_rate = (metrics["passed"] / len(items) * 100) if len(items) > 0 else 0
+        logger.info(
+            f"Pipeline complete for {feed_name}: {metrics['passed']}/{len(items)} items passed "
+            f"({pass_rate:.1f}% pass rate)"
+        )
+
+        return processed, metrics
+
+    def get_metrics(self) -> Dict:
+        """Get cumulative pipeline metrics."""
+        return self.metrics
+
+    def reset_metrics(self) -> None:
+        """Reset metrics counters."""
+        self.metrics = {
+            "total_processed": 0,
+            "passed_validation": 0,
+            "failed_domain": 0,
+            "failed_topic": 0,
+            "failed_sanitization": 0,
+            "failed_other": 0,
+            "rejection_reasons": {},
+        }
+
+
+# Global singleton orchestrator
+_orchestrator = None
+
+
+def get_orchestrator() -> PipelineOrchestrator:
+    """Get or create global pipeline orchestrator singleton."""
+    global _orchestrator
+    if _orchestrator is None:
+        _orchestrator = PipelineOrchestrator()
+    return _orchestrator
+
+
+def process_feed_batch(
+    items: List[Dict[str, str]], feed_name: str
+) -> Tuple[List[Dict[str, str]], Dict]:
+    """
+    Convenience function to process feed batch.
+
+    Args:
+        items: List of raw feed items
+        feed_name: Feed source name
+
+    Returns:
+        Tuple of (processed_items, metrics_dict)
+    """
+    orchestrator = get_orchestrator()
+    return orchestrator.process_feed_items(items, feed_name)
