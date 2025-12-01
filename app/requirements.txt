@@ -9,4 +9,5 @@ aiohttp
 pytest
 pytest-cov
 requests-mock
-
+anthropic
+leonardo-sdk
