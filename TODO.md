@@ -104,123 +104,40 @@ rm ~/test-file.txt
 
 ## Phase 1: Project Structure and Initial Setup
 
-1. Create project structure:
+✅ **COMPLETED** (Commit: Initial project setup)
 
-   ```bash
-   mkdir -p ~/projects/ai-news-tracker/{app/{scripts,config,data,logs},web/{public/{css,js},src},n8n/{workflows,data},deployment/vps-setup}
-   cd ~/projects/ai-news-tracker
-   git init
-   ```
-
-2. Create `.gitignore` with entries: `*.pyc`, `__pycache__/`, `.env`, `node_modules/`, `data/*.json`, `logs/*.log`, `.DS_Store`, `venv/`
-
-3. Create `.env.example` template with placeholders:
-
-   ```
-   LEONARDO_API_KEY=your_key_here
-   N8N_API_KEY=your_key_here
-   N8N_AUTH_PASSWORD=your_password_here
-   PYTHON_APP_PORT=5001
-   WEB_PORT=8080
-   N8N_PORT=5678
-   ```
-
-4. Copy to `.env` and fill in actual values: `cp .env.example .env`
+1. ✅ Create project structure
+2. ✅ Create `.gitignore`
+3. ✅ Create `.env.example` template
+4. ✅ Copy to `.env` and fill in actual values
 
 ## Phase 2: Python App - Core Configuration and Scripts
 
-5. Create `app/config/settings.py` with configuration class containing:
+✅ **COMPLETED** (Multiple commits)
 
-   - Leonardo API endpoint and model defaults
-   - List of RSS feed URLs to scrape
-   - File paths for data directories
-   - Logging configuration
-   - Batch processing parameters
-
-6. Create `app/config/__init__.py` (empty file for package initialization)
-
-7. Create `app/scripts/__init__.py` (empty file for package initialization)
-
-8. Create `app/scripts/rss_scraper.py` with function skeletons:
-
-   - `fetch_rss_feeds(feed_urls: list) -> list`
-   - `parse_feed_entries(entries: list) -> list`
-   - `save_raw_news(news_items: list, output_file: str) -> None`
-   - Command-line execution for direct invocation
-
-9. Create `app/scripts/social_media_scraper.py` with function skeleton:
-
-   - `fetch_twitter_ai_news(hashtags: list) -> list` (placeholder for future implementation)
-
-10. Create `app/scripts/summarizer.py` with function skeletons:
-
-    - `summarize_article(text: str, max_words: int = 150) -> str`
-    - `batch_summarize_news(news_items: list) -> list`
-    - Integration with chosen summarization library (transformers, etc.)
-
-11. Create `app/scripts/video_idea_generator.py` with function skeletons:
-
-    - `generate_video_ideas(summaries: list) -> list`
-    - `format_video_idea(title: str, description: str, source: str) -> dict`
-
-12. Create `app/scripts/leonardo_api.py` with function skeletons:
-
-    - `initialize_leonardo_client(api_key: str)` – sets up client with API key
-    - `generate_thumbnail(prompt: str, model_id: str = "default") -> dict` – POST request to Leonardo API with prompt, returns generation_id
-    - `get_generation_status(generation_id: str) -> dict` – polls generation status until complete
-    - `download_generated_image(image_url: str, save_path: str) -> bool` – downloads finished image to local file
-    - `batch_generate_thumbnails(video_ideas: list, output_dir: str) -> list` – orchestrates batch thumbnail generation with retry/rate-limit handling
-
-13. Create `app/scripts/data_manager.py` with function skeletons:
-
-    - `load_json(file_path: str) -> dict`
-    - `save_json(data: dict, file_path: str) -> None`
-    - `merge_feeds(news_items: list, video_ideas: list, thumbnails: list) -> list` – combines all data into unified structure
-    - `generate_feed_json(merged_data: list, output_file: str) -> None` – outputs final feed.json
-
-14. Create `app/scripts/logger.py` with logging setup:
-
-    - Console and file handlers
-    - Log level configuration via environment variable
-    - Logs directory: `app/logs/`
-
-15. Create `app/requirements.txt` with dependencies:
-    ```
-    flask
-    requests
-    feedparser
-    transformers
-    python-dotenv
-    gunicorn
-    aiohttp
-    pytest
-    pytest-cov
-    requests-mock
-    ```
+5. ✅ Create `app/config/settings.py`
+6. ✅ Create `app/config/__init__.py`
+7. ✅ Create `app/scripts/__init__.py`
+8. ✅ Create `app/scripts/rss_scraper.py`
+9. ✅ Create `app/scripts/social_media_scraper.py`
+10. ✅ Create `app/scripts/summarizer.py`
+11. ✅ Create `app/scripts/video_idea_generator.py`
+12. ✅ Create `app/scripts/leonardo_api.py`
+13. ✅ Create `app/scripts/data_manager.py`
+14. ✅ Create `app/scripts/logger.py`
+15. ✅ Create `app/requirements.txt`
 
 ## Phase 3: Python App - Main Application
 
-16. Create `app/main.py` with Flask initialization and endpoints:
+✅ **COMPLETED** (Multiple commits, latest: "Add API tests for Flask endpoints" - 5e3095dd)
 
-    - Health check endpoint: `@app.route('/health', methods=['GET'])`
-    - News feed endpoint: `@app.route('/api/news', methods=['GET'])` – returns current feed.json
-    - Refresh trigger: `@app.route('/api/refresh', methods=['POST'])` – accepts merged feed data and updates feed.json
-    - Individual pipeline endpoints: `/api/scrape`, `/api/summarize`, `/api/generate-ideas`, `/api/generate-thumbnails` for n8n calls
-    - n8n webhook receiver: `@app.route('/webhook/n8n', methods=['POST'])` – captures workflow completion callbacks
-    - CORS setup for web frontend
-    - Error handling and JSON responses
+16. ✅ Create `app/main.py` with Flask endpoints
+17. ✅ Create API tests in `app/tests/`:
+    - ✅ `app/tests/__init__.py`
+    - ✅ `app/tests/conftest.py` with pytest fixtures
+    - ✅ `app/tests/test_api.py` with endpoint tests
 
-17. Create API tests in `app/tests/`:
-    - Create `app/tests/__init__.py` (empty file for package initialization)
-    - Create `app/tests/conftest.py` with pytest fixtures:
-      - Flask test client fixture
-      - Mock feed.json data fixture
-      - Temporary data directory fixture
-    - Create `app/tests/test_api.py` with tests for:
-      - `GET /health` – returns 200 with status
-      - `GET /api/news` – returns feed.json data or empty array if missing
-      - `POST /api/refresh` – accepts JSON and updates feed.json
-      - Error handling for invalid requests
+**Next Phase:** Phase 4 - Bash Orchestration and Cron
 
 ## Phase 4: Bash Orchestration and Cron
 

@@ -1,0 +1,146 @@
+AI News Tracker and Video Idea Generator - TODO.md
+
+Prerequisites: WSL2 Setup (Windows Development)
+
+For Windows developers using WSL2:
+
+Ensure WSL2 is configured:
+
+Verify in PowerShell: wsl --list --verbose (should show Ubuntu with VERSION 2)
+
+Enable Docker Desktop WSL2 integration: Docker Desktop Settings → Resources → WSL Integration → toggle ON for Ubuntu
+
+Test in WSL2 bash: docker --version and docker-compose --version
+
+All subsequent commands run in WSL2 bash terminal (accessible via wsl from PowerShell or Windows Terminal → Ubuntu)
+
+Create project in WSL2 native filesystem (~/projects/) for best Docker performance
+
+For Linux VPS deployment:
+
+All commands below work identically in bash on the Linux host
+
+Phase 0: Docker Verification in WSL2 Ubuntu
+
+Purpose: Verify Docker Desktop WSL2 integration is working correctly before creating project files.
+
+0.1. Open WSL2 Ubuntu terminal (from Windows Terminal or PowerShell: wsl)
+
+0.2. Verify Docker is accessible:
+
+docker --version
+docker-compose --version
+
+
+
+Expected: Should show Docker version (e.g., "Docker version 24.x.x") and Docker Compose version
+
+If errors: Ensure Docker Desktop is running on Windows and WSL2 integration is enabled
+
+0.3. Test Docker daemon connection:
+
+docker ps
+
+
+
+Expected: Should show running containers (may be empty list, but no errors)
+
+If "Cannot connect to Docker daemon": Docker Desktop may not be running or WS...
+
+Phase 1: Data Acquisition and Pre-processing (New)
+
+Purpose: Define data sources and implement initial quality control measures.
+
+Identify and configure the three primary data feeds for content acquisition:
+
+Feed A (Real-Time News): Google News API for current AI and tech articles.
+
+Feed B (Community Discussion): Reddit (r/MachineLearning, r/artificial) API for community discussions and trends.
+
+Feed C (Expert Analysis): Specific Twitter accounts (via API/scraper) for key expert analysis and opinions.
+
+Implement content sanitation and prompt engineering strategies to ensure high-quality, relevant input for the LLM:
+
+Strategy 1 (Pre-LLM Sanitation & Content Filtering): Implement logic to clean and filter the raw content from Feeds A, B, and C before it is passed to the LLM prompt.
+
+Remove all HTML, Markdown, and extraneous formatting.
+
+Remove common boilerplate text (e.g., "Read more," copyright notices, image credits).
+
+Truncate overly long articles to a set maximum token count (e.g., 2000 tokens) while preserving the introduction and conclusion for context.
+
+Strategy 2 (Prompt Sanitation & Content Guardrails): Implement specific instructions within the LLM prompt itself to guide the model's behavior and enforce content quality.
+
+Use comprehensive system instructions to clearly set the persona, tone, and expected JSON output structure.
+
+Add negative constraints to the prompt (e.g., "Do not mention the source URL or any promotional material").
+
+Define explicit guardrails for sensitive or off-topic content (e.g., "Focus only on advancements in ML, LLMs, and robotics. Ignore financial/stock news.").
+
+Phase 2: Data Ingestion and Content Cleaning
+
+Purpose: Build the data pipeline to fetch and sanitize the raw content using Strategy 1.
+
+Configure n8n/Python script to fetch data from Feed A (Google News API) and store raw output.
+
+Configure n8n/Python script to fetch data from Feed B (Reddit APIs) and store raw output.
+
+Configure n8n/Python script to fetch data from Feed C (Twitter/X scraper) and store raw output.
+
+Develop the Python module/utility function for Strategy 1 sanitation, including:
+
+HTML/Markdown stripping.
+
+Boilerplate/Footer removal.
+
+Intelligent truncation based on token count.
+
+Integrate the sanitation function into the n8n workflow to process raw content before LLM submission.
+
+Define the final, structured JSON schema expected from the LLM (for the video idea: title, summary, key bullet points, recommended tags, source metadata).
+
+Phase 3: LLM Processing and Video Idea Generation
+
+Purpose: Integrate the Gemini API to transform cleaned data into structured video ideas using Strategy 2.
+
+Implement the Gemini API client module (Python) with retry logic (exponential backoff).
+
+Construct the core LLM prompt incorporating Strategy 2 guardrails (persona, tone, negative constraints) and the required JSON schema.
+
+Build the n8n workflow node to take the sanitized content, call the Gemini API, and receive the structured JSON response.
+
+Store the resulting structured data (the "feed.json" file) in the appropriate application directory (app/data/).
+
+Phase 4: Testing, Deployment, and Maintenance (Continued from Step 56)
+
+Test full pipeline end-to-end locally, then on VPS:
+
+Trigger manual pipeline run: bash app/scripts/run_pipeline.sh
+
+Verify feed.json generated: cat app/data/feed.json
+
+Check web UI displays feed: curl http://localhost:8080/api/news
+
+Trigger n8n workflow and observe logs
+
+Run output validation tests: pytest app/tests/test_output.py -v
+
+Document VPS credentials securely (password manager):
+
+VPS SSH key location and passphrase
+
+n8n admin username and password
+
+Leonardo API key (in .env)
+
+Any third-party API credentials
+
+Set up automated backups for n8n data and feed history:
+
+Cron job on VPS: 0 2 * * * docker exec ai-news-n8n tar -czf /home/ubuntu/backups/n8n-$(date +%Y%m%d).tar.gz /home/node/.n8n
+
+Store backups remotely (S3, rsync to secondary storage)
+
+Monitor and log production health:
+
+Check container health: docker-compose ps (shows health status)

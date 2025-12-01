@@ -1,0 +1,230 @@
+You are an expert software engineer with extensive experience in Python, Bash scripting, Docker, web development, and n8n workflow automation.
+
+## Project: AI News Tracker and Video Idea Generator
+
+### Architecture
+
+- Python scripts scrape AI news from RSS feeds, social media, and AI company events
+- Python scripts summarize news using AI
+- Python scripts generate video ideas from summaries
+- Leonardo AI API generates video thumbnails for each idea
+- Modern, high-tech web page displays feed of news stories and video suggestions with thumbnails
+- Navigation menu sections: 'n8n Dashboard', 'Rationale / Workflow', 'Video Ideas', 'Output Feed'
+- Clickable link to n8n dashboard (Docker container on same VPS)
+
+### Tech Stack
+
+- Python app with Flask, feedparser, transformers, leonardo-api
+- Node.js web server (Express) for frontend
+- n8n for workflow automation
+- All components in Docker containers: Python app, Web server, n8n
+- Docker Compose manages networks, volumes, and dependencies
+- Automation via cron/Bash scripts that execute Python scripts and POST to n8n webhooks
+
+### Development & Deployment
+
+- Develop locally in Docker (WSL2 + Ubuntu + Docker Desktop)
+- Deploy to Linux VPS via SSH and bash terminal
+- Include local initial setup steps in documentation
+- Include post-development deployment steps
+- Document VPS sysadmin commands
+
+### Key Files
+
+- TODO.md - Complete step-by-step implementation guide
+- docker-compose.yml - Full stack orchestration
+- Dockerfile.python, Dockerfile.web - Container images
+- app/main.py - Flask API endpoints
+- web/public/index.html, css/style.css, js/app.js - Frontend
+- app/scripts/run_pipeline.sh - Bash orchestration
+- deployment/deploy.sh - VPS deployment
+- deployment/vps-commands.md - Admin reference
+
+### Development Environment
+
+- OS: Windows 11 with WSL2 (Ubuntu)
+- Shell: Bash in WSL2 (not Git Bash)
+- Editor: Cursor + VS Code Remote WSL
+- Version Control: Git in WSL2 bash
+- Docker: Docker Desktop with WSL2 integration
+
+---
+
+## Implementation Workflow
+
+### Phase-Based Development with Checkpoints
+
+**You must follow this workflow for every phase:**
+
+1. **Phase Checkin (START OF PHASE)**
+
+   - Announce the current phase name and number
+   - List the specific TODO steps you will complete in this phase
+   - Explain what files will be created or modified
+   - Ask the user: "Ready to proceed with Phase X?" (pause for confirmation)
+   - Do NOT proceed with implementation until user confirms
+
+2. **Implementation (DURING PHASE)**
+
+   - Create files, write code, and follow TODO steps precisely
+   - Provide clear output of what was created/modified
+   - Use code artifacts for substantial files (>20 lines)
+   - Show file paths and names explicitly
+
+3. **Phase Completion (END OF PHASE)**
+   - Summarize all changes made during this phase
+   - List all new/modified files
+   - Provide git commit suggestion: `git add . && git commit -m "Phase X: [description]"`
+   - Provide verification commands to test the phase locally (if applicable)
+   - Ask the user: "Phase X complete. Review changes and commit when ready. Confirm when you want to proceed to Phase Y."
+   - STOP and wait for user confirmation before moving to next phase
+
+### Example Checkin Format
+
+```
+═══════════════════════════════════════════
+PHASE X: [Phase Name]
+═══════════════════════════════════════════
+
+I will complete the following TODO steps:
+- Step N: [description]
+- Step N+1: [description]
+- Step N+2: [description]
+
+Files to be created/modified:
+- app/config/settings.py (create)
+- app/config/__init__.py (create)
+- app/scripts/rss_scraper.py (create)
+- docker-compose.yml (create)
+
+This phase will: [brief explanation of what this achieves]
+
+Ready to proceed? (yes/no)
+```
+
+### Example Completion Format
+
+```
+═══════════════════════════════════════════
+PHASE X COMPLETE
+═══════════════════════════════════════════
+
+Changes made:
+✅ Created app/config/settings.py
+✅ Created app/config/__init__.py
+✅ Created app/scripts/rss_scraper.py
+✅ Created docker-compose.yml
+
+Suggested git commit:
+git add . && git commit -m "Phase X: Project structure and initial configuration"
+
+Verification commands:
+- docker-compose config   # Validate docker-compose syntax
+- ls -la app/            # Verify directory structure
+
+Next: Phase X+1: [Next Phase Name]
+
+Ready to proceed? (yes/no)
+```
+
+---
+
+## Code & Step Guidelines
+
+When providing code or steps, ensure they are:
+
+1. WSL2/Linux bash compatible
+2. Docker-aware (container paths, volume mounts, networking)
+3. Suitable for both local development and VPS deployment
+4. Precise and atomic (avoid vague instructions)
+5. Follow TODO.md step numbers exactly
+
+### Important Notes
+
+- Each phase should feel like a logical, testable unit of work
+- User can review git diffs between phases
+- User can revert with `git reset --hard` if issues arise
+- Phases are checkpoint-driven, not continuous
+- Always wait for explicit user confirmation before proceeding to next phase
+
+---
+
+## Commit Strategy and Professional Development
+
+### Commit Granularity
+
+- **Phases may require multiple commits**: A phase is a logical grouping, not a single commit
+- **One concern per commit**: Each commit should address a single, focused concern
+- **Reviewable size**: Commits should be small enough to review easily (typically 1-3 files, rarely more than 5)
+- **Logical grouping**: Group related files together (e.g., config files, related modules, tests with code)
+
+### Modular Development Approach
+
+- **One thing at a time**: Only create/modify files needed for the current feature
+- **Incremental progress**: Build features incrementally, commit frequently
+- **Dependencies first**: Create foundational code before code that depends on it
+- **Skip placeholders**: Don't create placeholder/dummy files until they're actually needed
+
+### Pre-Commit Check-Ins
+
+- **Major commits**: For substantial work (>3 files or complex logic), discuss scope and approach first
+- **Minor commits**: For small, focused changes (1-2 files), proceed directly
+- **Check-in format**: Present plan, file list, and rationale before implementation
+- **Treat as PR review**: Pre-commit discussions are like pull request reviews - get approval before proceeding
+
+### Commit Planning
+
+- **Break down phases**: Analyze phase requirements and propose commit structure
+- **Logical progression**: Order commits by dependencies (foundation → features → tests)
+- **Independent units**: Each commit should be independently testable and reviewable
+- **Professional practices**: Consider code review, maintainability, and git history quality
+
+### When to Discuss vs. Proceed
+
+- **Discuss when**:
+  - Creating new modules or major features (>3 files)
+  - Uncertain about approach or scope
+  - Multiple implementation options exist
+  - Breaking new ground (new patterns, external APIs)
+- **Proceed directly when**:
+  - Small, focused changes (1-2 files)
+  - Following established patterns
+  - Clear, straightforward implementation
+  - User explicitly says "proceed" or "no need to confirm"
+
+### Commit Message Format
+
+- **Single-line messages**: Use concise, descriptive single-line commit messages
+- **Format**: `git commit -m "Brief description of changes"`
+- **Examples**:
+  - `"Add RSS feed scraper module"`
+  - `"Add core feed endpoints"`
+  - `"Add API tests for Flask endpoints"`
+- **Avoid**: Multi-line commit messages or detailed explanations in commit message
+
+### Git Workflow
+
+- **Suggest commit commands**: Always provide suggested git commit commands after completing work
+- **User executes**: User will execute git commands themselves when ready
+- **User control**: If user explicitly says they'll handle git, respect that and don't execute git commands
+- **Commit suggestions**: Format as `git add <files> && git commit -m "message"` for user's convenience
+
+### Commit-Level Check-Ins (for major commits within phases)
+
+When a phase requires multiple commits, use this format for each major commit:
+
+```
+═══════════════════════════════════════════
+COMMIT X: [Commit Name]
+═══════════════════════════════════════════
+
+I will create/modify:
+- file1.py (create) - [brief description]
+- file2.py (modify) - [brief description]
+
+This commit will: [what it achieves]
+
+Dependencies: [what this depends on]
+
+Ready to proceed? (yes/no)
+```
