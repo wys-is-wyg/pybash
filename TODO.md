@@ -295,14 +295,14 @@ rm ~/test-file.txt
     } 2>&1 | tee -a "$LOG_FILE"
     ```
 
-24. Create `app/scripts/webhook_trigger.sh` (executable):
-    ```bash
+23.5. Create `app/scripts/webhook_trigger.sh` (executable):
+`bash
     #!/bin/bash
     PAYLOAD='{"trigger":"scheduled","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
     curl -X POST "http://n8n:5678/webhook/run-pipeline" \
       -H "Content-Type: application/json" \
       -d "$PAYLOAD"
-    ```
+    `
 
 ## Phase 6: Web Frontend - HTML and Assets
 

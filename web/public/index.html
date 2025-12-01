@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AI News Tracker - Automated AI and ML news aggregation with Claude-powered summaries and video idea generation">
+    <title>AI News Tracker & Video Ideas</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navigation Header -->
+    <header class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h1>AI News Tracker</h1>
+                <p class="tagline">AI & ML News • Summaries • Video Ideas</p>
+            </div>
+            <nav class="navbar-menu">
+                <ul>
+                    <li><a href="#feed" class="nav-link active" data-section="feed">Feed</a></li>
+                    <li><a href="#dashboard" class="nav-link" data-section="dashboard">Dashboard</a></li>
+                    <li><a href="#rationale" class="nav-link" data-section="rationale">Rationale</a></li>
+                    <li><a href="#video-ideas" class="nav-link" data-section="video-ideas">Video Ideas</a></li>
+                    <li><a href="#output" class="nav-link" data-section="output">Output Feed</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        
+        <!-- Feed Section (Default) -->
+        <section id="feed" class="content-section active">
+            <div class="section-header">
+                <h2>Latest News Feed</h2>
+                <p class="section-description">Real-time AI and ML news from Google News, Reddit, and Twitter/X</p>
+            </div>
+            
+            <!-- Status indicators -->
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="status-label">Status:</span>
+                    <span id="feed-status" class="status-badge loading">Loading...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Last Updated:</span>
+                    <span id="feed-timestamp" class="status-value">Never</span>
+                </div>
+            </div>
+
+            <!-- Feed Container -->
+            <div id="feed-container" class="feed-grid">
+                <div class="loading-spinner">
+                    <div class="spinner"></div>
+                    <p>Fetching news feed...</p>
+                </div>
+            </div>
+
+            <!-- Error Message Container -->
+            <div id="feed-error" class="error-message" style="display: none;">
+                <strong>Error loading feed:</strong>
+                <p id="error-text"></p>
+                <button onclick="location.reload()" class="btn-retry">Retry</button>
+            </div>
+
+            <!-- Empty State -->
+            <div id="feed-empty" class="empty-state" style="display: none;">
+                <p>No news items available yet.</p>
+                <p class="text-muted">The pipeline will populate this feed once it runs.</p>
+            </div>
+        </section>
+
+        <!-- Dashboard Section (n8n) -->
+        <section id="dashboard" class="content-section">
+            <div class="section-header">
+                <h2>n8n Automation Dashboard</h2>
+                <p class="section-description">Monitor workflow executions and pipeline status</p>
+            </div>
+            <div class="dashboard-container">
+                <iframe 
+                    src="http://localhost:5678" 
+                    class="dashboard-iframe"
+                    title="n8n Automation Dashboard">
+                </iframe>
+                <div class="iframe-note">
+                    <p><strong>Note:</strong> n8n dashboard loads at http://localhost:5678</p>
+                    <p>Default credentials: admin / (password from .env)</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Rationale Section -->
+        <section id="rationale" class="content-section">
+            <div class="section-header">
+                <h2>Architecture & Workflow</h2>
+                <p class="section-description">How the AI News Tracker processes and generates content</p>
+            </div>
+            
+            <div class="rationale-content">
+                <h3>Data Pipeline Overview</h3>
+                <p>The AI News Tracker implements a comprehensive data acquisition and processing pipeline with two-tier security guardrails:</p>
+                
+                <div class="pipeline-diagram">
+                    <div class="pipeline-stage">
+                        <div class="stage-title">Stage 1: Data Acquisition</div>
+                        <div class="stage-content">
+                            <p><strong>Three Feed Sources:</strong></p>
+                            <ul>
+                                <li><strong>Feed A (Real-Time):</strong> Google News API for AI/tech articles</li>
+                                <li><strong>Feed B (Community):</strong> Reddit (r/MachineLearning, r/artificial)</li>
+                                <li><strong>Feed C (Expert):</strong> Twitter/X expert accounts</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="pipeline-arrow">↓</div>
+                    
+                    <div class="pipeline-stage">
+                        <div class="stage-title">Stage 2: Pre-LLM Sanitization</div>
+                        <div class="stage-content">
+                            <p><strong>Strategy 1 - Content Filtering:</strong></p>
+                            <ul>
+                                <li>Remove HTML/Markdown formatting</li>
+                                <li>Strip boilerplate text (copyright, footers)</li>
+                                <li>Truncate to max tokens (Google News: 2000, Reddit: 2000, Twitter: 1000)</li>
+                                <li>Validate against domain allowlist</li>
+                                <li>Detect injection patterns</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="pipeline-arrow">↓</div>
+                    
+                    <div class="pipeline-stage">
+                        <div class="stage-title">Stage 3: LLM Processing (Claude)</div>
+                        <div class="stage-content">
+                            <p><strong>Strategy 2 - Prompt-Level Guardrails:</strong></p>
+                            <ul>
+                                <li>System prompts with clear persona and constraints</li>
+                                <li>Topic filtering (allowlist ML/AI topics, blocklist finance/politics)</li>
+                                <li>Input validation for escape sequences and JSON manipulation</li>
+                                <li>Output validation against JSON schema</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="pipeline-arrow">↓</div>
+                    
+                    <div class="pipeline-stage">
+                        <div class="stage-title">Stage 4: Content Generation</div>
+                        <div class="stage-content">
+                            <p><strong>Parallel Processing:</strong></p>
+                            <ul>
+                                <li>Article summarization (150-300 words)</li>
+                                <li>Video idea generation</li>
+                                <li>Thumbnail generation via Leonardo API</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="pipeline-arrow">↓</div>
+                    
+                    <div class="pipeline-stage">
+                        <div class="stage-title">Stage 5: Data Merge & Display</div>
+                        <div class="stage-content">
+                            <p><strong>Final Output:</strong></p>
+                            <ul>
+                                <li>Unified feed.json with all metadata</li>
+                                <li>Web UI display with filtering/sorting</li>
+                                <li>API endpoints for external consumption</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Automation & Scheduling</h3>
+                <p><strong>n8n Workflow:</strong> Webhook-triggered orchestration</p>
+                <ul>
+                    <li>POST /webhook/run-pipeline triggers full pipeline</li>
+                    <li>Cron scheduling every 6 hours via bash script</li>
+                    <li>Execution logs and error handling</li>
+                </ul>
+
+                <h3>Security Features</h3>
+                <ul>
+                    <li>✓ Pre-LLM content sanitization prevents injection attacks</li>
+                    <li>✓ Prompt-level guardrails enforce topic focus</li>
+                    <li>✓ Domain whitelist prevents untrusted sources</li>
+                    <li>✓ Output validation ensures data integrity</li>
+                    <li>✓ Rate limiting and API key isolation (via .env)</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Video Ideas Section -->
+        <section id="video-ideas" class="content-section">
+            <div class="section-header">
+                <h2>Video Ideas</h2>
+                <p class="section-description">AI-generated video concepts based on trending topics</p>
+            </div>
+            
+            <div class="filter-bar">
+                <input 
+                    type="text" 
+                    id="idea-search" 
+                    class="search-input" 
+                    placeholder="Search video ideas..."
+                >
+                <select id="idea-sort" class="sort-select">
+                    <option value="date">Latest First</option>
+                    <option value="title">Title (A-Z)</option>
+                    <option value="source">By Source</option>
+                </select>
+            </div>
+
+            <div id="video-ideas-container" class="ideas-grid">
+                <div class="loading-spinner">
+                    <div class="spinner"></div>
+                    <p>Loading video ideas...</p>
+                </div>
+            </div>
+
+            <div id="ideas-empty" class="empty-state" style="display: none;">
+                <p>No video ideas generated yet.</p>
+                <p class="text-muted">Ideas will appear after the pipeline processes summaries.</p>
+            </div>
+        </section>
+
+        <!-- Output Feed (Raw JSON) Section -->
+        <section id="output" class="content-section">
+            <div class="section-header">
+                <h2>Raw Output Feed</h2>
+                <p class="section-description">Complete feed.json data structure for API consumption</p>
+            </div>
+            
+            <div class="output-controls">
+                <button id="btn-download" class="btn-primary">Download feed.json</button>
+                <button id="btn-copy" class="btn-secondary">Copy to Clipboard</button>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="pretty-print" checked>
+                    Pretty Print
+                </label>
+            </div>
+
+            <div class="output-container">
+                <pre id="output-feed" class="json-viewer">
+{
+  "loading": true,
+  "message": "Fetching feed.json..."
+}
+                </pre>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>&copy; 2024 AI News Tracker. Powered by Claude, n8n, and Leonardo AI.</p>
+        <p class="footer-links">
+            <a href="/api/news" target="_blank">API Endpoint</a> • 
+            <a href="http://localhost:5678" target="_blank">n8n Dashboard</a> • 
+            <a href="http://localhost:5001/health" target="_blank">Health Check</a>
+        </p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="js/app.js"></script>
+</body>
+</html>
