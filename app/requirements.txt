@@ -10,4 +10,4 @@ pytest
 pytest-cov
 requests-mock
 anthropic
-leonardo-sdk
+leonardo-ai-sdk

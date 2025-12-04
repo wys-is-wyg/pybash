@@ -1,7 +1,7 @@
 FROM node:18-alpine
 WORKDIR /app
 COPY web/package*.json ./
-RUN npm ci --only=production
+RUN npm install --production
 COPY web/ .
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

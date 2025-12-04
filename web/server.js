@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { createProxyMiddleware } = require('express-http-proxy');
+const proxy = require('express-http-proxy');
 
 const app = express();
 const PORT = process.env.WEB_PORT || 8080;
@@ -13,10 +13,12 @@ app.use(cors());
 app.use(express.static('public'));
 
 // Proxy route for API calls to Python app
-app.use('/api', createProxyMiddleware({
-  target: 'http://python-app:5001',
-  changeOrigin: true
-}));
+app.use(
+  '/api',
+  proxy('http://python-app:5001', {
+    proxyReqPathResolver: (req) => `/api${req.url}`,
+  }),
+);
 
 // Root route
 app.get('/', (req, res) => {
