@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  python-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: ai-news-python
+    ports:
+      - "5001:5001"
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app
+      - ./app/data:/app/data
+    networks:
+      - ai-network
+    restart: always
+
+  web-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: ai-news-web
+    ports:
+      - "8080:8080"
+    depends_on:
+      - python-app
+    networks:
+      - ai-network
+    restart: always
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: ai-news-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_AUTH_PASSWORD:-changeme}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - ai-network
+    restart: always
+
+volumes:
+  n8n_data:
+
+networks:
+  ai-network:
+    driver: bridge
+

@@ -1,0 +1,10 @@
+FROM node:18-alpine
+WORKDIR /app
+COPY web/package*.json ./
+RUN npm ci --only=production
+COPY web/ .
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:8080/ || exit 1
+CMD ["npm", "start"]
+
