@@ -22,6 +22,17 @@ This guide walks you through setting up the n8n workflow for the AI News Tracker
    - **Username:** `admin` (or value from `N8N_BASIC_AUTH_USER` in `.env`)
    - **Password:** Value from `N8N_AUTH_PASSWORD` in `.env`
 
+### Understanding the n8n UI
+
+Once logged in, you'll see:
+
+- **Left Sidebar**: Navigation menu with "Workflows", "Executions", etc.
+- **Main Area**: Workflow canvas (where you build/edit workflows)
+- **Right Panel**: Node configuration panel (appears when you click a node)
+- **Top Bar**: Save, Execute, and workflow settings buttons
+
+When you open a workflow, the **workflow canvas** is the main editing area where nodes appear as boxes connected by lines. The **Webhook node** will be one of these boxes in the canvas.
+
 ## Step 45-47: Import Workflow (Recommended)
 
 ### Option A: Import Pre-configured Workflow
@@ -112,10 +123,21 @@ Connect the nodes in sequence:
 
 ## Step 46: Configure Webhook for Manual Triggering
 
-1. Click on the **Webhook** node
-2. In the node settings, you'll see the webhook URL
-3. Note the URL format: `http://localhost:5678/webhook/run-pipeline`
-4. For manual testing, you can also add a **Manual Trigger** node or use the webhook URL directly
+### Finding the Webhook Node
+
+After importing or creating the workflow, you'll see the workflow canvas with all the nodes:
+
+1. **In the workflow canvas** (the main editing area), you'll see a node labeled **"Webhook"** - this is the first node on the left side of the workflow
+2. **Click on the Webhook node** - it will be highlighted and show its configuration panel on the right side
+3. **In the node settings panel** (right side), you'll see the webhook URL displayed
+4. **Note the URL format**: `http://localhost:5678/webhook/run-pipeline` (or similar)
+5. For manual testing, you can also add a **Manual Trigger** node or use the webhook URL directly
+
+**Tip:** If you don't see the Webhook node:
+
+- Make sure you've imported the workflow or created it manually
+- The Webhook node should be the leftmost node in the workflow
+- If using the imported workflow, it's the first node in the chain
 
 ### Alternative: Add Manual Trigger
 
@@ -139,8 +161,11 @@ Connect the nodes in sequence:
 
 ### Method 2: Webhook Trigger
 
-1. Get the webhook URL from the Webhook node
-2. Test with curl:
+1. **Get the webhook URL from the Webhook node:**
+   - In the workflow canvas, click on the **"Webhook"** node (first node on the left)
+   - In the right panel, look for the webhook URL (it will be displayed in the node configuration)
+   - Copy the URL (format: `http://localhost:5678/webhook/run-pipeline` or similar)
+2. **Test with curl:**
 
    ```bash
    curl -X POST http://localhost:5678/webhook/run-pipeline \
@@ -155,9 +180,12 @@ Connect the nodes in sequence:
 
 ### Method 3: From n8n UI
 
-1. Click on the **Webhook** node
-2. Click **"Test URL"** or **"Listen for Test Event"**
-3. Send a test request
+1. **In the workflow canvas**, click on the **"Webhook"** node (first node on the left)
+2. **In the node settings panel** (right side), look for:
+   - **"Test URL"** button, or
+   - **"Listen for Test Event"** button, or
+   - **"Copy URL"** to get the webhook URL
+3. Click the appropriate button to test or copy the URL for external testing
 
 ## Expected Workflow Execution
 
