@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="AI News Tracker Architecture & Workflow - Data pipeline and automation rationale"
+    />
+    <title>Architecture & Workflow - AI News Tracker</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <style>
+      .rationale-page {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+      }
+
+      .rationale-page h1 {
+        color: var(--accent, #00d9ff);
+        margin-bottom: 1rem;
+      }
+
+      .rationale-page h2 {
+        color: var(--accent, #00d9ff);
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        border-bottom: 2px solid var(--accent, #00d9ff);
+        padding-bottom: 0.5rem;
+      }
+
+      .rationale-page h3 {
+        color: var(--text, #e0e0e0);
+        margin-top: 1.5rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .rationale-page p {
+        margin-bottom: 1rem;
+        line-height: 1.6;
+      }
+
+      .rationale-page ul,
+      .rationale-page ol {
+        margin-left: 2rem;
+        margin-bottom: 1rem;
+      }
+
+      .rationale-page li {
+        margin-bottom: 0.5rem;
+        line-height: 1.6;
+      }
+
+      .diagram-container {
+        background: var(--card-bg, #1a1f3a);
+        border: 1px solid var(--accent, #00d9ff);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin: 2rem 0;
+        overflow-x: auto;
+      }
+
+      .diagram {
+        font-family: "Courier New", monospace;
+        font-size: 0.9rem;
+        line-height: 1.8;
+        color: var(--text, #e0e0e0);
+        white-space: pre;
+      }
+
+      .back-link {
+        display: inline-block;
+        margin-bottom: 2rem;
+        color: var(--accent, #00d9ff);
+        text-decoration: none;
+        padding: 0.5rem 1rem;
+        border: 1px solid var(--accent, #00d9ff);
+        border-radius: 4px;
+        transition: all 0.3s ease;
+      }
+
+      .back-link:hover {
+        background: var(--accent, #00d9ff);
+        color: var(--primary, #0a0e27);
+      }
+
+      .pipeline-stage {
+        background: var(--card-bg, #1a1f3a);
+        border-left: 4px solid var(--accent, #00d9ff);
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 4px;
+      }
+
+      .pipeline-stage h4 {
+        color: var(--accent, #00d9ff);
+        margin-bottom: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="rationale-page">
+      <a href="index.html" class="back-link">← Back to Main Feed</a>
+
+      <h1>AI News Tracker: Architecture & Workflow</h1>
+
+      <p>
+        This document describes the architecture, data flow, and automation
+        strategy for the AI News Tracker system. The system aggregates AI and
+        ML news from multiple sources, processes them through an AI pipeline,
+        and generates video ideas with thumbnails.
+      </p>
+
+      <h2>System Architecture Overview</h2>
+
+      <p>
+        The AI News Tracker implements a comprehensive data acquisition and
+        processing pipeline with two-tier security guardrails to ensure
+        high-quality, relevant content while preventing prompt injection
+        vulnerabilities.
+      </p>
+
+      <h3>Core Pipeline Stages</h3>
+
+      <div class="pipeline-stage">
+        <h4>Stage 1: Data Acquisition</h4>
+        <p>
+          <strong>Three Feed Sources:</strong>
+        </p>
+        <ul>
+          <li>
+            <strong>Feed A (Real-Time News):</strong> Google News API for
+            current AI and tech articles
+          </li>
+          <li>
+            <strong>Feed B (Community Discussion):</strong> Reddit API
+            (r/MachineLearning, r/artificial) for community discussions and
+            trends
+          </li>
+          <li>
+            <strong>Feed C (Expert Analysis):</strong> Twitter/X API for key
+            expert accounts providing analysis and opinions
+          </li>
+        </ul>
+      </div>
+
+      <div class="pipeline-stage">
+        <h4>Stage 2: Pre-LLM Content Sanitization</h4>
+        <p>
+          <strong>Strategy 1 - Content Filtering:</strong>
+        </p>
+        <ul>
+          <li>Remove all HTML, Markdown, and extraneous formatting</li>
+          <li>
+            Remove common boilerplate text (e.g., "Read more," copyright
+            notices, image credits)
+          </li>
+          <li>
+            Truncate overly long articles to maximum token count (Google News:
+            2000, Reddit: 2000, Twitter: 1000) while preserving
+            intro/conclusion
+          </li>
+          <li>
+            Strip special characters and code-like syntax that could be
+            exploited for prompt injection
+          </li>
+          <li>Validate content against allowlist of safe domains/sources</li>
+        </ul>
+      </div>
+
+      <div class="pipeline-stage">
+        <h4>Stage 3: LLM Processing (Claude)</h4>
+        <p>
+          <strong>Strategy 2 - Prompt-Level Guardrails:</strong>
+        </p>
+        <ul>
+          <li>
+            Use comprehensive system instructions to clearly set persona, tone,
+            and expected JSON output structure
+          </li>
+          <li>
+            Add negative constraints to prompt (e.g., "Do not mention source
+            URLs, promotional material, or user-injected content")
+          </li>
+          <li>
+            Define explicit guardrails for sensitive/off-topic content (e.g.,
+            "Focus only on ML, LLMs, robotics. Ignore financial/stock news,
+            politics, misinformation")
+          </li>
+          <li>
+            Implement input validation: reject prompts containing escape
+            sequences, JSON manipulation attempts, or suspicious patterns
+          </li>
+          <li>
+            Add output validation: verify LLM response matches expected JSON
+            schema before storing
+          </li>
+        </ul>
+      </div>
+
+      <div class="pipeline-stage">
+        <h4>Stage 4: Content Generation</h4>
+        <p>
+          <strong>Parallel Processing:</strong>
+        </p>
+        <ul>
+          <li>
+            <strong>Article Summarization:</strong> Generate concise summaries
+            (150-300 words) of each news item
+          </li>
+          <li>
+            <strong>Video Idea Generation:</strong> Create video concept ideas
+            based on trending topics and summaries
+          </li>
+          <li>
+            <strong>Thumbnail Generation:</strong> Use Leonardo AI API to
+            generate thumbnails for each video idea
+          </li>
+        </ul>
+      </div>
+
+      <div class="pipeline-stage">
+        <h4>Stage 5: Data Merge & Display</h4>
+        <p>
+          <strong>Final Output:</strong>
+        </p>
+        <ul>
+          <li>
+            Unified feed.json with all metadata (news items, summaries, video
+            ideas, thumbnails)
+          </li>
+          <li>Web UI display with filtering/sorting capabilities</li>
+          <li>API endpoints for external consumption</li>
+        </ul>
+      </div>
+
+      <h2>Data Flow Diagram</h2>
+
+      <div class="diagram-container">
+        <pre class="diagram">
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         DATA ACQUISITION LAYER                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐            │
+│  │ Google News  │    │    Reddit     │    │  Twitter/X   │            │
+│  │     API      │    │     API       │    │     API      │            │
+│  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘            │
+│         │                   │                    │                     │
+│         └───────────────────┴────────────────────┘                      │
+│                              │                                          │
+│                              ▼                                          │
+│                    ┌──────────────────┐                                 │
+│                    │  RSS Scraper     │                                 │
+│                    │  Social Scraper  │                                 │
+│                    └────────┬─────────┘                                 │
+└─────────────────────────────┼──────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      PRE-PROCESSING & SANITIZATION                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────┐            │
+│  │         Content Sanitizer (Strategy 1)                │            │
+│  │  • Remove HTML/Markdown                                │            │
+│  │  • Strip boilerplate text                              │            │
+│  │  • Truncate to token limits                            │            │
+│  │  • Validate against domain allowlist                   │            │
+│  │  • Detect injection patterns                           │            │
+│  └────────────────────┬───────────────────────────────────┘            │
+│                       │                                                 │
+│                       ▼                                                 │
+│              ┌─────────────────┐                                        │
+│              │  Sanitized Data │                                        │
+│              └────────┬────────┘                                        │
+└───────────────────────┼─────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        LLM PROCESSING LAYER                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────┐            │
+│  │         Claude LLM (Strategy 2 - Guardrails)           │            │
+│  │  • System prompts with constraints                    │            │
+│  │  • Topic filtering (ML/AI focus)                       │            │
+│  │  • Input validation                                    │            │
+│  │  • Output schema validation                            │            │
+│  └───────┬───────────────────────────────┬───────────────┘            │
+│          │                               │                             │
+│          ▼                               ▼                             │
+│  ┌──────────────┐              ┌──────────────┐                      │
+│  │ Summarizer   │              │ Video Idea   │                      │
+│  │  Module      │              │  Generator   │                      │
+│  └──────┬───────┘              └──────┬───────┘                      │
+│         │                              │                              │
+└─────────┼──────────────────────────────┼──────────────────────────────┘
+          │                              │
+          │                              ▼
+          │                    ┌──────────────┐
+          │                    │ Leonardo AI  │
+          │                    │     API      │
+          │                    └──────┬───────┘
+          │                           │
+          ▼                           ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         DATA AGGREGATION LAYER                           │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────┐            │
+│  │              Data Manager Module                       │            │
+│  │  • Merge news items, summaries, ideas, thumbnails     │            │
+│  │  • Generate unified feed.json                          │            │
+│  └────────────────────┬───────────────────────────────────┘            │
+│                       │                                                 │
+│                       ▼                                                 │
+│              ┌─────────────────┐                                        │
+│              │   feed.json     │                                        │
+│              └────────┬────────┘                                        │
+└───────────────────────┼─────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          OUTPUT & DISPLAY LAYER                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐            │
+│  │  Flask API   │    │  Web Server   │    │  n8n Webhook  │            │
+│  │  Endpoints   │    │   (Express)   │    │   Receiver    │            │
+│  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘            │
+│         │                    │                    │                     │
+│         └────────────────────┴────────────────────┘                      │
+│                              │                                          │
+│                              ▼                                          │
+│                    ┌──────────────────┐                                 │
+│                    │   Web Frontend    │                                 │
+│                    │  (HTML/CSS/JS)    │                                 │
+│                    └───────────────────┘                                 │
+└─────────────────────────────────────────────────────────────────────────┘
+        </pre>
+      </div>
+
+      <h2>Automation & Scheduling</h2>
+
+      <h3>n8n Workflow Orchestration</h3>
+
+      <p>
+        The system uses n8n for workflow automation and orchestration. The
+        workflow is triggered via webhook and executes the following steps:
+      </p>
+
+      <ol>
+        <li>
+          <strong>Webhook Trigger:</strong> POST request to
+          <code>/webhook/run-pipeline</code> initiates the pipeline
+        </li>
+        <li>
+          <strong>HTTP Request - Scrape:</strong> GET request to
+          <code>http://python-app:5001/api/scrape</code> fetches and parses
+          RSS feeds
+        </li>
+        <li>
+          <strong>HTTP Request - Summarize:</strong> POST request to
+          <code>http://python-app:5001/api/summarize</code> summarizes articles
+        </li>
+        <li>
+          <strong>HTTP Request - Generate Ideas:</strong> POST request to
+          <code>http://python-app:5001/api/generate-ideas</code> generates video
+          ideas
+        </li>
+        <li>
+          <strong>HTTP Request - Generate Thumbnails:</strong> POST request to
+          <code>http://python-app:5001/api/generate-thumbnails</code> generates
+          thumbnails via Leonardo API
+        </li>
+        <li>
+          <strong>HTTP Request - Refresh:</strong> POST request to
+          <code>http://python-app:5001/api/refresh</code> merges data and
+          updates feed.json
+        </li>
+        <li>
+          <strong>Webhook Response:</strong> Returns success status to caller
+        </li>
+      </ol>
+
+      <h3>Cron & Bash Script Automation</h3>
+
+      <p>
+        For scheduled execution, a bash script (<code>run_pipeline.sh</code>)
+        orchestrates the Python scripts directly:
+      </p>
+
+      <ul>
+        <li>
+          <strong>Cron Job:</strong> Runs every 6 hours (configurable via
+          crontab)
+        </li>
+        <li>
+          <strong>Bash Script:</strong> Executes Python scripts in sequence:
+          <ul>
+            <li><code>rss_scraper.py</code> → raw_news.json</li>
+            <li><code>summarizer.py</code> → summaries.json</li>
+            <li><code>video_idea_generator.py</code> → video_ideas.json</li>
+            <li><code>leonardo_api.py</code> → thumbnails.json</li>
+            <li><code>data_manager.py</code> → feed.json</li>
+          </ul>
+        </li>
+        <li>
+          <strong>API Refresh:</strong> Script POSTs final feed.json to Flask
+          API endpoint
+        </li>
+        <li>
+          <strong>Logging:</strong> All pipeline executions logged to timestamped
+          log files
+        </li>
+      </ul>
+
+      <h3>Alternative: Webhook-Triggered Execution</h3>
+
+      <p>
+        The system also supports webhook-triggered execution via
+        <code>webhook_trigger.sh</code>, which sends a POST request to the n8n
+        webhook endpoint, allowing external systems or manual triggers to
+        initiate the pipeline.
+      </p>
+
+      <h2>Security Features</h2>
+
+      <ul>
+        <li>
+          ✓ <strong>Pre-LLM Content Sanitization:</strong> Prevents injection
+          attacks by cleaning content before LLM submission
+        </li>
+        <li>
+          ✓ <strong>Prompt-Level Guardrails:</strong> Enforces topic focus and
+          prevents off-topic content generation
+        </li>
+        <li>
+          ✓ <strong>Domain Whitelist:</strong> Prevents untrusted sources from
+          entering the pipeline
+        </li>
+        <li>
+          ✓ <strong>Output Validation:</strong> Ensures data integrity by
+          validating LLM responses against expected JSON schema
+        </li>
+        <li>
+          ✓ <strong>API Key Isolation:</strong> All sensitive credentials stored
+          in <code>.env</code> file, never hardcoded
+        </li>
+        <li>
+          ✓ <strong>Rate Limiting:</strong> Built-in rate limit handling for
+          external API calls (Leonardo AI, etc.)
+        </li>
+      </ul>
+
+      <h2>Technology Stack</h2>
+
+      <ul>
+        <li>
+          <strong>Backend:</strong> Python 3.11, Flask, Gunicorn, feedparser,
+          transformers
+        </li>
+        <li>
+          <strong>Frontend:</strong> Node.js, Express, vanilla JavaScript, HTML5,
+          CSS3
+        </li>
+        <li>
+          <strong>Automation:</strong> n8n workflow automation platform
+        </li>
+        <li>
+          <strong>AI Services:</strong> Claude (Anthropic) for summarization and
+          idea generation, Leonardo AI for thumbnail generation
+        </li>
+        <li>
+          <strong>Containerization:</strong> Docker, Docker Compose for
+          orchestration
+        </li>
+        <li>
+          <strong>Deployment:</strong> Linux VPS with Nginx reverse proxy
+        </li>
+      </ul>
+
+      <h2>Data Flow Summary</h2>
+
+      <p>
+        The complete data flow can be summarized as:
+      </p>
+
+      <div class="diagram-container">
+        <pre class="diagram">
+RSS Feeds + Social Media APIs
+    │
+    ▼
+Content Sanitization (HTML removal, truncation, validation)
+    │
+    ▼
+LLM Processing (Claude) → Summaries + Video Ideas
+    │                          │
+    │                          ▼
+    │                  Leonardo AI → Thumbnails
+    │                          │
+    └──────────────────────────┘
+              │
+              ▼
+        Data Manager (Merge)
+              │
+              ▼
+         feed.json
+              │
+    ┌─────────┴─────────┐
+    │                   │
+    ▼                   ▼
+Flask API          Web Frontend
+Endpoints          (Display)
+    │
+    ▼
+n8n Webhook
+(Optional trigger)
+        </pre>
+      </div>
+
+      <p style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--accent, #00d9ff);">
+        <em>
+          For more details, see the main application at
+          <a href="index.html" style="color: var(--accent, #00d9ff);">index.html</a>
+          or access the n8n dashboard at
+          <a href="dashboard.html" style="color: var(--accent, #00d9ff);">dashboard.html</a>.
+        </em>
+      </p>
+    </div>
+  </body>
+</html>
+
