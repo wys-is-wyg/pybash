@@ -1,0 +1,19 @@
+[Unit]
+Description=AI News Tracker Pipeline Service
+Documentation=https://github.com/yourusername/ai-news-tracker
+After=network.target docker.service
+
+[Service]
+Type=oneshot
+# User and paths will be replaced by install-systemd.sh script
+User=REPLACE_USERNAME
+WorkingDirectory=REPLACE_PROJECT_ROOT
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=REPLACE_PROJECT_ROOT/.env
+ExecStart=REPLACE_PROJECT_ROOT/app/scripts/webhook_trigger.sh cron
+StandardOutput=append:REPLACE_PROJECT_ROOT/app/logs/systemd.log
+StandardError=append:REPLACE_PROJECT_ROOT/app/logs/systemd.log
+
+[Install]
+WantedBy=multi-user.target
+

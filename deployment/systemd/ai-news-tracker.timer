@@ -1,0 +1,16 @@
+[Unit]
+Description=AI News Tracker Pipeline Timer
+Documentation=https://github.com/yourusername/ai-news-tracker
+Requires=ai-news-tracker.service
+
+[Timer]
+# Run every 6 hours
+OnCalendar=*-*-* 00/6:00:00
+# Run immediately if missed (e.g., system was off)
+Persistent=true
+# Add random delay to avoid system load spikes (0-300 seconds)
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
+

@@ -1,0 +1,24 @@
+[2025-12-05 19:44:21] [INFO] ==========================================
+[2025-12-05 19:44:21] [INFO] Triggering n8n Pipeline Webhook
+[2025-12-05 19:44:21] [INFO] ==========================================
+[2025-12-05 19:44:21] [INFO] Trigger Source: manual
+[2025-12-05 19:44:21] [INFO] Timestamp: 2025-12-05T06:44:21Z
+[2025-12-05 19:44:21] [INFO] Loading environment from .env
+[2025-12-05 19:44:21] [INFO] n8n Webhook URL configured (endpoint hidden for security)
+[2025-12-05 19:44:21] [INFO] Constructed webhook payload:
+[2025-12-05 19:44:21] [INFO]   Trigger Source: manual
+[2025-12-05 19:44:21] [INFO]   Timestamp: 2025-12-05T06:44:21Z
+[2025-12-05 19:44:21] [INFO]   Hostname: Laptop
+[2025-12-05 19:44:21] [INFO] Sending POST request to n8n webhook...
+[2025-12-05 19:44:21] [INFO] Webhook response received
+[2025-12-05 19:44:21] [INFO] HTTP Status Code: 404
+[2025-12-05 19:44:21] [INFO] Response Body:
+[2025-12-05 19:44:21] [INFO]   {"code":404,"message":"The requested webhook \"run-pipeline\" is not registered.","hint":"Click the 'Execute workflow' button on the canvas, then try again. (In test mode, the webhook only works for one call after you click this button)"}
+[2025-12-05 19:44:21] [WARN] Webhook returned unexpected status code: 404
+[2025-12-05 19:44:21] [WARN] Pipeline may not have been triggered
+[2025-12-05 19:44:21] [WARN] Check n8n webhook configuration and accessibility
+[2025-12-05 19:44:21] [INFO] 
+[2025-12-05 19:44:21] [INFO] ==========================================
+[2025-12-05 19:44:21] [INFO] Webhook trigger completed
+[2025-12-05 19:44:21] [INFO] ==========================================
+[2025-12-05 19:44:21] [INFO] Logs saved to: /home/thomm/projects/pybash/app/logs/webhook_trigger_20251205_194421.log
