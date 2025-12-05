@@ -57,12 +57,15 @@ def get_news_feed():
         return jsonify({'error': 'Failed to load feed'}), 500
 
 
-@app.route('/api/refresh', methods=['POST'])
+@app.route('/api/refresh', methods=['GET', 'POST'])
 def refresh_feed():
     """
     Update feed.json with new data.
     
-    Expected JSON body:
+    For GET requests or POST without body: Merges data from summaries.json, 
+    video_ideas.json, and thumbnails.json into feed.json.
+    
+    For POST with JSON body:
         {
             "version": "1.0",
             "generated_at": "2024-01-01T00:00:00",
@@ -76,10 +79,38 @@ def refresh_feed():
     try:
         data = request.get_json()
         
-        if not data:
-            return jsonify({'error': 'No JSON data provided'}), 400
+        # If no body provided (GET or empty POST), merge from data files
+        if not data or request.method == 'GET':
+            logger.info("Merging feed from data files")
+            try:
+                # Load all pipeline outputs
+                news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
+                video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
+                thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
+                
+                # Merge and generate feed
+                merged_data = merge_feeds(news_items, video_ideas, thumbnails)
+                generate_feed_json(merged_data)
+                
+                item_count = len(merged_data)
+                logger.info(f"Feed refreshed with {item_count} items from data files")
+                
+                return jsonify({
+                    'status': 'success',
+                    'message': f'Feed updated with {item_count} items',
+                    'items_count': item_count
+                }), 200
+            except FileNotFoundError as e:
+                logger.warning(f"Data file not found: {e}")
+                return jsonify({
+                    'status': 'warning',
+                    'message': 'Some data files not found, feed may be incomplete'
+                }), 200
+            except Exception as e:
+                logger.error(f"Error merging feed from data files: {e}")
+                return jsonify({'error': f'Failed to merge feed: {str(e)}'}), 500
         
-        # Validate required fields
+        # POST with body: validate and save directly
         if 'items' not in data:
             return jsonify({'error': 'Missing required field: items'}), 400
         
@@ -87,11 +118,12 @@ def refresh_feed():
         save_json(data, settings.FEED_FILE)
         
         item_count = len(data.get('items', []))
-        logger.info(f"Feed refreshed with {item_count} items")
+        logger.info(f"Feed refreshed with {item_count} items from POST body")
         
         return jsonify({
             'status': 'success',
-            'message': f'Feed updated with {item_count} items'
+            'message': f'Feed updated with {item_count} items',
+            'items_count': item_count
         }), 200
         
     except Exception as e:
