@@ -49,4 +49,3 @@ volumes:
 networks:
   ai-network:
     driver: bridge
-
