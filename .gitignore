@@ -1,7 +1,22 @@
 *:Zone.Identifier
+*.Zone.Identifier
 .env
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 
 # Project-specific ignores
+# Data files
+app/data/
 data/*.json
+
+# Log files
+app/logs/*.log
 logs/*.log
+
+# Figma exports (if not needed in repo)
+figma3/

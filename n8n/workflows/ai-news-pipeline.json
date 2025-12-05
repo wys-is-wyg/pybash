@@ -31,7 +31,14 @@
       "parameters": {
         "method": "POST",
         "url": "http://python-app:5001/api/summarize",
-        "options": {}
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {
+          "headers": {
+            "Content-Type": "application/json"
+          }
+        }
       },
       "id": "summarize-articles",
       "name": "Summarize Articles",
@@ -43,7 +50,14 @@
       "parameters": {
         "method": "POST",
         "url": "http://python-app:5001/api/generate-ideas",
-        "options": {}
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {
+          "headers": {
+            "Content-Type": "application/json"
+          }
+        }
       },
       "id": "generate-ideas",
       "name": "Generate Video Ideas",
@@ -55,7 +69,14 @@
       "parameters": {
         "method": "POST",
         "url": "http://python-app:5001/api/generate-thumbnails",
-        "options": {}
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {
+          "headers": {
+            "Content-Type": "application/json"
+          }
+        }
       },
       "id": "generate-thumbnails",
       "name": "Generate Thumbnails",

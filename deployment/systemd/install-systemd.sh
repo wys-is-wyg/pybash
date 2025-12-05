@@ -13,7 +13,8 @@ NC='\033[0m'
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SYSTEMD_DIR="$SCRIPT_DIR/systemd"
+# Script is in deployment/systemd/, so files are in the same directory
+SYSTEMD_DIR="$SCRIPT_DIR"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 SERVICE_FILE="$SYSTEMD_DIR/ai-news-tracker.service"
 TIMER_FILE="$SYSTEMD_DIR/ai-news-tracker.timer"

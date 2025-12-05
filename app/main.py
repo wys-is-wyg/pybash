@@ -110,7 +110,7 @@ def scrape_feeds():
     try:
         logger.info("Triggering RSS feed scraping")
         result = subprocess.run(
-            ['python', '/app/scripts/rss_scraper.py'],
+            ['python', '/app/app/scripts/rss_scraper.py'],
             capture_output=True,
             text=True,
             timeout=300
@@ -138,7 +138,7 @@ def scrape_feeds():
         return jsonify({'error': 'Failed to trigger scraping'}), 500
 
 
-@app.route('/api/summarize', methods=['POST'])
+@app.route('/api/summarize', methods=['GET', 'POST'])
 def summarize_articles():
     """
     Trigger article summarization.
@@ -149,7 +149,7 @@ def summarize_articles():
     try:
         logger.info("Triggering article summarization")
         result = subprocess.run(
-            ['python', '/app/scripts/summarizer.py'],
+            ['python', '/app/app/scripts/summarizer.py'],
             capture_output=True,
             text=True,
             timeout=600
@@ -177,7 +177,7 @@ def summarize_articles():
         return jsonify({'error': 'Failed to trigger summarization'}), 500
 
 
-@app.route('/api/generate-ideas', methods=['POST'])
+@app.route('/api/generate-ideas', methods=['GET', 'POST'])
 def generate_ideas():
     """
     Trigger video idea generation.
@@ -188,7 +188,7 @@ def generate_ideas():
     try:
         logger.info("Triggering video idea generation")
         result = subprocess.run(
-            ['python', '/app/scripts/video_idea_generator.py'],
+            ['python', '/app/app/scripts/video_idea_generator.py'],
             capture_output=True,
             text=True,
             timeout=300
@@ -216,7 +216,7 @@ def generate_ideas():
         return jsonify({'error': 'Failed to trigger generation'}), 500
 
 
-@app.route('/api/generate-thumbnails', methods=['POST'])
+@app.route('/api/generate-thumbnails', methods=['GET', 'POST'])
 def generate_thumbnails():
     """
     Trigger thumbnail generation via Leonardo API.
@@ -227,7 +227,7 @@ def generate_thumbnails():
     try:
         logger.info("Triggering thumbnail generation")
         result = subprocess.run(
-            ['python', '/app/scripts/leonardo_api.py'],
+            ['python', '/app/app/scripts/leonardo_api.py'],
             capture_output=True,
             text=True,
             timeout=1800  # 30 minutes for batch thumbnail generation

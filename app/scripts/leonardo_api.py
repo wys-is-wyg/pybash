@@ -35,6 +35,10 @@ def initialize_leonardo_client(api_key: str = None) -> None:
     if not api_key:
         raise ValueError("Leonardo API key is required")
     
+    # Log API key status (masked for security)
+    api_key_preview = f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else "***"
+    logger.info(f"Leonardo API key loaded (preview: {api_key_preview}, length: {len(api_key)})")
+    
     _api_key = api_key
     _api_headers = {
         "Authorization": f"Bearer {api_key}",
@@ -68,24 +72,42 @@ def generate_thumbnail(prompt: str, model_id: str = None) -> Dict[str, Any]:
         "modelId": model_id,
         "width": settings.LEONARDO_THUMBNAIL_WIDTH,
         "height": settings.LEONARDO_THUMBNAIL_HEIGHT,
-        "num_images": 1,
+        # Note: Leonardo API doesn't accept numImages - defaults to 1 image
     }
     
     logger.debug(f"Generating thumbnail with prompt: {prompt[:50]}...")
     
     try:
+        logger.info(f"Request URL: {url}")
+        logger.info(f"Request payload: {payload}")
+        # Log Authorization header (masked)
+        auth_header_preview = _api_headers.get("Authorization", "")[:20] + "..." if _api_headers.get("Authorization") else "None"
+        logger.info(f"Authorization header: {auth_header_preview}")
+        
         response = requests.post(
             url,
             headers=_api_headers,
             json=payload,
             timeout=30
         )
+        
+        # Log response details for debugging
+        logger.info(f"Response status: {response.status_code}")
+        
+        # Try to get response body even on error
+        try:
+            response_data = response.json()
+            logger.info(f"Response body: {response_data}")
+        except:
+            logger.info(f"Response text: {response.text[:500]}")
+        
         response.raise_for_status()
         
         data = response.json()
         generation_id = data.get("sdGenerationJob", {}).get("generationId")
         
         if not generation_id:
+            logger.error(f"No generation ID in response: {data}")
             raise ValueError("No generation ID returned from API")
         
         logger.info(f"Thumbnail generation started: {generation_id}")
@@ -97,6 +119,15 @@ def generate_thumbnail(prompt: str, model_id: str = None) -> Dict[str, Any]:
             "model_id": model_id,
         }
         
+    except requests.HTTPError as e:
+        error_msg = f"HTTP {e.response.status_code}"
+        try:
+            error_body = e.response.json()
+            error_msg += f": {error_body}"
+        except:
+            error_msg += f": {e.response.text[:200]}"
+        logger.error(f"Failed to generate thumbnail: {error_msg}")
+        raise Exception(f"Leonardo API error: {error_msg}") from e
     except requests.RequestException as e:
         logger.error(f"Failed to generate thumbnail: {e}")
         raise
