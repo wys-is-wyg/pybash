@@ -12,6 +12,8 @@ const REFRESH_INTERVAL = 300000;
 // State management
 let currentFeedData = [];
 let refreshTimer = null;
+let currentFeedCategory = "all";
+let currentVideoIdeasCategory = "all";
 
 /**
  * Fetches feed data from the API
@@ -61,8 +63,16 @@ function renderFeed(feedData) {
   updateFeedStatus("success", "Loaded");
   updateFeedTimestamp();
 
+  // Filter by category if not "all"
+  let filteredData = feedData;
+  if (currentFeedCategory !== "all") {
+    filteredData = feedData.filter(
+      (item) => item.category === currentFeedCategory
+    );
+  }
+
   // Render each feed item as a card
-  feedData.forEach((item) => {
+  filteredData.forEach((item) => {
     const card = createFeedCard(item);
     container.appendChild(card);
   });
@@ -77,29 +87,37 @@ function createFeedCard(item) {
   const card = document.createElement("div");
   card.className = "news-card";
 
-  // Thumbnail
+  // Thumbnail - use news-card-image class to match CSS
   const thumbnail = document.createElement("div");
-  thumbnail.className = "card-thumbnail";
+  thumbnail.className = "news-card-image";
   if (item.thumbnail_url) {
     const img = document.createElement("img");
     img.src = item.thumbnail_url;
     img.alt = item.title || "News thumbnail";
     img.loading = "lazy";
     img.onerror = function () {
+      // Hide image and show placeholder on error
       this.style.display = "none";
+      const placeholder = document.createElement("div");
+      placeholder.className = "thumbnail-placeholder";
+      placeholder.textContent = "No Image";
+      thumbnail.appendChild(placeholder);
     };
     thumbnail.appendChild(img);
   } else {
-    thumbnail.innerHTML = '<div class="thumbnail-placeholder">No Image</div>';
+    const placeholder = document.createElement("div");
+    placeholder.className = "thumbnail-placeholder";
+    placeholder.textContent = "No Image";
+    thumbnail.appendChild(placeholder);
   }
 
   // Card content
   const content = document.createElement("div");
-  content.className = "card-content";
+  content.className = "news-card-content";
 
   // Title
   const title = document.createElement("h3");
-  title.className = "card-title";
+  title.className = "news-card-title";
   if (item.source_url) {
     const titleLink = document.createElement("a");
     titleLink.href = item.source_url;
@@ -113,13 +131,26 @@ function createFeedCard(item) {
 
   // Summary
   const summary = document.createElement("p");
-  summary.className = "card-summary";
+  summary.className = "news-card-summary";
   summary.textContent =
     item.summary || item.description || "No summary available.";
 
+  // Visual tags (only tags we use - from categorization)
+  if (item.visual_tags && item.visual_tags.length > 0) {
+    const visualTagsContainer = document.createElement("div");
+    visualTagsContainer.className = "news-card-visual-tags";
+    item.visual_tags.slice(0, 3).forEach((tag) => {
+      const tagElement = document.createElement("span");
+      tagElement.className = "news-visual-tag";
+      tagElement.textContent = tag;
+      visualTagsContainer.appendChild(tagElement);
+    });
+    content.appendChild(visualTagsContainer);
+  }
+
   // Source info
   const source = document.createElement("div");
-  source.className = "card-source";
+  source.className = "news-card-meta";
   if (item.source) {
     const sourceText = document.createElement("span");
     sourceText.textContent = `Source: ${item.source}`;
@@ -127,7 +158,6 @@ function createFeedCard(item) {
   }
   if (item.published_date) {
     const dateText = document.createElement("span");
-    dateText.className = "card-date";
     dateText.textContent = formatDate(item.published_date);
     source.appendChild(dateText);
   }
@@ -328,9 +358,16 @@ async function loadVideoIdeas() {
 
   try {
     const feedData = await fetchFeed();
-    const videoIdeas = feedData.filter(
+    let videoIdeas = feedData.filter(
       (item) => item.type === "video_idea" || item.video_idea
     );
+
+    // Filter by category
+    if (currentVideoIdeasCategory !== "all") {
+      videoIdeas = videoIdeas.filter(
+        (idea) => idea.category === currentVideoIdeasCategory
+      );
+    }
 
     container.innerHTML = "";
 
@@ -577,10 +614,62 @@ function initialize() {
     loadFeed();
   }
 
+  // Setup category filters
+  setupCategoryFilters();
+
   // Start auto-refresh
   startAutoRefresh();
 
   console.log("AI News Tracker initialized");
+}
+
+/**
+ * Sets up category filter buttons for feed and video ideas
+ */
+function setupCategoryFilters() {
+  // Feed category filters
+  const feedFilters = document.getElementById("feed-category-filters");
+  if (feedFilters) {
+    feedFilters.addEventListener("click", (e) => {
+      if (e.target.classList.contains("filter-btn")) {
+        // Update active state
+        feedFilters.querySelectorAll(".filter-btn").forEach((btn) => {
+          btn.classList.remove("active");
+        });
+        e.target.classList.add("active");
+
+        // Update filter
+        currentFeedCategory = e.target.dataset.category;
+
+        // Re-render feed with new filter
+        if (currentFeedData.length > 0) {
+          renderFeed(currentFeedData);
+        }
+      }
+    });
+  }
+
+  // Video ideas category filters
+  const videoIdeasFilters = document.getElementById(
+    "video-ideas-category-filters"
+  );
+  if (videoIdeasFilters) {
+    videoIdeasFilters.addEventListener("click", (e) => {
+      if (e.target.classList.contains("filter-btn")) {
+        // Update active state
+        videoIdeasFilters.querySelectorAll(".filter-btn").forEach((btn) => {
+          btn.classList.remove("active");
+        });
+        e.target.classList.add("active");
+
+        // Update filter
+        currentVideoIdeasCategory = e.target.dataset.category;
+
+        // Re-render video ideas with new filter
+        loadVideoIdeas();
+      }
+    });
+  }
 }
 
 // Initialize when DOM is ready

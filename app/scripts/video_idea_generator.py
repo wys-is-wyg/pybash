@@ -166,16 +166,12 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
             source = item.get('source', '')
             source_url = item.get('source_url', '')
             
-            # Generate 1-3 video ideas per article
-            num_ideas = min(max_ideas_per_article, 3)
+            # Generate 1 video idea per article (no multi-part ideas)
+            num_ideas = 1
             
             for idea_num in range(num_ideas):
                 # Generate video title
                 video_title = generate_video_title(summary, title)
-                
-                # Add variation for multiple ideas from same article
-                if idea_num > 0:
-                    video_title = f"{video_title} (Part {idea_num + 1})"
                 
                 # Generate description
                 video_description = generate_video_description(summary, source)
@@ -188,19 +184,18 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
                     source_url=source_url
                 )
                 
-                # Add reference to original article and preserve tags
+                # Add reference to original article
                 video_idea['original_title'] = title
                 video_idea['original_summary'] = summary
-                video_idea['tags'] = item.get('tags', [])  # Preserve RSS tags
                 # Assign visual tags for image generation (categorize if not already present)
                 if 'visual_tags' in item and item.get('visual_tags'):
                     video_idea['visual_tags'] = item.get('visual_tags')
                     video_idea['tag_relevance_score'] = item.get('tag_relevance_score', 0)
                 else:
                     # Categorize article to get visual tags
-                    visual_tags, score = categorize_article(item)
+                    visual_tags, match_count = categorize_article(item)
                     video_idea['visual_tags'] = visual_tags
-                    video_idea['tag_relevance_score'] = score
+                    video_idea['tag_relevance_score'] = match_count
                 
                 video_ideas.append(video_idea)
                 logger.debug(f"Generated idea {idea_num + 1} for article {i}/{len(summaries)}")
@@ -216,20 +211,40 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
 def main():
     """Main execution function for command-line invocation."""
     import sys
+    import json
     
     try:
         logger.info("Starting video idea generation process")
         
-        # Load summaries from file
-        input_file = settings.SUMMARIES_FILE
-        logger.info(f"Loading summaries from {input_file}")
+        # Try to read from stdin first (for pipeline usage), otherwise use file
+        summaries = None
+        if not sys.stdin.isatty():
+            # Reading from stdin (pipeline mode)
+            logger.info("Reading summaries from stdin")
+            try:
+                stdin_data = sys.stdin.read()
+                if stdin_data and stdin_data.strip():
+                    data = json.loads(stdin_data)
+                    summaries = data.get('items', [])
+                    logger.info(f"Loaded {len(summaries)} summaries from stdin")
+                else:
+                    logger.warning("stdin is empty, falling back to file")
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.error(f"Failed to parse JSON from stdin: {e}")
+                logger.info("Falling back to file input")
         
-        try:
-            data = load_json(input_file)
-            summaries = data.get('items', [])
-        except FileNotFoundError:
-            logger.error(f"Input file not found: {input_file}")
-            return 1
+        # If stdin didn't work, load from file
+        if summaries is None:
+            input_file = settings.SUMMARIES_FILE
+            logger.info(f"Loading summaries from {input_file}")
+            
+            try:
+                data = load_json(input_file)
+                summaries = data.get('items', [])
+                logger.info(f"Loaded {len(summaries)} summaries from file")
+            except FileNotFoundError:
+                logger.error(f"Input file not found: {input_file}")
+                return 1
         
         if not summaries:
             logger.warning("No summaries to process")

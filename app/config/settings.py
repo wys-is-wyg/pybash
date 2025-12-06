@@ -38,11 +38,22 @@ class Settings:
     
     # RSS Feed URLs to scrape
     RSS_FEED_URLS: List[str] = [
+        # AI/ML focused feeds
         "https://feeds.feedburner.com/oreilly/radar",  # O'Reilly Radar
         "https://www.theverge.com/rss/index.xml",  # The Verge
         "https://techcrunch.com/feed/",  # TechCrunch
         "https://www.wired.com/feed/rss",  # Wired
-        "https://rss.cnn.com/rss/edition.rss",  # CNN Tech
+        "https://arstechnica.com/feed/",  # Ars Technica
+        "https://feeds.feedburner.com/venturebeat/SGBF",  # VentureBeat
+        "https://www.artificialintelligence-news.com/feed/",  # AI News
+        "https://www.zdnet.com/topic/artificial-intelligence/rss.xml",  # ZDNet AI
+        "https://www.analyticsvidhya.com/feed/",  # Analytics Vidhya
+        "https://machinelearningmastery.com/feed/",  # Machine Learning Mastery
+        "https://www.kdnuggets.com/feed",  # KDnuggets
+        "https://towardsdatascience.com/feed",  # Towards Data Science
+        "https://www.technologyreview.com/feed/",  # MIT Technology Review
+        "https://www.quantamagazine.org/feed/",  # Quanta Magazine
+        "https://spectrum.ieee.org/rss",  # IEEE Spectrum
     ]
     
     # Social Media Configuration (for future implementation)

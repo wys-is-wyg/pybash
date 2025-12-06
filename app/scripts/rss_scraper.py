@@ -106,7 +106,7 @@ def parse_feed_entries(entries: List[Any]) -> List[Dict[str, Any]]:
                 'source_url': getattr(entry, 'link', ''),
                 'published_date': published_date,
                 'author': clean_text(getattr(entry, 'author', '')),
-                'tags': [clean_text(tag.term) for tag in getattr(entry, 'tags', [])],
+                'tags': [],  # RSS tags not used - only visual tags from categorization
             }
             
             news_items.append(news_item)

@@ -80,34 +80,93 @@ def is_duplicate(item1: Dict[str, Any], item2: Dict[str, Any], threshold: float 
 def calculate_relevance_score(item: Dict[str, Any]) -> float:
     """
     Calculate relevance score for an article based on keywords.
+    Requires articles to be more than 50% about AI/ML to pass.
     
     Args:
         item: News item dictionary
         
     Returns:
-        Relevance score between 0.0 and 1.0
+        Relevance score between 0.0 and 1.0 (0.0 if < 50% AI content)
     """
     title = item.get('title', '').lower()
     summary = item.get('summary', '').lower()
     tags = [tag.lower() for tag in item.get('tags', [])]
     
+    # Combine all text
     text = f"{title} {summary} {' '.join(tags)}"
     
-    # Count AI/ML keywords
-    ai_score = sum(1 for keyword in AI_ML_KEYWORDS if keyword in text)
+    # Split into words (remove punctuation, keep only alphanumeric)
+    words = re.findall(r'\b[a-z]+\b', text)
+    
+    # Filter out common stop words that don't indicate topic
+    stop_words = {
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+        'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+        'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those',
+        'it', 'its', 'they', 'them', 'their', 'we', 'our', 'you', 'your', 'he', 'she', 'his', 'her',
+        'from', 'as', 'not', 'if', 'then', 'than', 'more', 'most', 'some', 'any', 'all', 'each', 'every',
+        'which', 'what', 'when', 'where', 'why', 'how', 'who', 'whom', 'whose'
+    }
+    
+    # Get significant words (non-stop words)
+    significant_words = [w for w in words if w not in stop_words and len(w) > 2]
+    
+    if len(significant_words) == 0:
+        # No significant words, reject
+        return 0.0
+    
+    # Count how many significant words are AI-related
+    # Use a more precise matching: check if the word is part of an AI keyword phrase
+    ai_word_count = 0
+    ai_keyword_phrases_found = set()
+    
+    for keyword in AI_ML_KEYWORDS:
+        # Check if the full keyword phrase appears in the text
+        if keyword in text:
+            # Count how many words from this keyword phrase are in significant_words
+            keyword_words = keyword.split()
+            for kw_word in keyword_words:
+                if kw_word in significant_words:
+                    ai_word_count += 1
+                    ai_keyword_phrases_found.add(keyword)
+    
+    # Also check individual significant words that might be AI-related
+    for word in significant_words:
+        # Skip if already counted as part of a phrase
+        if any(word in phrase for phrase in ai_keyword_phrases_found):
+            continue
+        # Check if word matches any AI keyword (as substring or exact match)
+        for keyword in AI_ML_KEYWORDS:
+            if keyword in word or word in keyword:
+                ai_word_count += 1
+                break
+    
+    # Calculate AI percentage
+    ai_percentage = ai_word_count / len(significant_words)
+    
+    # Require > 50% AI content to pass
+    if ai_percentage < 0.5:
+        logger.debug(f"Article '{item.get('title', '')[:50]}...' has {ai_percentage:.1%} AI content (required: >50%) - REJECTED")
+        return 0.0
+    
+    # Count AI/ML keyword mentions (for scoring)
+    ai_keyword_mentions = sum(1 for keyword in AI_ML_KEYWORDS if keyword in text)
     
     # Penalize low-relevance keywords
     low_relevance_score = sum(1 for keyword in LOW_RELEVANCE_KEYWORDS if keyword in text)
     
-    # Calculate base score (0.0 to 1.0)
+    # Calculate base score (0.0 to 1.0) based on AI keyword density
     # More AI keywords = higher score, but cap at 1.0
-    base_score = min(ai_score * 0.2, 1.0)
+    base_score = min(ai_keyword_mentions * 0.15, 1.0)
+    
+    # Boost score based on AI percentage (if > 50%, give bonus)
+    ai_bonus = (ai_percentage - 0.5) * 0.5  # Up to 0.25 bonus for 100% AI
     
     # Apply penalty for low-relevance keywords
     penalty = min(low_relevance_score * 0.3, 0.8)
-    final_score = max(base_score - penalty, 0.0)
+    final_score = max(base_score + ai_bonus - penalty, 0.0)
     
-    return final_score
+    return min(final_score, 1.0)
 
 
 def calculate_summary_quality_score(item: Dict[str, Any]) -> float:

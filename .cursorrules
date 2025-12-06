@@ -48,6 +48,35 @@ You are an expert software engineer with extensive experience in Python, Bash sc
 - Version Control: Git in WSL2 bash
 - Docker: Docker Desktop with WSL2 integration
 
+### Docker Development Workflow
+
+**CRITICAL: After making ANY changes to code, configuration, or dependencies, you MUST:**
+
+1. **Restart Docker containers with cache clear** to ensure changes are picked up:
+   ```bash
+   docker-compose down
+   docker-compose build --no-cache
+   docker-compose up -d
+   ```
+
+2. **For specific services only** (faster, when appropriate):
+   ```bash
+   docker-compose build --no-cache <service-name>
+   docker-compose up -d <service-name>
+   ```
+
+3. **For volume-mounted files** (CSS, JS, HTML in `web/public/` or `web/server.js`):
+   - Changes are live via volume mounts, but you may need to:
+     - Hard refresh browser (Ctrl+Shift+R)
+     - Restart web-server if changes aren't visible: `docker restart ai-news-web`
+
+**Always restart with `--no-cache` after:**
+- Changes to Dockerfiles
+- Changes to package.json, requirements.txt, or dependencies
+- Changes to environment variables or configuration
+- When changes aren't appearing despite volume mounts
+- After any build-related changes
+
 ---
 
 ## Implementation Workflow

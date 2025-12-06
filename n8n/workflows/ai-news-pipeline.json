@@ -68,25 +68,6 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://python-app:5001/api/generate-thumbnails",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "{}",
-        "options": {
-          "headers": {
-            "Content-Type": "application/json"
-          }
-        }
-      },
-      "id": "generate-thumbnails",
-      "name": "Generate Thumbnails",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
-      "position": [1050, 300]
-    },
-    {
-      "parameters": {
-        "method": "POST",
         "url": "http://python-app:5001/api/refresh",
         "sendBody": true,
         "specifyBody": "json",
@@ -147,17 +128,6 @@
       ]
     },
     "Generate Video Ideas": {
-      "main": [
-        [
-          {
-            "node": "Generate Thumbnails",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Generate Thumbnails": {
       "main": [
         [
           {

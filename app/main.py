@@ -90,23 +90,40 @@ def health_check():
     }), 200
 
 
-@app.route('/api/thumbnails/<filename>', methods=['GET'])
-def serve_thumbnail(filename):
+@app.route('/api/tag-images/<filename>', methods=['GET'])
+def serve_tag_image(filename):
     """
-    Serve thumbnail images from the data directory.
+    Serve tag images from the tag_images directory.
     
     Args:
-        filename: Name of the thumbnail file (e.g., thumbnail_xxx.png)
+        filename: Name of the tag image file (e.g., tag_001.png)
     
     Returns:
         Image file or 404 if not found
     """
     try:
-        data_dir = settings.DATA_DIR
-        return send_from_directory(str(data_dir), filename)
+        tag_images_dir = settings.DATA_DIR / "tag_images"
+        tag_images_path = tag_images_dir / filename
+        
+        # Log for debugging
+        logger.info(f"Serving tag image: {tag_images_path} (exists: {tag_images_path.exists()})")
+        logger.info(f"DATA_DIR: {settings.DATA_DIR}, tag_images_dir: {tag_images_dir}")
+        
+        if not tag_images_dir.exists():
+            logger.error(f"Tag images directory does not exist: {tag_images_dir}")
+            return jsonify({'error': f'Tag images directory not found'}), 404
+        
+        if not tag_images_path.exists():
+            logger.warning(f"Tag image not found: {tag_images_path}")
+            # List available files for debugging
+            available = list(tag_images_dir.glob("*.png"))
+            logger.warning(f"Available tag images: {[f.name for f in available[:5]]}")
+            return jsonify({'error': f'Tag image not found: {filename}'}), 404
+        
+        return send_from_directory(str(tag_images_dir), filename)
     except Exception as e:
-        logger.error(f"Error serving thumbnail {filename}: {e}")
-        return jsonify({'error': 'Thumbnail not found'}), 404
+        logger.error(f"Error serving tag image {filename}: {e}", exc_info=True)
+        return jsonify({'error': f'Tag image error: {str(e)}'}), 404
 
 
 @app.route('/api/news', methods=['GET'])
@@ -150,6 +167,9 @@ def refresh_feed():
         JSON response with success status
     """
     try:
+        # Default feed limit
+        feed_limit = 30
+        
         # For GET requests, always merge from data files
         if request.method == 'GET':
             logger.info("Merging feed from data files (GET request)")
@@ -159,8 +179,8 @@ def refresh_feed():
                 video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
                 thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
                 
-                # Merge and generate feed (use default limit of 30)
-                merged_data = merge_feeds(news_items, video_ideas, thumbnails, max_items=30)
+                # Merge and generate feed with filtering and limit
+                merged_data = merge_feeds(news_items, video_ideas, thumbnails, apply_filtering=True, max_items=feed_limit)
                 generate_feed_json(merged_data)
                 
                 item_count = len(merged_data)
@@ -195,8 +215,8 @@ def refresh_feed():
                 video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
                 thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
                 
-                # Merge and generate feed (use default limit of 30)
-                merged_data = merge_feeds(news_items, video_ideas, thumbnails, max_items=30)
+                # Merge and generate feed (use default limit of 12)
+                merged_data = merge_feeds(news_items, video_ideas, thumbnails, max_items=12)
                 generate_feed_json(merged_data)
                 
                 item_count = len(merged_data)
@@ -358,43 +378,22 @@ def generate_ideas():
         return jsonify({'error': 'Failed to trigger generation'}), 500
 
 
+# DEPRECATED: Thumbnail generation removed from pipeline
+# Tag images are now pre-generated separately using generate_tag_images.sh
 @app.route('/api/generate-thumbnails', methods=['GET', 'POST'])
 def generate_thumbnails():
     """
-    Trigger thumbnail generation via Leonardo API.
+    DEPRECATED: Thumbnail generation removed from pipeline.
+    Tag images are now pre-generated separately using generate_tag_images.sh.
     
     Returns:
-        JSON response with generation status
+        JSON response with instructions
     """
-    try:
-        logger.info("Triggering thumbnail generation")
-        result = subprocess.run(
-            ['python', '/app/app/scripts/leonardo_api.py'],
-            capture_output=True,
-            text=True,
-            timeout=1800  # 30 minutes for batch thumbnail generation
-        )
-        
-        if result.returncode == 0:
-            logger.info("Thumbnail generation completed successfully")
-            return jsonify({
-                'status': 'success',
-                'message': 'Thumbnails generated successfully'
-            }), 200
-        else:
-            logger.error(f"Thumbnail generation failed: {result.stderr}")
-            return jsonify({
-                'status': 'error',
-                'message': 'Thumbnail generation failed',
-                'error': result.stderr
-            }), 500
-            
-    except subprocess.TimeoutExpired:
-        logger.error("Thumbnail generation timed out")
-        return jsonify({'error': 'Generation timed out'}), 500
-    except Exception as e:
-        logger.error(f"Error triggering thumbnail generation: {e}")
-        return jsonify({'error': 'Failed to trigger generation'}), 500
+    return jsonify({
+        'status': 'info',
+        'message': 'Thumbnail generation removed from pipeline. Use generate_tag_images.sh to generate tag images separately.',
+        'instructions': 'Run: bash app/scripts/generate_tag_images.sh'
+    }), 200
 
 
 @app.route('/webhook/n8n', methods=['POST'])
@@ -431,8 +430,9 @@ def n8n_webhook():
                 video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
                 thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
                 
-                # Merge and generate feed
-                merged_data = merge_feeds(news_items, video_ideas, thumbnails)
+                # Merge and generate feed with limit (default 12)
+                feed_limit = getattr(settings, 'FEED_LIMIT', 30)
+                merged_data = merge_feeds(news_items, video_ideas, thumbnails, apply_filtering=True, max_items=feed_limit)
                 generate_feed_json(merged_data)
                 
                 logger.info(f"Feed updated from n8n webhook: {len(merged_data)} items")

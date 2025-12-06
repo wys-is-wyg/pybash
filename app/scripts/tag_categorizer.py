@@ -10,117 +10,113 @@ from app.scripts.logger import setup_logger
 logger = setup_logger(__name__)
 
 # Negative keywords that indicate non-AI/tech content (should be rejected)
-NEGATIVE_KEYWORDS = [
-    "holiday", "gift guide", "shopping", "retail", "fashion", "food", "recipe",
-    "travel", "vacation", "sports", "entertainment", "celebrity", "gossip",
-    "weather", "forecast", "horoscope", "zodiac", "pets", "animals", "wildlife",
-    "real estate", "home improvement", "diy", "gardening", "cooking", "baking",
-    "garage door", "appliance", "furniture", "decor", "lifestyle", "beauty",
-    "makeup", "fitness", "health", "medical", "pharmaceutical", "insurance"
+# Articles with these in the TITLE should be rejected immediately, regardless of other content
+TITLE_NEGATIVE_KEYWORDS = [
+    "holiday", "gift guide", "gift guides", "shopping guide", "shopping",
+    "christmas", "black friday", "cyber monday", "deals", "sale", "discount"
 ]
 
-# Visual tag categories for Leonardo AI image generation
-VISUAL_TAG_CATEGORIES = {
-    "ai_ml_data": {
-        "name": "AI / ML / Data Themes",
-        "tags": [
-            "artificial intelligence core",
-            "neural network nodes",
-            "transformer architecture",
-            "data vortices",
-            "algorithmic patterns",
-            "quantum compute grid",
-            "parameter clusters",
-            "digital brain visualization",
-            "AI model topology"
-        ],
-        "keywords": [
-            "artificial intelligence", "AI", "machine learning", "ML", "neural network",
-            "transformer", "GPT", "LLM", "deep learning", "algorithm", "model training",
-            "data science", "quantum computing", "parameter", "topology", "architecture"
-        ]
-    },
-    "industry_business": {
-        "name": "Industry / Business / Trends",
-        "tags": [
-            "global market network",
-            "corporate tech skyline",
-            "digital economy mesh",
-            "startup innovation pulse",
-            "trend momentum waves",
-            "financial data holograms"
-        ],
-        "keywords": [
-            "funding", "investment", "startup", "company", "corporate", "market",
-            "business", "venture capital", "IPO", "acquisition", "merger",
-            "revenue", "profit", "economy", "trend", "industry"
-        ]
-    },
-    "safety_governance": {
-        "name": "Safety / Governance / Ethics",
-        "tags": [
-            "governance matrix",
-            "encrypted governance shield",
-            "ethical decision grid",
-            "secure AI containment core"
-        ],
-        "keywords": [
-            "safety", "governance", "regulation", "policy", "ethics", "ethical",
-            "regulation", "compliance", "security", "privacy", "bias", "fairness",
-            "responsible AI", "AI safety", "containment", "control"
-        ]
-    },
-    "productivity_tools": {
-        "name": "Productivity / Tools / Apps",
-        "tags": [
-            "workflow automation stream",
-            "productivity circuits",
-            "interface command nodes",
-            "cloud app ecosystem"
-        ],
-        "keywords": [
-            "productivity", "tool", "app", "application", "software", "SaaS",
-            "workflow", "automation", "interface", "UI", "UX", "cloud",
-            "platform", "service", "consumer"
-        ]
-    },
-    "hardware_robotics": {
-        "name": "Hardware / Robotics",
-        "tags": [
-            "robotic actuator",
-            "sensor fusion map",
-            "chip architecture diagram",
-            "GPU compute lattice"
-        ],
-        "keywords": [
-            "hardware", "robot", "robotic", "chip", "processor", "GPU", "CPU",
-            "sensor", "actuator", "device", "hardware", "silicon", "semiconductor",
-            "NVIDIA", "AMD", "Intel", "TPU"
-        ]
-    },
-    "science_research": {
-        "name": "Science & Research",
-        "tags": [
-            "abstract physics lattice",
-            "bio-digital neuron",
-            "research waveform",
-            "lab intelligence network"
-        ],
-        "keywords": [
-            "research", "study", "paper", "scientific", "science", "laboratory",
-            "experiment", "discovery", "publication", "journal", "academic",
-            "physics", "biology", "chemistry", "neuroscience"
-        ]
-    }
-}
+NEGATIVE_KEYWORDS = [
+    "holiday", "gift guide", "gift guides", "shopping", "retail", "sale", "discount",
+    "promo", "coupon", "best deals", "bargains", "wishlist",
+    "christmas gifts", "holiday gifts",
+
+    "fashion", "style", "outfit", "clothing", "wardrobe",
+    "beauty", "makeup", "skincare", "haircare", "grooming",
+    "lifestyle", "wellness",
+
+    "food", "recipe", "recipes", "cooking", "baking",
+    "restaurant", "dining", "meal", "kitchen", "chef",
+
+    "travel", "vacation", "tourism", "flight", "hotel",
+    "airline", "cruise", "resort", "destination", "beach",
+
+    "entertainment", "celebrity", "gossip", "tv", "television",
+    "movie", "film", "music", "concert", "festival",
+    "gaming", "video game", "esports", "streaming",
+
+    "politics", "election", "government", "crime", "weather",
+    "forecast", "sports", "nba", "nfl", "mlb", "soccer", "olympics",
+    "zodiac", "horoscope", "astrology", "animals", "pets", "wildlife",
+
+    "real estate", "mortgage", "home improvement", "home decor",
+    "decor", "interior design", "renovation", "diy", "gardening",
+    "landscape", "furniture", "appliance", "garage", "kitchen hacks",
+
+    "health", "fitness", "workout", "exercise",
+    "medical", "medicine", "doctor", "hospital",
+    "pharmaceutical", "drug", "vitamin", "diet", "nutrition",
+    "insurance", "healthcare",
+
+    "parenting", "children", "kids", "family", "baby", "toddler",
+    "school", "education tips",
+
+    "viral story", "life hack", "hack", "influencer",
+    "trendiest", "must have", "bizarre", "cute",
+    "relationship", "dating", "love", "wedding",
+    
+    # Multi-part articles (Part 1, Part 2, etc.)
+    "(part", "part 1", "part 2", "part 3", "part 4", "part 5",
+    "part one", "part two", "part three", "part four", "part five",
+    "part i", "part ii", "part iii", "part iv", "part v"
+]
 
 
-def categorize_article(article: Dict[str, Any], min_score: int = 3) -> Tuple[List[str], int]:
+# AI topics for article tagging
+AI_TOPICS = [
+    "artificial intelligence",
+    "ai",
+    "machine learning",
+    "ml",
+    "deep learning",
+    "neural network",
+    "large language model",
+    "llm",
+    "generative ai",
+    "genai",
+    "foundation model",
+    "transformer model",
+    "openai",
+    "anthropic",
+    "google ai",
+    "deepmind",
+    "meta ai",
+    "nvidia",
+    "chip", "gpu", "compute",
+    "training data",
+    "training run",
+    "model weights",
+    "model release",
+    "ai startup",
+    "ai tool",
+    "ai feature",
+    "ai assistant",
+    "automation",
+    "robotics",
+    "autonomous system",
+    "autonomous vehicle",
+    "computer vision",
+    "vision model",
+    "speech recognition",
+    "text-to-speech",
+    "image generation",
+    "video generation",
+    "multimodal",
+    "ai regulation",
+    "ai safety",
+    "ai governance",
+    "cybersecurity ai",
+    "data science",
+    "predictive model",
+]
+
+
+def categorize_article(article: Dict[str, Any], min_matches: int = 1) -> Tuple[List[str], int]:
     """
     Categorize an article and assign visual tags based on content.
     
     Args:
-        article: Article dictionary with 'title', 'summary', 'tags' (RSS tags), etc.
+        article: Article dictionary with 'title', 'summary', etc.
         min_score: Minimum relevance score required (default: 3). Articles below this are rejected.
         
     Returns:
@@ -134,111 +130,99 @@ def categorize_article(article: Dict[str, Any], min_score: int = 3) -> Tuple[Lis
     # Combine all text for keyword matching
     combined_text = f"{title} {summary} {' '.join(existing_tags)}"
     
-    # First check: reject articles with negative keywords (unless they also have strong AI keywords)
+    # FIRST CHECK: Reject articles with negative keywords in TITLE immediately (no override)
+    # These are almost never AI-related, even if they mention "tech"
+    title_lower = title.lower()
+    has_title_negative = any(neg in title_lower for neg in TITLE_NEGATIVE_KEYWORDS)
+    if has_title_negative:
+        logger.debug(f"Article '{title[:50]}...' has negative keywords in title - REJECTED")
+        return [], 0
+    
+    # SECOND CHECK: Reject multi-part articles (Part 1, Part 2, etc.) - these are usually low-value
+    has_part_number = any(pattern in title_lower for pattern in [
+        "(part", "part 1", "part 2", "part 3", "part 4", "part 5",
+        "part one", "part two", "part three", "part four", "part five",
+        "part i", "part ii", "part iii", "part iv", "part v"
+    ])
+    if has_part_number:
+        logger.debug(f"Article '{title[:50]}...' is a multi-part article - REJECTED")
+        return [], 0
+    
+    # THIRD CHECK: Reject articles with negative keywords in body (unless they have strong AI keywords)
     has_negative = any(neg in combined_text for neg in NEGATIVE_KEYWORDS)
     if has_negative:
         # Check if it also has strong AI keywords (might be AI-related despite negative keyword)
+        # But require MULTIPLE strong AI keywords to override negative keywords (not just one mention)
         strong_ai_keywords = ['ai', 'artificial intelligence', 'machine learning', 'ml', 'neural', 
                             'gpt', 'llm', 'transformer', 'algorithm', 'model', 'deep learning']
-        has_strong_ai = any(ai_kw in combined_text for ai_kw in strong_ai_keywords)
-        if not has_strong_ai:
-            logger.debug(f"Article '{title[:50]}...' contains negative keywords and no strong AI keywords - REJECTED")
+        strong_ai_count = sum(1 for ai_kw in strong_ai_keywords if ai_kw in combined_text)
+        # Require at least 3 strong AI keyword mentions to override negative keywords
+        if strong_ai_count < 3:
+            logger.debug(f"Article '{title[:50]}...' contains negative keywords and only {strong_ai_count} strong AI keywords (required: 3+) - REJECTED")
             return [], 0
     
-    # Score each category based on keyword matches
-    category_scores = {}
-    for category_id, category_data in VISUAL_TAG_CATEGORIES.items():
-        score = 0
-        keywords = category_data["keywords"]
-        
-        # Count keyword matches (weighted by importance)
-        for keyword in keywords:
-            if keyword.lower() in combined_text:
-                # Title matches are more important
-                if keyword.lower() in title:
-                    score += 3
-                elif keyword.lower() in summary:
-                    score += 2
-                else:
-                    score += 1
-        
-        if score > 0:
-            category_scores[category_id] = score
+    # Match article against AI topics
+    matched_topics = []
+    for topic in AI_TOPICS:
+        topic_lower = topic.lower()
+        # Check if topic appears in the text (as whole word or phrase)
+        if topic_lower in combined_text:
+            # Weight title matches higher
+            if topic_lower in title:
+                matched_topics.append((topic, 3))  # Title match = higher weight
+            elif topic_lower in summary:
+                matched_topics.append((topic, 2))  # Summary match = medium weight
+            else:
+                matched_topics.append((topic, 1))  # Other match = lower weight
     
-    # Check if any category meets minimum score threshold
-    if not category_scores:
-        logger.debug(f"Article '{title[:50]}...' has no category matches - REJECTED")
-        return [], 0
+    # Check if we have enough matches
+    if len(matched_topics) < min_score:
+        logger.debug(f"Article '{title[:50]}...' matched {len(matched_topics)} topics (required: {min_score}+) - REJECTED")
+        return [], len(matched_topics)
     
-    max_score = max(category_scores.values())
-    if max_score < min_score:
-        logger.debug(f"Article '{title[:50]}...' score {max_score} below minimum {min_score} - REJECTED")
-        return [], max_score
+    # Sort by weight (descending) and get top 1-5 tags
+    matched_topics.sort(key=lambda x: x[1], reverse=True)
+    tags = [topic for topic, weight in matched_topics[:5]]  # Top 5 matching topics
     
-    # Select top 1-3 categories (based on scores)
-    selected_categories = sorted(
-        category_scores.items(),
-        key=lambda x: x[1],
-        reverse=True
-    )[:3]  # Top 3 categories
-    
-    # Assign visual tags from selected categories
-    visual_tags = []
-    for category_id, score in selected_categories:
-        category_data = VISUAL_TAG_CATEGORIES[category_id]
-        tags = category_data["tags"]
-        
-        # Select 1-2 tags from this category (prefer first tags)
-        if len(visual_tags) == 0:
-            # First category: add 1-2 tags
-            visual_tags.extend(tags[:2])
-        elif len(visual_tags) < 3:
-            # Additional categories: add 1 tag
-            visual_tags.append(tags[0])
-        else:
-            break
-    
-    # Ensure maximum 3 tags
-    visual_tags = visual_tags[:3]
-    
-    logger.debug(f"Article '{title[:50]}...' categorized with tags: {visual_tags} (score: {max_score})")
-    return visual_tags, max_score
+    match_count = len(matched_topics)
+    logger.debug(f"Article '{title[:50]}...' assigned tags: {tags} (matches: {match_count})")
+    return tags, match_count
 
 
-def assign_visual_tags_to_articles(articles: List[Dict[str, Any]], min_score: int = 3, filter_low_relevance: bool = True) -> List[Dict[str, Any]]:
+def assign_visual_tags_to_articles(articles: List[Dict[str, Any]], min_matches: int = 1, filter_low_relevance: bool = True) -> List[Dict[str, Any]]:
     """
-    Assign visual tags to a list of articles and optionally filter out low-relevance articles.
+    Assign AI topic tags to a list of articles and optionally filter out low-relevance articles.
     
     Args:
         articles: List of article dictionaries
-        min_score: Minimum relevance score required (default: 3)
-        filter_low_relevance: If True, remove articles that don't meet minimum score (default: True)
+        min_matches: Minimum number of topic matches required (default: 1)
+        filter_low_relevance: If True, remove articles that don't meet minimum matches (default: True)
         
     Returns:
         List of articles with 'visual_tags' and 'tag_relevance_score' fields added.
-        If filter_low_relevance=True, only returns articles that meet the minimum score.
+        If filter_low_relevance=True, only returns articles that meet the minimum matches.
     """
     filtered_articles = []
     rejected_count = 0
     
     for article in articles:
-        visual_tags, max_score = categorize_article(article, min_score=min_score)
-        article['visual_tags'] = visual_tags
-        article['tag_relevance_score'] = max_score
+        tags, match_count = categorize_article(article, min_matches=min_matches)
+        article['visual_tags'] = tags
+        article['tag_relevance_score'] = match_count
         
         if filter_low_relevance:
-            if visual_tags and max_score >= min_score:
+            if tags and match_count >= min_matches:
                 filtered_articles.append(article)
             else:
                 rejected_count += 1
                 title = article.get('title', 'Unknown')[:60]
-                logger.info(f"Rejected article (score {max_score} < {min_score}): {title}")
+                logger.info(f"Rejected article (matches {match_count} < {min_matches}): {title}")
         else:
             # Include all articles, even if they have no tags
             filtered_articles.append(article)
     
     if filter_low_relevance and rejected_count > 0:
-        logger.info(f"Filtered out {rejected_count} low-relevance articles (below score {min_score})")
+        logger.info(f"Filtered out {rejected_count} low-relevance articles (below {min_matches} matches)")
         logger.info(f"Kept {len(filtered_articles)} relevant articles")
     
     return filtered_articles
