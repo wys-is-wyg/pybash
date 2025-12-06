@@ -14,6 +14,7 @@ from app.config import settings
 from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json
 from app.scripts.tag_categorizer import categorize_article
+from app.scripts.input_validator import validate_for_video_ideas
 
 logger = setup_logger(__name__)
 
@@ -57,6 +58,16 @@ def extract_key_topics(text: str, max_topics: int = 5) -> List[str]:
     """
     if not text:
         return []
+    
+    # Validate and sanitize input before processing
+    is_valid, sanitized_text, reason = validate_for_video_ideas(text)
+    if not is_valid:
+        logger.warning(f"Input validation failed for topic extraction: {reason}")
+        # Return empty list rather than processing potentially dangerous input
+        return []
+    
+    # Use sanitized text
+    text = sanitized_text
     
     # Simple keyword extraction: find capitalized words and important phrases
     # Remove common stop words
@@ -102,8 +113,15 @@ def generate_video_idea_with_huggingface(item: Dict[str, Any]) -> Optional[Dict[
         source = item.get('source', '')
         visual_tags = item.get('visual_tags', [])
         
-        # Extract main topic from title and summary
-        topics = extract_key_topics(title + " " + summary, max_topics=5)
+        # Validate title and summary before processing
+        combined_text = f"{title} {summary}"
+        is_valid, sanitized_text, reason = validate_for_video_ideas(combined_text)
+        if not is_valid:
+            logger.warning(f"Input validation failed for video idea generation: {reason}")
+            return None
+        
+        # Extract main topic from sanitized title and summary
+        topics = extract_key_topics(sanitized_text, max_topics=5)
         main_topic = topics[0] if topics else "AI Technology"
         
         # Generate video title using template

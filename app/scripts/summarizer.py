@@ -12,6 +12,7 @@ from app.config import settings
 from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json
 from app.scripts.tag_categorizer import assign_visual_tags_to_articles
+from app.scripts.input_validator import validate_for_summarization
 
 logger = setup_logger(__name__)
 
@@ -94,6 +95,16 @@ def summarize_article(text: str, max_words: int = None) -> str:
     if not text or len(text.strip()) == 0:
         logger.warning("Empty text provided for summarization")
         return ""
+    
+    # Validate and sanitize input before passing to Hugging Face
+    is_valid, sanitized_text, reason = validate_for_summarization(text)
+    if not is_valid:
+        logger.error(f"Input validation failed for summarization: {reason}")
+        # Return empty string rather than processing potentially dangerous input
+        return ""
+    
+    # Use sanitized text
+    text = sanitized_text
     
     try:
         summarizer = get_summarizer()
