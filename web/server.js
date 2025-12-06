@@ -22,6 +22,32 @@ app.use(
   })
 );
 
+// Proxy route for n8n dashboard (enables HTTPS access to n8n)
+// Must be before static files and specific routes
+// Use wildcard to catch all /n8n/* paths
+app.use(
+  "/n8n",
+  createProxyMiddleware({
+    target: "http://n8n:5678",
+    changeOrigin: true,
+    pathRewrite: {
+      "^/n8n": "", // Remove /n8n prefix when forwarding to n8n
+    },
+    ws: true, // Enable WebSocket support for n8n
+    logLevel: "debug",
+    onProxyReq: (proxyReq, req, res) => {
+      console.log(`[n8n proxy] ${req.method} ${req.url} -> http://n8n:5678${req.url.replace("/n8n", "") || "/"}`);
+    },
+    onProxyRes: (proxyRes, req, res) => {
+      console.log(`[n8n proxy] Response: ${proxyRes.statusCode} for ${req.url}`);
+    },
+    onError: (err, req, res) => {
+      console.error("[n8n proxy error]:", err.message);
+      res.status(502).send(`Proxy error: ${err.message}`);
+    },
+  })
+);
+
 // Specific routes (must be before static middleware)
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
@@ -46,8 +72,12 @@ app.get("/output", (req, res) => {
 // Static middleware for public files (CSS, JS, images, etc.)
 app.use(express.static("public"));
 
-// 404 handler for undefined routes
+// 404 handler for undefined routes (must be last)
 app.use((req, res) => {
+  // Don't catch /n8n routes (should be handled by proxy)
+  if (req.path.startsWith("/n8n")) {
+    return res.status(404).send("n8n proxy route not found");
+  }
   res.status(404).sendFile(path.join(__dirname, "public", "index.html"));
 });
 

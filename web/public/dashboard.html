@@ -33,12 +33,9 @@
     <iframe
       id="n8n-iframe"
       title="n8n Automation Dashboard"
+      style="width: 100%; height: 100vh; border: none;"
+      src="/n8n"
     ></iframe>
-    <script>
-      // Use same protocol as parent page
-      const protocol = window.location.protocol;
-      document.getElementById("n8n-iframe").src = "http://localhost:5678";
-    </script>
   </body>
 </html>
 

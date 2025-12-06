@@ -525,10 +525,18 @@ function updateProtocolAwareUrls() {
 
   // Update n8n dashboard iframe (if not already set in HTML)
   const n8nIframe = document.getElementById("n8n-iframe");
-  if (n8nIframe && !n8nIframe.src) {
-    // Use same protocol as current page, but note: n8n might not support HTTPS
-    // For now, keep HTTP for n8n since it's on a different port
-    n8nIframe.src = "http://localhost:5678";
+
+  if (n8nIframe) {
+    const protocol = window.location.protocol;
+    const host = window.location.host;
+
+    // Use proxied n8n URL (works with both HTTP and HTTPS)
+    // The proxy route /n8n forwards to n8n container, enabling HTTPS access
+    const n8nUrl = `${protocol}//${host}/n8n`;
+
+    if (!n8nIframe.src || n8nIframe.src.includes("localhost:5678")) {
+      n8nIframe.src = n8nUrl;
+    }
   }
 
   // Update n8n URL display

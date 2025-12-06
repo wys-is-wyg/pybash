@@ -21,9 +21,6 @@
         <nav class="navbar-menu">
           <ul>
             <li>
-              <a href="/" class="nav-link" data-section="feed">Feed</a>
-            </li>
-            <li>
               <a href="/dashboard" class="nav-link" data-section="dashboard"
                 >Dashboard</a
               >
@@ -106,20 +103,48 @@
           </p>
         </div>
         <div class="dashboard-container">
-          <iframe
-            id="n8n-iframe"
-            class="dashboard-iframe"
-            title="n8n Automation Dashboard"
-            src="http://localhost:5678"
-            allow="fullscreen"
+          <div
+            id="iframe-wrapper"
+            style="position: relative; width: 100%; height: 80vh"
           >
-          </iframe>
+            <iframe
+              id="n8n-iframe"
+              class="dashboard-iframe"
+              title="n8n Automation Dashboard"
+              allow="fullscreen"
+              style="width: 100%; height: 100%; border: none"
+              src="/n8n"
+            >
+            </iframe>
+          </div>
           <div class="iframe-note">
             <p>
-              <strong>Note:</strong> n8n dashboard loads at
-              <span id="n8n-url">http://localhost:5678</span>
+              <strong>Note:</strong> n8n dashboard is proxied through this
+              server (works with HTTPS)
             </p>
             <p>Default credentials: admin / (password from .env)</p>
+            <p
+              style="
+                font-size: 0.875rem;
+                color: var(--color-text-secondary, #a0a8b8);
+                margin-top: 0.5rem;
+              "
+            >
+              Direct access:
+              <a
+                href="/n8n"
+                target="_blank"
+                style="color: var(--color-primary, #ff6b35)"
+                >/n8n</a
+              >
+              or
+              <a
+                href="http://localhost:5678"
+                target="_blank"
+                style="color: var(--color-primary, #ff6b35)"
+                >http://localhost:5678</a
+              >
+            </p>
           </div>
         </div>
       </section>
