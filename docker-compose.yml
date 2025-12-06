@@ -22,6 +22,13 @@ services:
     container_name: ai-news-web
     ports:
       - "8080:8080"
+      - "8443:8443"
+    volumes:
+      - ./web/ssl:/app/ssl:ro
+    environment:
+      - HTTPS_PORT=8443
+      - SSL_CERT_PATH=/app/ssl/cert.pem
+      - SSL_KEY_PATH=/app/ssl/key.pem
     depends_on:
       - python-app
     networks:

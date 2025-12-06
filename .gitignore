@@ -20,3 +20,9 @@ logs/*.log
 
 # Figma exports (if not needed in repo)
 figma3/
+
+# SSL certificates (never commit private keys)
+web/ssl/
+*.pem
+*.key
+*.crt

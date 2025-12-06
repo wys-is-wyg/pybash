@@ -77,11 +77,45 @@ def refresh_feed():
         JSON response with success status
     """
     try:
-        data = request.get_json()
+        # For GET requests, always merge from data files
+        if request.method == 'GET':
+            logger.info("Merging feed from data files (GET request)")
+            try:
+                # Load all pipeline outputs
+                news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
+                video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
+                thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
+                
+                # Merge and generate feed
+                merged_data = merge_feeds(news_items, video_ideas, thumbnails)
+                generate_feed_json(merged_data)
+                
+                item_count = len(merged_data)
+                logger.info(f"Feed refreshed with {item_count} items from data files")
+                
+                return jsonify({
+                    'status': 'success',
+                    'message': f'Feed updated with {item_count} items',
+                    'items_count': item_count
+                }), 200
+            except FileNotFoundError as e:
+                logger.warning(f"Data file not found: {e}")
+                return jsonify({
+                    'status': 'warning',
+                    'message': 'Some data files not found, feed may be incomplete'
+                }), 200
+            except Exception as e:
+                logger.error(f"Error merging feed from data files: {e}")
+                return jsonify({'error': f'Failed to merge feed: {str(e)}'}), 500
         
-        # If no body provided (GET or empty POST), merge from data files
-        if not data or request.method == 'GET':
-            logger.info("Merging feed from data files")
+        # POST request: try to get JSON body, but fall back to merging from files if no body
+        data = None
+        if request.is_json:
+            data = request.get_json(silent=True)
+        
+        # If no body provided or not JSON, merge from data files
+        if not data:
+            logger.info("Merging feed from data files (POST without body)")
             try:
                 # Load all pipeline outputs
                 news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])

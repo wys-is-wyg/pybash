@@ -109,7 +109,7 @@
         </div>
         <div class="dashboard-container">
           <iframe
-            src="http://localhost:5678"
+            id="n8n-iframe"
             class="dashboard-iframe"
             title="n8n Automation Dashboard"
           >
@@ -117,7 +117,7 @@
           <div class="iframe-note">
             <p>
               <strong>Note:</strong> n8n dashboard loads at
-              http://localhost:5678
+              <span id="n8n-url">http://localhost:5678</span>
             </p>
             <p>Default credentials: admin / (password from .env)</p>
           </div>
@@ -325,8 +325,8 @@
       </p>
       <p class="footer-links">
         <a href="/api/news" target="_blank">API Endpoint</a> •
-        <a href="http://localhost:5678" target="_blank">n8n Dashboard</a> •
-        <a href="http://localhost:5001/health" target="_blank">Health Check</a>
+        <a id="footer-n8n-link" href="http://localhost:5678" target="_blank">n8n Dashboard</a> •
+        <a id="footer-health-link" href="/api/health" target="_blank">Health Check</a>
       </p>
     </footer>
 

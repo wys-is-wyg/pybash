@@ -512,9 +512,43 @@ function startAutoRefresh() {
 }
 
 /**
+ * Updates URLs to use the current page protocol (HTTP/HTTPS)
+ */
+function updateProtocolAwareUrls() {
+  const protocol = window.location.protocol;
+  const isHttps = protocol === "https:";
+
+  // Update n8n dashboard iframe
+  const n8nIframe = document.getElementById("n8n-iframe");
+  if (n8nIframe) {
+    // Use same protocol as current page, but note: n8n might not support HTTPS
+    // For now, keep HTTP for n8n since it's on a different port
+    n8nIframe.src = "http://localhost:5678";
+  }
+
+  // Update n8n URL display
+  const n8nUrlSpan = document.getElementById("n8n-url");
+  if (n8nUrlSpan) {
+    n8nUrlSpan.textContent = "http://localhost:5678";
+  }
+
+  // Update footer links to use current protocol
+  const footerN8nLink = document.getElementById("footer-n8n-link");
+  if (footerN8nLink) {
+    footerN8nLink.href = "http://localhost:5678";
+  }
+
+  // Health check link is already relative (/api/health), so it will use current protocol
+  // No update needed - relative URLs automatically use the same protocol
+}
+
+/**
  * Initializes the application when DOM is ready
  */
 function initialize() {
+  // Update protocol-aware URLs
+  updateProtocolAwareUrls();
+
   // Setup navigation
   setupNavigation();
 
