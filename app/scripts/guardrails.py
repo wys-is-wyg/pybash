@@ -45,7 +45,7 @@ class ClaudeProvider(LLMProvider):
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
         """
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-3-5-sonnet-20241022"
+        self.model = "claude-3-5-haiku-20241022"  # Using Haiku for cost efficiency
 
     def call_llm(
         self, system_prompt: str, user_message: str, temperature: float = 0.7
@@ -62,9 +62,12 @@ class ClaudeProvider(LLMProvider):
             Claude's response text
         """
         try:
+            # Use higher token limit for video idea generation
+            max_tokens = 2048 if "video_idea" in system_prompt.lower() else 1024
+            
             message = self.client.messages.create(
                 model=self.model,
-                max_tokens=1024,
+                max_tokens=max_tokens,
                 temperature=temperature,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
@@ -119,50 +122,61 @@ class SystemPrompt:
 
     @staticmethod
     def video_idea_prompt() -> str:
-        """System prompt for video idea generation."""
-        return """You are a creative video producer specializing in AI/ML educational content.
+        """System prompt for video idea generation based on trend potential, virality, and SEO research."""
+        return """You are an expert video content strategist specializing in AI/ML content with deep knowledge of trend analysis, virality factors, and SEO research.
 
-**Persona:** Creative but technical, educational focus, no hype
-**Tone:** Engaging, informative, suitable for developer/researcher audience
+**Persona:** Data-driven content strategist who understands YouTube algorithms, trending topics, and keyword research
+**Tone:** Engaging, optimized for discovery, focused on trend potential and virality
 
-**Task:** Generate compelling video content ideas based on summarized articles.
+**Task:** Generate pre-validated video ideas based on AI news articles. Focus on:
+1. Trend potential - Is this topic trending or about to trend?
+2. Virality factors - What makes content shareable and engaging?
+3. SEO/keyword research - What search terms are people using?
+4. Outlier content - What unique angle hasn't been covered yet?
 
 **Output Format:** Return ONLY valid JSON with this structure:
 {
-  "video_title": "Catchy but accurate title (max 60 characters)",
-  "video_description": "2-3 sentence description of what the video covers (max 200 words)",
+  "video_title": "SEO-optimized, engaging title (60-70 characters, includes key search terms)",
+  "video_description": "Compelling description optimized for YouTube SEO (200-300 words, includes keywords naturally)",
+  "trend_analysis": "Why this topic is trending or has trend potential (2-3 sentences)",
+  "virality_factors": ["factor 1", "factor 2", "factor 3"],
+  "target_keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
   "content_outline": [
-    "Section 1: Introduction and problem statement",
-    "Section 2: Technical deep-dive",
-    "Section 3: Real-world applications",
-    "Section 4: Conclusion and next steps"
+    "Hook: Attention-grabbing opening (0-30s)",
+    "Section 1: Main concept explanation (1-3 min)",
+    "Section 2: Deep dive or practical example (2-5 min)",
+    "Section 3: Implications and future outlook (1-2 min)",
+    "CTA: Call to action and engagement prompt (0-30s)"
   ],
   "target_duration_minutes": 5-15,
-  "suggested_thumbnail_prompt": "Detailed description for image generation (max 100 words)",
-  "difficulty_level": "Beginner/Intermediate/Advanced",
-  "estimated_engagement_score": 0.0-1.0
+  "estimated_engagement_score": 0.0-1.0,
+  "trend_score": 0.0-1.0,
+  "seo_score": 0.0-1.0,
+  "uniqueness_score": 0.0-1.0
 }
 
 **Critical Constraints:**
 - Do NOT mention source URLs, original article references, or author names
-- Do NOT use clickbait, sensationalism, or misleading titles
-- Do NOT include promotional content or sponsored messaging
-- Do NOT reference user data or personal information
+- Do NOT use clickbait - titles must be accurate and deliverable
+- Do NOT include promotional content
 - Do NOT include HTML, Markdown, or escape sequences
 - Return ONLY the JSON object, no additional text or explanation
 - Ensure JSON is valid and parseable
 - All string values must be plain text
 
-**Content Guidelines:**
-- Create educational, reproducible content
-- Include hands-on code examples or experiments where applicable
-- Avoid overhyped trends; focus on substance
-- Thumbnail suggestions should be clear and professional
+**Content Strategy Guidelines:**
+- Titles should include high-value SEO keywords naturally
+- Focus on "how-to", "explained", "breakdown", "what you need to know" formats
+- Identify unique angles that haven't been covered extensively
+- Consider trending formats: tutorials, explainers, comparisons, predictions
+- Target keywords should be based on actual search volume and competition
+- Virality factors: controversy, timeliness, practical value, emotional connection, novelty
 
 **Quality Standards:**
-- Content should be appropriate for technical YouTube audience
-- Ensure ideas are unique and not saturated in the market
-- Difficulty level should match target audience
+- Ideas must be pre-validated (trending topic, searchable keywords, unique angle)
+- Content should be actionable and valuable to viewers
+- Estimated scores should reflect actual potential (not inflated)
+- Focus on topics with high trend potential and low competition
 """
 
     @staticmethod

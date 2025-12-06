@@ -12,8 +12,10 @@ const REFRESH_INTERVAL = 300000;
 // State management
 let currentFeedData = [];
 let refreshTimer = null;
-let currentFeedCategory = "all";
-let currentVideoIdeasCategory = "all";
+let currentFeedTag = "all";
+let currentFeedSource = "all";
+let currentVideoIdeasTag = "all";
+let currentVideoIdeasSource = "all";
 
 /**
  * Fetches feed data from the API
@@ -63,12 +65,25 @@ function renderFeed(feedData) {
   updateFeedStatus("success", "Loaded");
   updateFeedTimestamp();
 
-  // Filter by category if not "all"
+  // Update tag filter buttons (use all data to show all available tags)
+  updateTagFilters(feedData, "feed-tag-filters");
+  updateSourceFilters(feedData, "feed-source-filters");
+
+  // Filter by tag if not "all"
   let filteredData = feedData;
-  if (currentFeedCategory !== "all") {
-    filteredData = feedData.filter(
-      (item) => item.category === currentFeedCategory
-    );
+  if (currentFeedTag !== "all") {
+    filteredData = filteredData.filter((item) => {
+      const tags = item.visual_tags || [];
+      return tags.includes(currentFeedTag);
+    });
+  }
+
+  // Filter by source if not "all"
+  if (currentFeedSource !== "all") {
+    filteredData = filteredData.filter((item) => {
+      const source = item.source || "";
+      return source.toLowerCase() === currentFeedSource.toLowerCase();
+    });
   }
 
   // Render each feed item as a card
@@ -222,6 +237,32 @@ function updateFeedTimestamp() {
 }
 
 /**
+ * Updates video ideas status badge
+ */
+function updateVideoIdeasStatus(status, message) {
+  const statusBadge = document.getElementById("video-ideas-status");
+  if (!statusBadge) return;
+
+  statusBadge.className = `status-badge ${status}`;
+  statusBadge.textContent = message;
+}
+
+/**
+ * Updates video ideas timestamp
+ */
+function updateVideoIdeasTimestamp() {
+  const timestampEl = document.getElementById("video-ideas-timestamp");
+  if (!timestampEl) return;
+
+  const now = new Date();
+  timestampEl.textContent = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+/**
  * Displays error message in the feed container
  * @param {string} errorMessage - Error message to display
  */
@@ -362,19 +403,37 @@ async function loadVideoIdeas() {
       (item) => item.type === "video_idea" || item.video_idea
     );
 
-    // Filter by category
-    if (currentVideoIdeasCategory !== "all") {
-      videoIdeas = videoIdeas.filter(
-        (idea) => idea.category === currentVideoIdeasCategory
-      );
+    // Update tag filter buttons (use all video ideas to show all available tags)
+    updateTagFilters(videoIdeas, "video-ideas-tag-filters");
+    updateSourceFilters(videoIdeas, "video-ideas-source-filters");
+
+    // Filter by tag if not "all"
+    if (currentVideoIdeasTag !== "all") {
+      videoIdeas = videoIdeas.filter((idea) => {
+        const tags = idea.visual_tags || [];
+        return tags.includes(currentVideoIdeasTag);
+      });
+    }
+
+    // Filter by source if not "all"
+    if (currentVideoIdeasSource !== "all") {
+      videoIdeas = videoIdeas.filter((idea) => {
+        const source = idea.source || "";
+        return source.toLowerCase() === currentVideoIdeasSource.toLowerCase();
+      });
     }
 
     container.innerHTML = "";
 
     if (videoIdeas.length === 0) {
       if (emptyContainer) emptyContainer.style.display = "block";
+      updateVideoIdeasStatus("empty", "No items available");
       return;
     }
+
+    // Update status
+    updateVideoIdeasStatus("success", "Loaded");
+    updateVideoIdeasTimestamp();
 
     // Render video ideas
     videoIdeas.forEach((idea) => {
@@ -396,35 +455,88 @@ async function loadVideoIdeas() {
  */
 function createVideoIdeaCard(idea) {
   const card = document.createElement("div");
-  card.className = "idea-card";
+  card.className = "news-card"; // Use same styling as feed cards
 
-  if (idea.thumbnail_url || idea.thumbnail_path) {
+  // Thumbnail - use news-card-image class to match CSS
+  const thumbnail = document.createElement("div");
+  thumbnail.className = "news-card-image";
+  if (idea.thumbnail_url) {
     const img = document.createElement("img");
-    img.src = idea.thumbnail_url || idea.thumbnail_path;
+    img.src = idea.thumbnail_url;
     img.alt = idea.title || "Video idea thumbnail";
-    img.className = "idea-thumbnail";
     img.loading = "lazy";
-    card.appendChild(img);
+    img.onerror = function () {
+      this.style.display = "none";
+    };
+    thumbnail.appendChild(img);
   }
+  card.appendChild(thumbnail);
 
+  // Content
   const content = document.createElement("div");
-  content.className = "idea-content";
+  content.className = "news-card-content";
 
+  // Title
   const title = document.createElement("h3");
+  title.className = "news-card-title";
   title.textContent = idea.title || "Untitled Video Idea";
   content.appendChild(title);
 
-  if (idea.description) {
+  // Description - for video ideas, always use description (video concept), never original_summary
+  // For news items, use summary
+  let descriptionText = "";
+  if (idea.type === "video_idea") {
+    // Video ideas should have description (the video concept), not original_summary
+    descriptionText = idea.description || "";
+  } else {
+    // News items use summary
+    descriptionText = idea.summary || idea.description || "";
+  }
+  
+  if (descriptionText) {
     const desc = document.createElement("p");
-    desc.textContent = idea.description;
+    desc.className = "news-card-summary";
+    desc.textContent = descriptionText;
     content.appendChild(desc);
   }
 
+  // Meta information (source, scores, etc.)
+  const meta = document.createElement("div");
+  meta.className = "news-card-meta";
+
   if (idea.source) {
     const source = document.createElement("span");
-    source.className = "idea-source";
-    source.textContent = `Source: ${idea.source}`;
-    content.appendChild(source);
+    source.className = "news-card-source";
+    source.textContent = idea.source;
+    meta.appendChild(source);
+  }
+
+  // Add trend/SEO scores if available
+  if (idea.trend_score !== undefined || idea.seo_score !== undefined) {
+    const scores = document.createElement("span");
+    scores.className = "news-card-scores";
+    const scoreParts = [];
+    if (idea.trend_score !== undefined) {
+      scoreParts.push(`Trend: ${(idea.trend_score * 100).toFixed(0)}%`);
+    }
+    if (idea.seo_score !== undefined) {
+      scoreParts.push(`SEO: ${(idea.seo_score * 100).toFixed(0)}%`);
+    }
+    scores.textContent = scoreParts.join(" • ");
+    meta.appendChild(scores);
+  }
+
+  content.appendChild(meta);
+
+  // Source URL link
+  if (idea.source_url) {
+    const link = document.createElement("a");
+    link.href = idea.source_url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.className = "news-card-link";
+    link.textContent = "Read more →";
+    content.appendChild(link);
   }
 
   card.appendChild(content);
@@ -614,8 +726,8 @@ function initialize() {
     loadFeed();
   }
 
-  // Setup category filters
-  setupCategoryFilters();
+  // Setup tag filters
+  setupTagFilters();
 
   // Start auto-refresh
   startAutoRefresh();
@@ -624,11 +736,90 @@ function initialize() {
 }
 
 /**
- * Sets up category filter buttons for feed and video ideas
+ * Updates tag filter buttons based on available tags in data
  */
-function setupCategoryFilters() {
-  // Feed category filters
-  const feedFilters = document.getElementById("feed-category-filters");
+function updateTagFilters(data, filterContainerId) {
+  const container = document.getElementById(filterContainerId);
+  if (!container) return;
+
+  // Collect all unique tags from data
+  const allTags = new Set();
+  data.forEach((item) => {
+    const tags = item.visual_tags || [];
+    tags.forEach((tag) => allTags.add(tag));
+  });
+
+  // Get existing buttons (keep "All" button)
+  const existingButtons = Array.from(container.querySelectorAll(".filter-btn"));
+  const allButton = existingButtons.find((btn) => btn.dataset.tag === "all");
+
+  // Clear container but keep "All" button
+  container.innerHTML = "";
+  if (allButton) {
+    container.appendChild(allButton);
+  }
+
+  // Add buttons for each tag
+  const sortedTags = Array.from(allTags).sort();
+  sortedTags.forEach((tag) => {
+    const btn = document.createElement("button");
+    btn.className = "filter-btn";
+    btn.dataset.tag = tag;
+    btn.textContent = tag;
+    if (tag === (filterContainerId === "feed-tag-filters" ? currentFeedTag : currentVideoIdeasTag)) {
+      btn.classList.add("active");
+    }
+    container.appendChild(btn);
+  });
+}
+
+/**
+ * Updates source filter buttons based on available sources in data
+ */
+function updateSourceFilters(data, filterContainerId) {
+  const container = document.getElementById(filterContainerId);
+  if (!container) return;
+
+  // Collect all unique sources from data
+  const allSources = new Set();
+  data.forEach((item) => {
+    const source = item.source || "";
+    if (source) {
+      allSources.add(source);
+    }
+  });
+
+  // Get existing buttons (keep "All" button)
+  const existingButtons = Array.from(container.querySelectorAll(".filter-btn"));
+  const allButton = existingButtons.find((btn) => btn.dataset.source === "all");
+
+  // Clear container but keep "All" button
+  container.innerHTML = "";
+  if (allButton) {
+    container.appendChild(allButton);
+  }
+
+  // Add buttons for each source
+  const sortedSources = Array.from(allSources).sort();
+  sortedSources.forEach((source) => {
+    const btn = document.createElement("button");
+    btn.className = "filter-btn";
+    btn.dataset.source = source;
+    btn.textContent = source;
+    const currentSource = filterContainerId === "feed-source-filters" ? currentFeedSource : currentVideoIdeasSource;
+    if (source === currentSource) {
+      btn.classList.add("active");
+    }
+    container.appendChild(btn);
+  });
+}
+
+/**
+ * Sets up tag filter buttons for feed and video ideas
+ */
+function setupTagFilters() {
+  // Feed tag filters
+  const feedFilters = document.getElementById("feed-tag-filters");
   if (feedFilters) {
     feedFilters.addEventListener("click", (e) => {
       if (e.target.classList.contains("filter-btn")) {
@@ -639,7 +830,7 @@ function setupCategoryFilters() {
         e.target.classList.add("active");
 
         // Update filter
-        currentFeedCategory = e.target.dataset.category;
+        currentFeedTag = e.target.dataset.tag;
 
         // Re-render feed with new filter
         if (currentFeedData.length > 0) {
@@ -649,10 +840,30 @@ function setupCategoryFilters() {
     });
   }
 
-  // Video ideas category filters
-  const videoIdeasFilters = document.getElementById(
-    "video-ideas-category-filters"
-  );
+  // Feed source filters
+  const feedSourceFilters = document.getElementById("feed-source-filters");
+  if (feedSourceFilters) {
+    feedSourceFilters.addEventListener("click", (e) => {
+      if (e.target.classList.contains("filter-btn")) {
+        // Update active state
+        feedSourceFilters.querySelectorAll(".filter-btn").forEach((btn) => {
+          btn.classList.remove("active");
+        });
+        e.target.classList.add("active");
+
+        // Update filter
+        currentFeedSource = e.target.dataset.source;
+
+        // Re-render feed with new filter
+        if (currentFeedData.length > 0) {
+          renderFeed(currentFeedData);
+        }
+      }
+    });
+  }
+
+  // Video ideas tag filters
+  const videoIdeasFilters = document.getElementById("video-ideas-tag-filters");
   if (videoIdeasFilters) {
     videoIdeasFilters.addEventListener("click", (e) => {
       if (e.target.classList.contains("filter-btn")) {
@@ -663,7 +874,7 @@ function setupCategoryFilters() {
         e.target.classList.add("active");
 
         // Update filter
-        currentVideoIdeasCategory = e.target.dataset.category;
+        currentVideoIdeasTag = e.target.dataset.tag;
 
         // Re-render video ideas with new filter
         loadVideoIdeas();
@@ -671,6 +882,7 @@ function setupCategoryFilters() {
     });
   }
 }
+
 
 // Initialize when DOM is ready
 if (document.readyState === "loading") {

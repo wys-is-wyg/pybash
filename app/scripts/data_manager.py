@@ -5,6 +5,8 @@ Handles JSON file operations and data merging for the pipeline.
 """
 
 import json
+import re
+import html
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from app.config import settings
@@ -13,6 +15,76 @@ from app.scripts.filtering import filter_and_deduplicate
 from app.scripts.tag_categorizer import assign_visual_tags_to_articles
 
 logger = setup_logger(__name__)
+
+
+def clean_html_and_entities(text: str) -> str:
+    """
+    Remove HTML tags and decode HTML entities from text.
+    
+    Args:
+        text: Text that may contain HTML tags and entities
+        
+    Returns:
+        Cleaned text without HTML tags or entities
+    """
+    if not text:
+        return ""
+    
+    # First decode HTML entities (e.g., &#8217; -> ', &amp; -> &)
+    text = html.unescape(text)
+    
+    # Remove HTML tags using regex
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # Remove common HTML artifacts (in case unescape missed some)
+    text = re.sub(r'&nbsp;', ' ', text)
+    text = re.sub(r'&amp;', '&', text)
+    text = re.sub(r'&lt;', '<', text)
+    text = re.sub(r'&gt;', '>', text)
+    text = re.sub(r'&quot;', '"', text)
+    text = re.sub(r'&#8217;', "'", text)
+    text = re.sub(r'&#8230;', '...', text)
+    text = re.sub(r'&#39;', "'", text)
+    
+    # Clean up extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
+
+
+def clean_html_and_entities(text: str) -> str:
+    """
+    Remove HTML tags and decode HTML entities from text.
+    
+    Args:
+        text: Text that may contain HTML tags and entities
+        
+    Returns:
+        Cleaned text without HTML tags or entities
+    """
+    if not text:
+        return ""
+    
+    # First decode HTML entities (e.g., &#8217; -> ', &amp; -> &)
+    text = html.unescape(text)
+    
+    # Remove HTML tags using regex
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # Remove common HTML artifacts (in case unescape missed some)
+    text = re.sub(r'&nbsp;', ' ', text)
+    text = re.sub(r'&amp;', '&', text)
+    text = re.sub(r'&lt;', '<', text)
+    text = re.sub(r'&gt;', '>', text)
+    text = re.sub(r'&quot;', '"', text)
+    text = re.sub(r'&#8217;', "'", text)
+    text = re.sub(r'&#8230;', '...', text)
+    text = re.sub(r'&#39;', "'", text)
+    
+    # Clean up extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
 
 
 def load_json(file_path: str) -> Dict[str, Any]:
@@ -152,43 +224,27 @@ def merge_feeds(
     
     # Function to get tag image for a visual tag
     def get_tag_image(visual_tags: List[str]) -> str:
-        """Get a tag image URL for the first matching visual tag."""
+        """Get a tag image URL for visual tags using consistent hash-based mapping across all 30 images."""
         if not visual_tags:
             logger.debug("No visual tags provided for image lookup")
-            # Fallback: pick a random tag image if available
-            if tag_images_metadata:
-                import random
-                random_img = random.choice(list(tag_images_metadata.values()))
-                filename = random_img.get("filename", "")
-                if filename:
-                    logger.debug(f"Using random tag image: {filename}")
-                    return f"/api/tag-images/{filename}"
-            return ""
+            # Fallback: use first image
+            return "/api/tag-images/tag_001.png"
         
         if not tag_images_metadata:
             logger.warning("No tag images metadata loaded")
-            return ""
+            return "/api/tag-images/tag_001.png"
         
-        # Try to find image for first visual tag (exact match)
-        for tag in visual_tags:
-            if tag in tag_images_metadata:
-                img_data = tag_images_metadata[tag]
-                filename = img_data.get("filename", "")
-                if filename:
-                    logger.debug(f"Found exact match for tag '{tag}': {filename}")
-                    return f"/api/tag-images/{filename}"
+        # Use hash of first tag to consistently select an image from all 30 images
+        # This ensures the same tag always gets the same image
+        import hashlib
+        tag_hash = int(hashlib.md5(visual_tags[0].lower().encode()).hexdigest(), 16)
+        image_num = 1 + (tag_hash % 30)  # Map to images 1-30
         
-        # If no exact match, pick a random tag image
-        if tag_images_metadata:
-            import random
-            random_img = random.choice(list(tag_images_metadata.values()))
-            filename = random_img.get("filename", "")
-            if filename:
-                logger.debug(f"No exact match for tags {visual_tags}, using random: {filename}")
-                return f"/api/tag-images/{filename}"
+        # Format as tag_XXX.png
+        filename = f"tag_{image_num:03d}.png"
         
-        logger.warning(f"No tag image found for visual tags: {visual_tags}")
-        return ""
+        logger.debug(f"Mapped tags {visual_tags} to image {filename}")
+        return f"/api/tag-images/{filename}"
     
     # Helper function to get category from visual tags (deprecated - tags are now flat)
     def get_category_from_tags(visual_tags: List[str]) -> str:
@@ -203,15 +259,15 @@ def merge_feeds(
         
         feed_item = {
             'type': 'news',
-            'title': item.get('title', ''),
-            'summary': item.get('summary', ''),
+            'title': clean_html_and_entities(item.get('title', '')),
+            'summary': clean_html_and_entities(item.get('summary', '')),
             'source': item.get('source', ''),
             'source_url': item.get('source_url', ''),
             'published_date': item.get('published_date', ''),
             'thumbnail_url': thumbnail_url,
             'visual_tags': visual_tags,  # Only visual tags from categorization
             'category': category,  # Category ID for filtering
-            'author': item.get('author', ''),
+            'author': clean_html_and_entities(item.get('author', '')),
         }
         merged_feed.append(feed_item)
     
@@ -231,8 +287,8 @@ def merge_feeds(
         
         feed_item = {
             'type': 'video_idea',
-            'title': idea.get('title', ''),
-            'description': idea.get('description', ''),
+            'title': clean_html_and_entities(idea.get('title', '')),
+            'description': clean_html_and_entities(idea.get('description', '')),  # Video idea description (not article summary)
             'source': idea.get('source', ''),
             'source_url': idea.get('source_url', ''),
             'thumbnail_url': thumbnail_http_url,  # Tag image URL
@@ -240,6 +296,14 @@ def merge_feeds(
             'tags': idea.get('tags', []),  # Preserve tags if available
             'visual_tags': visual_tags,  # Preserve visual tags
             'category': category,  # Category ID for filtering
+            # Preserve additional video idea fields for frontend
+            'trend_analysis': idea.get('trend_analysis', ''),
+            'virality_factors': idea.get('virality_factors', []),
+            'target_keywords': idea.get('target_keywords', []),
+            'trend_score': idea.get('trend_score'),
+            'seo_score': idea.get('seo_score'),
+            'original_title': clean_html_and_entities(idea.get('original_title', '')),  # Reference to original article
+            'original_summary': clean_html_and_entities(idea.get('original_summary', '')),  # Reference to original article summary
         }
         merged_feed.append(feed_item)
     

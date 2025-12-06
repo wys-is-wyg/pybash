@@ -4,6 +4,8 @@ Article summarization module for AI News Tracker.
 Summarizes news articles using transformer-based models.
 """
 
+import re
+import html
 from typing import List, Dict, Any
 from transformers import pipeline
 from app.config import settings
@@ -15,6 +17,41 @@ logger = setup_logger(__name__)
 
 # Initialize summarization pipeline (lazy loading)
 _summarizer = None
+
+
+def clean_html_and_entities(text: str) -> str:
+    """
+    Remove HTML tags and decode HTML entities from text.
+    
+    Args:
+        text: Text that may contain HTML tags and entities
+        
+    Returns:
+        Cleaned text without HTML tags or entities
+    """
+    if not text:
+        return ""
+    
+    # First decode HTML entities (e.g., &#8217; -> ', &amp; -> &)
+    text = html.unescape(text)
+    
+    # Remove HTML tags using regex
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # Remove common HTML artifacts
+    text = re.sub(r'&nbsp;', ' ', text)
+    text = re.sub(r'&amp;', '&', text)
+    text = re.sub(r'&lt;', '<', text)
+    text = re.sub(r'&gt;', '>', text)
+    text = re.sub(r'&quot;', '"', text)
+    text = re.sub(r'&#8217;', "'", text)
+    text = re.sub(r'&#8230;', '...', text)
+    
+    # Clean up extra whitespace
+    text = re.sub(r'\s+', ' ', text)
+    text = text.strip()
+    
+    return text
 
 
 def get_summarizer():
@@ -78,6 +115,9 @@ def summarize_article(text: str, max_words: int = None) -> str:
         summary = result[0]['summary_text'] if result else ""
         logger.debug(f"Generated summary ({len(summary)} chars)")
         
+        # Clean HTML tags and entities from summary
+        summary = clean_html_and_entities(summary)
+        
         return summary
         
     except Exception as e:
@@ -109,8 +149,8 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
             
             # Use existing summary if it's already good, otherwise summarize
             if existing_summary and len(existing_summary.split()) >= settings.SUMMARY_MIN_WORDS:
-                summary = existing_summary
-                logger.debug(f"Item {i}/{len(news_items)}: Using existing summary")
+                summary = clean_html_and_entities(existing_summary)
+                logger.debug(f"Item {i}/{len(news_items)}: Using existing summary (cleaned)")
             else:
                 # Combine title and summary for full context
                 text_to_summarize = f"{title}. {existing_summary}" if existing_summary else title

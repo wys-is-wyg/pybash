@@ -63,9 +63,10 @@ NEGATIVE_KEYWORDS = [
 
 
 # AI topics for article tagging
+# Note: "ai" and "artificial intelligence" are excluded since all articles are AI-related
+# We use more specific tags to differentiate content
 AI_TOPICS = [
-    "artificial intelligence",
-    "ai",
+    # Core ML/AI concepts
     "machine learning",
     "ml",
     "deep learning",
@@ -76,17 +77,27 @@ AI_TOPICS = [
     "genai",
     "foundation model",
     "transformer model",
+    
+    # Companies/Organizations
     "openai",
     "anthropic",
     "google ai",
     "deepmind",
     "meta ai",
     "nvidia",
-    "chip", "gpu", "compute",
+    
+    # Hardware/Compute
+    "chip",
+    "gpu",
+    "compute",
+    
+    # Training/Models
     "training data",
     "training run",
     "model weights",
     "model release",
+    
+    # Applications
     "ai startup",
     "ai tool",
     "ai feature",
@@ -102,10 +113,14 @@ AI_TOPICS = [
     "image generation",
     "video generation",
     "multimodal",
+    
+    # Governance/Safety
     "ai regulation",
     "ai safety",
     "ai governance",
     "cybersecurity ai",
+    
+    # Data Science
     "data science",
     "predictive model",
 ]
@@ -161,7 +176,7 @@ def categorize_article(article: Dict[str, Any], min_matches: int = 1) -> Tuple[L
             logger.debug(f"Article '{title[:50]}...' contains negative keywords and only {strong_ai_count} strong AI keywords (required: 3+) - REJECTED")
             return [], 0
     
-    # Match article against AI topics
+    # Match article against AI topics (excluding generic "ai" since all articles are AI-related)
     matched_topics = []
     for topic in AI_TOPICS:
         topic_lower = topic.lower()
@@ -175,14 +190,35 @@ def categorize_article(article: Dict[str, Any], min_matches: int = 1) -> Tuple[L
             else:
                 matched_topics.append((topic, 1))  # Other match = lower weight
     
+    # If no specific topics matched, try to infer from context
+    if len(matched_topics) == 0:
+        # Check for common AI patterns and assign appropriate tags
+        if any(kw in combined_text for kw in ['gpt', 'chatgpt', 'claude', 'gemini']):
+            matched_topics.append(('large language model', 2))
+        elif any(kw in combined_text for kw in ['neural', 'neuron', 'network']):
+            matched_topics.append(('neural network', 2))
+        elif any(kw in combined_text for kw in ['learn', 'training', 'dataset']):
+            matched_topics.append(('machine learning', 2))
+        elif any(kw in combined_text for kw in ['robot', 'robotic', 'autonomous']):
+            matched_topics.append(('robotics', 2))
+        elif any(kw in combined_text for kw in ['vision', 'image', 'photo', 'visual']):
+            matched_topics.append(('computer vision', 2))
+        elif any(kw in combined_text for kw in ['regulation', 'governance', 'safety', 'ethics']):
+            matched_topics.append(('ai governance', 2))
+        elif any(kw in combined_text for kw in ['startup', 'company', 'funding', 'valuation']):
+            matched_topics.append(('ai startup', 2))
+        else:
+            # Last resort: use "machine learning" as default since it's the most common
+            matched_topics.append(('machine learning', 1))
+    
     # Check if we have enough matches
     if len(matched_topics) < min_matches:
         logger.debug(f"Article '{title[:50]}...' matched {len(matched_topics)} topics (required: {min_matches}+) - REJECTED")
         return [], len(matched_topics)
     
-    # Sort by weight (descending) and get top 1-5 tags
+    # Sort by weight (descending) and get top 1-3 tags (reduced from 5 to avoid too many tags)
     matched_topics.sort(key=lambda x: x[1], reverse=True)
-    tags = [topic for topic, weight in matched_topics[:5]]  # Top 5 matching topics
+    tags = [topic for topic, weight in matched_topics[:3]]  # Top 3 matching topics
     
     match_count = len(matched_topics)
     logger.debug(f"Article '{title[:50]}...' assigned tags: {tags} (matches: {match_count})")

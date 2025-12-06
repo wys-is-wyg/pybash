@@ -263,7 +263,7 @@ trap 'error_exit ${LINENO} $?' ERR
     # Step 3: Summarize articles with Claude
     log "INFO" "=== STEP 3: Summarizing articles ==="
     if [ -f "$APP_DIR/scripts/summarizer.py" ]; then
-        log "INFO" "Running summarizer (Claude)..."
+        log "INFO" "Running summarizer (Hugging Face)..."
         if [ -n "$DOCKER_EXEC" ]; then
             # Script writes to file directly, just capture stderr for errors
             $DOCKER_EXEC $PYTHON "/app/app/scripts/summarizer.py" < "$DATA_DIR/raw_news.json" 2>"$DATA_DIR/summarizer_stderr.log" || {

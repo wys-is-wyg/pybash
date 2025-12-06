@@ -70,29 +70,21 @@
           </div>
         </div>
 
-        <!-- Category Filters -->
-        <div class="category-filters">
-          <span class="filter-label">Filter by category:</span>
-          <div class="filter-buttons" id="feed-category-filters">
-            <button class="filter-btn active" data-category="all">All</button>
-            <button class="filter-btn" data-category="ai_ml_data">
-              AI / ML / Data
-            </button>
-            <button class="filter-btn" data-category="industry_business">
-              Industry / Business
-            </button>
-            <button class="filter-btn" data-category="safety_governance">
-              Safety / Governance
-            </button>
-            <button class="filter-btn" data-category="productivity_tools">
-              Productivity / Tools
-            </button>
-            <button class="filter-btn" data-category="hardware_robotics">
-              Hardware / Robotics
-            </button>
-            <button class="filter-btn" data-category="science_research">
-              Science & Research
-            </button>
+        <!-- Tag Filters -->
+        <div class="tag-filters">
+          <span class="filter-label">Filter by tag:</span>
+          <div class="filter-buttons" id="feed-tag-filters">
+            <button class="filter-btn active" data-tag="all">All</button>
+            <!-- Tag buttons will be dynamically generated -->
+          </div>
+        </div>
+
+        <!-- Source Filters -->
+        <div class="tag-filters">
+          <span class="filter-label">Filter by source:</span>
+          <div class="filter-buttons" id="feed-source-filters">
+            <button class="filter-btn active" data-source="all">All</button>
+            <!-- Source buttons will be dynamically generated -->
           </div>
         </div>
 
@@ -253,29 +245,35 @@
           </p>
         </div>
 
-        <!-- Category Filters -->
-        <div class="category-filters">
-          <span class="filter-label">Filter by category:</span>
-          <div class="filter-buttons" id="video-ideas-category-filters">
-            <button class="filter-btn active" data-category="all">All</button>
-            <button class="filter-btn" data-category="ai_ml_data">
-              AI / ML / Data
-            </button>
-            <button class="filter-btn" data-category="industry_business">
-              Industry / Business
-            </button>
-            <button class="filter-btn" data-category="safety_governance">
-              Safety / Governance
-            </button>
-            <button class="filter-btn" data-category="productivity_tools">
-              Productivity / Tools
-            </button>
-            <button class="filter-btn" data-category="hardware_robotics">
-              Hardware / Robotics
-            </button>
-            <button class="filter-btn" data-category="science_research">
-              Science & Research
-            </button>
+        <!-- Status indicators -->
+        <div class="status-bar">
+          <div class="status-item">
+            <span class="status-label">Status:</span>
+            <span id="video-ideas-status" class="status-badge loading"
+              >Loading...</span
+            >
+          </div>
+          <div class="status-item">
+            <span class="status-label">Last Updated:</span>
+            <span id="video-ideas-timestamp" class="status-value">Never</span>
+          </div>
+        </div>
+
+        <!-- Tag Filters -->
+        <div class="tag-filters">
+          <span class="filter-label">Filter by tag:</span>
+          <div class="filter-buttons" id="video-ideas-tag-filters">
+            <button class="filter-btn active" data-tag="all">All</button>
+            <!-- Tag buttons will be dynamically generated -->
+          </div>
+        </div>
+
+        <!-- Source Filters -->
+        <div class="tag-filters">
+          <span class="filter-label">Filter by source:</span>
+          <div class="filter-buttons" id="video-ideas-source-filters">
+            <button class="filter-btn active" data-source="all">All</button>
+            <!-- Source buttons will be dynamically generated -->
           </div>
         </div>
 
