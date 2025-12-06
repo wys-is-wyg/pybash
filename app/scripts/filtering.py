@@ -8,6 +8,7 @@ import re
 from typing import List, Dict, Any
 from difflib import SequenceMatcher
 from app.scripts.logger import setup_logger
+from app.scripts.tag_categorizer import TITLE_NEGATIVE_KEYWORDS, NEGATIVE_KEYWORDS
 
 logger = setup_logger(__name__)
 
@@ -142,15 +143,27 @@ def calculate_relevance_score(item: Dict[str, Any]) -> float:
                 break
     
     # Calculate AI percentage
-    ai_percentage = ai_word_count / len(significant_words)
+    ai_percentage = ai_word_count / len(significant_words) if len(significant_words) > 0 else 0.0
     
-    # Require > 50% AI content to pass
-    if ai_percentage < 0.5:
-        logger.debug(f"Article '{item.get('title', '')[:50]}...' has {ai_percentage:.1%} AI content (required: >50%) - REJECTED")
-        return 0.0
-    
-    # Count AI/ML keyword mentions (for scoring)
+    # Count AI/ML keyword mentions (for scoring and relevance check)
     ai_keyword_mentions = sum(1 for keyword in AI_ML_KEYWORDS if keyword in text)
+    
+    # Check if article has meaningful AI relevance
+    # If tag_relevance_score >= 1, it means the article matched AI topics, so trust that and be lenient
+    tag_relevance_score = item.get('tag_relevance_score', 0)
+    if tag_relevance_score >= 1:
+        # Very lenient check: if article has tag_relevance_score >= 1, it already matched AI topics
+        # Just verify there's at least 1 AI keyword mention (tag_relevance_score already indicates AI relevance)
+        if ai_keyword_mentions < 1:
+            logger.debug(f"Article '{item.get('title', '')[:50]}...' has tag_relevance_score={tag_relevance_score} but no AI keywords found - REJECTED")
+            return 0.0
+        # For articles with tag_relevance_score >= 1, calculate a score based on AI keyword density
+        # but don't reject if percentage is low - trust the tag_relevance_score
+    else:
+        # Strict: require > 50% AI content for articles without tag_relevance_score
+        if ai_percentage < 0.5:
+            logger.debug(f"Article '{item.get('title', '')[:50]}...' has {ai_percentage:.1%} AI content (required: >50%) - REJECTED")
+            return 0.0
     
     # Penalize low-relevance keywords
     low_relevance_score = sum(1 for keyword in LOW_RELEVANCE_KEYWORDS if keyword in text)
@@ -159,12 +172,22 @@ def calculate_relevance_score(item: Dict[str, Any]) -> float:
     # More AI keywords = higher score, but cap at 1.0
     base_score = min(ai_keyword_mentions * 0.15, 1.0)
     
-    # Boost score based on AI percentage (if > 50%, give bonus)
-    ai_bonus = (ai_percentage - 0.5) * 0.5  # Up to 0.25 bonus for 100% AI
+    # Boost score based on AI percentage
+    if tag_relevance_score >= 1:
+        # For articles with tag_relevance_score >= 1, give bonus even if percentage is low
+        # Minimum bonus of 0.1 for having tag_relevance_score >= 1
+        ai_bonus = max((ai_percentage - 0.1) * 0.3, 0.1)  # At least 0.1 bonus, up to 0.27 for 100% AI
+    else:
+        # For articles without tag_relevance_score, require > 50% for bonus
+        ai_bonus = (ai_percentage - 0.5) * 0.5  # Up to 0.25 bonus for 100% AI
     
     # Apply penalty for low-relevance keywords
     penalty = min(low_relevance_score * 0.3, 0.8)
     final_score = max(base_score + ai_bonus - penalty, 0.0)
+    
+    # Ensure articles with tag_relevance_score >= 1 get at least a small score if they have AI keywords
+    if tag_relevance_score >= 1 and ai_keyword_mentions >= 1:
+        final_score = max(final_score, 0.05)  # Minimum score of 0.05 for articles with tag_relevance_score >= 1
     
     return min(final_score, 1.0)
 
@@ -450,17 +473,104 @@ def filter_by_composite_score(items: List[Dict[str, Any]], min_score: float = 0.
     return top_items
 
 
+def filter_by_user_criteria(items: List[Dict[str, Any]], max_items: int = 30) -> List[Dict[str, Any]]:
+    """
+    Filter items using user's criteria:
+    - tag_relevance_score >= 1
+    - relevance_to_ai > 50% (relevance_score > 0.0, since calculate_relevance_score returns 0.0 if < 50%)
+    - No negative keywords
+    
+    Args:
+        items: List of news items
+        max_items: Maximum number of items to return (default: 30)
+        
+    Returns:
+        Filtered list of items that meet user criteria, sorted by relevance_score (highest first)
+    """
+    logger.info(f"Filtering {len(items)} items by user criteria (tag_relevance_score >= 1, relevance_to_ai > 50%, no negative keywords)")
+    
+    filtered_items = []
+    rejected_count = 0
+    rejection_reasons = {}
+    
+    for item in items:
+        # Check 1: tag_relevance_score >= 1
+        tag_relevance_score = item.get('tag_relevance_score', 0)
+        if tag_relevance_score < 1:
+            rejected_count += 1
+            rejection_reasons['tag_relevance_score'] = rejection_reasons.get('tag_relevance_score', 0) + 1
+            logger.debug(f"Rejected '{item.get('title', '')[:50]}...' - tag_relevance_score {tag_relevance_score} < 1")
+            continue
+        
+        # Check 2: relevance_to_ai > 50% (relevance_score > 0.0)
+        relevance_score = calculate_relevance_score(item)
+        item['relevance_score'] = relevance_score
+        if relevance_score <= 0.0:
+            rejected_count += 1
+            rejection_reasons['relevance_to_ai'] = rejection_reasons.get('relevance_to_ai', 0) + 1
+            logger.debug(f"Rejected '{item.get('title', '')[:50]}...' - relevance_to_ai <= 50% (score: {relevance_score:.2f})")
+            continue
+        
+        # Check 3: No negative keywords in title
+        title = item.get('title', '').lower()
+        has_title_negative = any(neg in title for neg in TITLE_NEGATIVE_KEYWORDS)
+        if has_title_negative:
+            rejected_count += 1
+            rejection_reasons['title_negative_keywords'] = rejection_reasons.get('title_negative_keywords', 0) + 1
+            logger.debug(f"Rejected '{item.get('title', '')[:50]}...' - negative keywords in title")
+            continue
+        
+        # Check 4: No negative keywords in body (unless strongly AI-related)
+        summary = item.get('summary', '').lower()
+        combined_text = f"{title} {summary}"
+        has_negative = any(neg in combined_text for neg in NEGATIVE_KEYWORDS)
+        if has_negative:
+            # Check if it has strong AI keywords to override
+            strong_ai_keywords = ['ai', 'artificial intelligence', 'machine learning', 'ml', 'neural', 
+                                'gpt', 'llm', 'transformer', 'algorithm', 'model', 'deep learning']
+            strong_ai_count = sum(1 for ai_kw in strong_ai_keywords if ai_kw in combined_text)
+            if strong_ai_count < 3:
+                rejected_count += 1
+                rejection_reasons['negative_keywords'] = rejection_reasons.get('negative_keywords', 0) + 1
+                logger.debug(f"Rejected '{item.get('title', '')[:50]}...' - negative keywords, only {strong_ai_count} AI keywords")
+                continue
+        
+        # Item passed all checks
+        filtered_items.append(item)
+    
+    # Sort by relevance_score (highest first)
+    filtered_items.sort(key=lambda x: x.get('relevance_score', 0.0), reverse=True)
+    
+    # Return top N items
+    top_items = filtered_items[:max_items]
+    
+    removed = len(items) - len(top_items)
+    logger.info(f"User criteria filtering complete: {len(top_items)} items kept (removed {removed} items)")
+    if rejection_reasons:
+        logger.info(f"Rejection reasons: {rejection_reasons}")
+    
+    if top_items:
+        logger.info(f"Relevance score range: {top_items[-1].get('relevance_score', 0):.2f} - {top_items[0].get('relevance_score', 0):.2f}")
+    
+    return top_items
+
+
 def filter_and_deduplicate(items: List[Dict[str, Any]], 
                           similarity_threshold: float = 0.7,
                           min_relevance: float = 0.1,
                           max_items: int = 30) -> List[Dict[str, Any]]:
     """
-    Apply deduplication, relevance filtering, and composite scoring to get top N items.
+    Apply deduplication and filtering using user's criteria to get top N items.
+    
+    User criteria:
+    - tag_relevance_score >= 1
+    - relevance_to_ai > 50% (relevance_score > 0.0)
+    - No negative keywords
     
     Args:
         items: List of news items
         similarity_threshold: Similarity threshold for deduplication
-        min_relevance: Minimum relevance score to keep
+        min_relevance: Minimum relevance score to keep (deprecated, kept for compatibility)
         max_items: Maximum number of items to return (default: 30)
         
     Returns:
@@ -471,11 +581,8 @@ def filter_and_deduplicate(items: List[Dict[str, Any]],
     # First deduplicate
     unique_items = deduplicate_items(items, similarity_threshold)
     
-    # Then filter by relevance (basic filter)
-    relevant_items = filter_by_relevance(unique_items, min_relevance)
-    
-    # Finally, apply composite scoring and get top N
-    top_items = filter_by_composite_score(relevant_items, min_score=0.2, max_items=max_items)
+    # Then filter by user criteria (tag_relevance_score >= 1, relevance_to_ai > 50%, no negative keywords)
+    top_items = filter_by_user_criteria(unique_items, max_items=max_items)
     
     logger.info(f"Filtering complete: {len(top_items)} top items selected")
     

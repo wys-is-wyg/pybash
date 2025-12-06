@@ -176,8 +176,8 @@ def categorize_article(article: Dict[str, Any], min_matches: int = 1) -> Tuple[L
                 matched_topics.append((topic, 1))  # Other match = lower weight
     
     # Check if we have enough matches
-    if len(matched_topics) < min_score:
-        logger.debug(f"Article '{title[:50]}...' matched {len(matched_topics)} topics (required: {min_score}+) - REJECTED")
+    if len(matched_topics) < min_matches:
+        logger.debug(f"Article '{title[:50]}...' matched {len(matched_topics)} topics (required: {min_matches}+) - REJECTED")
         return [], len(matched_topics)
     
     # Sort by weight (descending) and get top 1-5 tags
