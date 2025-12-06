@@ -21,23 +21,23 @@
         <nav class="navbar-menu">
           <ul>
             <li>
-              <a href="/dashboard" class="nav-link" data-section="dashboard"
-                >Dashboard</a
+              <a href="#feed" class="nav-link active" data-section="feed"
+                >Feed</a
               >
             </li>
             <li>
-              <a href="/rationale" class="nav-link" data-section="rationale"
-                >Rationale</a
-              >
-            </li>
-            <li>
-              <a href="/video-ideas" class="nav-link" data-section="video-ideas"
+              <a href="#video-ideas" class="nav-link" data-section="video-ideas"
                 >Video Ideas</a
               >
             </li>
             <li>
-              <a href="/output" class="nav-link" data-section="output"
+              <a href="#output" class="nav-link" data-section="output"
                 >Output Feed</a
+              >
+            </li>
+            <li>
+              <a href="#rationale" class="nav-link" data-section="rationale"
+                >Rationale</a
               >
             </li>
           </ul>
@@ -91,61 +91,6 @@
           <p class="text-muted">
             The pipeline will populate this feed once it runs.
           </p>
-        </div>
-      </section>
-
-      <!-- Dashboard Section (n8n) -->
-      <section id="dashboard" class="content-section">
-        <div class="section-header">
-          <h2>n8n Automation Dashboard</h2>
-          <p class="section-description">
-            Monitor workflow executions and pipeline status
-          </p>
-        </div>
-        <div class="dashboard-container">
-          <div
-            id="iframe-wrapper"
-            style="position: relative; width: 100%; height: 80vh"
-          >
-            <iframe
-              id="n8n-iframe"
-              class="dashboard-iframe"
-              title="n8n Automation Dashboard"
-              allow="fullscreen"
-              style="width: 100%; height: 100%; border: none"
-              src="/n8n"
-            >
-            </iframe>
-          </div>
-          <div class="iframe-note">
-            <p>
-              <strong>Note:</strong> n8n dashboard is proxied through this
-              server (works with HTTPS)
-            </p>
-            <p>Default credentials: admin / (password from .env)</p>
-            <p
-              style="
-                font-size: 0.875rem;
-                color: var(--color-text-secondary, #a0a8b8);
-                margin-top: 0.5rem;
-              "
-            >
-              Direct access:
-              <a
-                href="/n8n"
-                target="_blank"
-                style="color: var(--color-primary, #ff6b35)"
-                >/n8n</a
-              >
-              or
-              <a
-                href="http://localhost:5678"
-                target="_blank"
-                style="color: var(--color-primary, #ff6b35)"
-                >http://localhost:5678</a
-              >
-            </p>
-          </div>
         </div>
       </section>
 

@@ -224,10 +224,13 @@ function setupNavigation() {
       const href = link.getAttribute("href");
       const targetSection = link.getAttribute("data-section");
 
-      // If it's a hash link (#section), handle as SPA
+      // Handle hash-based navigation
       if (href && href.startsWith("#")) {
         e.preventDefault();
         if (!targetSection) return;
+
+        // Update URL hash without triggering navigation
+        window.history.pushState(null, "", href);
 
         // Update active nav link
         navLinks.forEach((l) => l.classList.remove("active"));
@@ -245,8 +248,32 @@ function setupNavigation() {
         // Load section-specific content
         loadSectionContent(targetSection);
       }
-      // Otherwise, let the browser navigate normally (for /video-ideas, /output, etc.)
     });
+  });
+
+  // Handle browser back/forward buttons
+  window.addEventListener("popstate", () => {
+    const hash = window.location.hash.slice(1) || "feed";
+    const section = document.getElementById(hash);
+    const navLink = document.querySelector(`[data-section="${hash}"]`);
+
+    if (section && navLink) {
+      // Update active nav link
+      navLinks.forEach((l) => l.classList.remove("active"));
+      navLink.classList.add("active");
+
+      // Show/hide sections
+      sections.forEach((s) => {
+        if (s.id === hash) {
+          s.classList.add("active");
+        } else {
+          s.classList.remove("active");
+        }
+      });
+
+      // Load section content
+      loadSectionContent(hash);
+    }
   });
 }
 
@@ -517,91 +544,36 @@ function startAutoRefresh() {
 }
 
 /**
- * Updates URLs to use the current page protocol (HTTP/HTTPS)
- */
-function updateProtocolAwareUrls() {
-  const protocol = window.location.protocol;
-  const isHttps = protocol === "https:";
-
-  // Update n8n dashboard iframe (if not already set in HTML)
-  const n8nIframe = document.getElementById("n8n-iframe");
-
-  if (n8nIframe) {
-    const protocol = window.location.protocol;
-    const host = window.location.host;
-
-    // Use proxied n8n URL (works with both HTTP and HTTPS)
-    // The proxy route /n8n forwards to n8n container, enabling HTTPS access
-    const n8nUrl = `${protocol}//${host}/n8n`;
-
-    if (!n8nIframe.src || n8nIframe.src.includes("localhost:5678")) {
-      n8nIframe.src = n8nUrl;
-    }
-  }
-
-  // Update n8n URL display
-  const n8nUrlSpan = document.getElementById("n8n-url");
-  if (n8nUrlSpan) {
-    n8nUrlSpan.textContent = "http://localhost:5678";
-  }
-
-  // Update footer links to use current protocol
-  const footerN8nLink = document.getElementById("footer-n8n-link");
-  if (footerN8nLink) {
-    footerN8nLink.href = "http://localhost:5678";
-  }
-
-  // Health check link is already relative (/api/health), so it will use current protocol
-  // No update needed - relative URLs automatically use the same protocol
-}
-
-/**
  * Initializes the application when DOM is ready
  */
 function initialize() {
-  // Update protocol-aware URLs
-  updateProtocolAwareUrls();
-
-  // Check if we're on a specific route and load that section
-  const path = window.location.pathname;
-  let initialSection = "feed";
-
-  if (path === "/video-ideas") {
-    initialSection = "video-ideas";
-  } else if (path === "/output") {
-    initialSection = "output";
-  } else if (path === "/dashboard") {
-    initialSection = "dashboard";
-  } else if (path === "/rationale") {
-    initialSection = "rationale";
-  }
-
-  // Setup navigation
+  // Setup navigation first
   setupNavigation();
 
-  // Activate the correct section based on route
-  if (initialSection !== "feed") {
-    const section = document.getElementById(initialSection);
-    const navLink = document.querySelector(
-      `[data-section="${initialSection}"]`
-    );
-    if (section && navLink) {
-      // Hide all sections
-      document.querySelectorAll(".content-section").forEach((s) => {
-        s.classList.remove("active");
-      });
-      // Show target section
-      section.classList.add("active");
-      // Update nav
-      document.querySelectorAll(".nav-link").forEach((l) => {
-        l.classList.remove("active");
-      });
-      navLink.classList.add("active");
-      // Load section content
-      loadSectionContent(initialSection);
-    }
+  // Check hash or default to feed
+  const hash = window.location.hash.slice(1);
+  const initialSection = hash || "feed";
+
+  // Activate the correct section
+  const section = document.getElementById(initialSection);
+  const navLink = document.querySelector(`[data-section="${initialSection}"]`);
+
+  if (section && navLink) {
+    // Hide all sections
+    document.querySelectorAll(".content-section").forEach((s) => {
+      s.classList.remove("active");
+    });
+    // Show target section
+    section.classList.add("active");
+    // Update nav
+    document.querySelectorAll(".nav-link").forEach((l) => {
+      l.classList.remove("active");
+    });
+    navLink.classList.add("active");
+    // Load section content
+    loadSectionContent(initialSection);
   } else {
-    // Load initial feed
+    // Fallback: load feed
     loadFeed();
   }
 

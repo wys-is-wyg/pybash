@@ -22,9 +22,40 @@ app.use(
   })
 );
 
-// Proxy route for n8n dashboard (enables HTTPS access to n8n)
+// Proxy routes for n8n dashboard (enables HTTPS access to n8n)
+// n8n uses absolute paths for static assets, so we need to proxy those too
 // Must be before static files and specific routes
-// Use wildcard to catch all /n8n/* paths
+
+// Proxy n8n static assets (/static/* and /assets/*) - these are absolute paths from n8n
+app.use(
+  "/static",
+  createProxyMiddleware({
+    target: "http://n8n:5678",
+    changeOrigin: true,
+    ws: true,
+    logLevel: "debug",
+    onError: (err, req, res) => {
+      console.error("[n8n static proxy error]:", err.message);
+      res.status(502).send(`Proxy error: ${err.message}`);
+    },
+  })
+);
+
+app.use(
+  "/assets",
+  createProxyMiddleware({
+    target: "http://n8n:5678",
+    changeOrigin: true,
+    ws: true,
+    logLevel: "debug",
+    onError: (err, req, res) => {
+      console.error("[n8n assets proxy error]:", err.message);
+      res.status(502).send(`Proxy error: ${err.message}`);
+    },
+  })
+);
+
+// Proxy n8n main app and API
 app.use(
   "/n8n",
   createProxyMiddleware({
@@ -34,12 +65,47 @@ app.use(
       "^/n8n": "", // Remove /n8n prefix when forwarding to n8n
     },
     ws: true, // Enable WebSocket support for n8n
-    logLevel: "debug",
+    cookieDomainRewrite: "", // Preserve cookies
+    cookiePathRewrite: "/n8n", // Rewrite cookie paths to work with proxy
+    selfHandleResponse: true, // Handle response to rewrite HTML
     onProxyReq: (proxyReq, req, res) => {
-      console.log(`[n8n proxy] ${req.method} ${req.url} -> http://n8n:5678${req.url.replace("/n8n", "") || "/"}`);
+      // Preserve original host and protocol
+      proxyReq.setHeader("X-Forwarded-Proto", req.protocol);
+      proxyReq.setHeader("X-Forwarded-Host", req.get("host"));
+      proxyReq.setHeader("X-Forwarded-For", req.ip);
     },
-    onProxyRes: (proxyRes, req, res) => {
-      console.log(`[n8n proxy] Response: ${proxyRes.statusCode} for ${req.url}`);
+    onProxyRes: async (proxyRes, req, res) => {
+      // Only rewrite HTML responses
+      const contentType = proxyRes.headers["content-type"] || "";
+      if (contentType.includes("text/html")) {
+        let body = "";
+        proxyRes.on("data", (chunk) => {
+          body += chunk.toString();
+        });
+        proxyRes.on("end", () => {
+          // Rewrite absolute paths to work with proxy
+          body = body
+            .replace(/href="\/(static|assets)/g, 'href="/$1') // Keep /static and /assets as-is (proxied)
+            .replace(/src="\/(static|assets)/g, 'src="/$1') // Keep /static and /assets as-is (proxied)
+            .replace(/url\("\/(static|assets)/g, 'url("/$1'); // CSS url() references
+          res.setHeader("content-type", contentType);
+          res.end(body);
+        });
+      } else {
+        // For non-HTML, just pass through
+        proxyRes.pipe(res);
+      }
+
+      // Fix Set-Cookie headers to work with proxy path
+      if (proxyRes.headers["set-cookie"]) {
+        proxyRes.headers["set-cookie"] = proxyRes.headers["set-cookie"].map(
+          (cookie) => {
+            return cookie
+              .replace(/Path=\/[^;]*/g, "Path=/n8n")
+              .replace(/Domain=[^;]*/g, ""); // Remove domain restrictions
+          }
+        );
+      }
     },
     onError: (err, req, res) => {
       console.error("[n8n proxy error]:", err.message);
