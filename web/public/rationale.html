@@ -17,20 +17,20 @@
       }
 
       .rationale-page h1 {
-        color: var(--accent, #00d9ff);
+        color: var(--color-primary, #ff6b35);
         margin-bottom: 1rem;
       }
 
       .rationale-page h2 {
-        color: var(--accent, #00d9ff);
+        color: var(--color-primary, #ff6b35);
         margin-top: 2rem;
         margin-bottom: 1rem;
-        border-bottom: 2px solid var(--accent, #00d9ff);
+        border-bottom: 2px solid var(--color-primary, #ff6b35);
         padding-bottom: 0.5rem;
       }
 
       .rationale-page h3 {
-        color: var(--text, #e0e0e0);
+        color: var(--color-text-primary, #fff);
         margin-top: 1.5rem;
         margin-bottom: 0.75rem;
       }
@@ -52,8 +52,8 @@
       }
 
       .diagram-container {
-        background: var(--card-bg, #1a1f3a);
-        border: 1px solid var(--accent, #00d9ff);
+        background: var(--color-surface, #1a1f2e);
+        border: 1px solid var(--color-primary, #ff6b35);
         border-radius: 8px;
         padding: 1.5rem;
         margin: 2rem 0;
@@ -64,43 +64,43 @@
         font-family: "Courier New", monospace;
         font-size: 0.9rem;
         line-height: 1.8;
-        color: var(--text, #e0e0e0);
+        color: var(--color-text-primary, #fff);
         white-space: pre;
       }
 
       .back-link {
         display: inline-block;
         margin-bottom: 2rem;
-        color: var(--accent, #00d9ff);
+        color: var(--color-primary, #ff6b35);
         text-decoration: none;
         padding: 0.5rem 1rem;
-        border: 1px solid var(--accent, #00d9ff);
+        border: 1px solid var(--color-primary, #ff6b35);
         border-radius: 4px;
         transition: all 0.3s ease;
       }
 
       .back-link:hover {
-        background: var(--accent, #00d9ff);
-        color: var(--primary, #0a0e27);
+        background: var(--color-primary, #ff6b35);
+        color: var(--color-background, #0f1419);
       }
 
       .pipeline-stage {
-        background: var(--card-bg, #1a1f3a);
-        border-left: 4px solid var(--accent, #00d9ff);
+        background: var(--color-surface, #1a1f2e);
+        border-left: 4px solid var(--color-primary, #ff6b35);
         padding: 1rem;
         margin: 1rem 0;
         border-radius: 4px;
       }
 
       .pipeline-stage h4 {
-        color: var(--accent, #00d9ff);
+        color: var(--color-primary, #ff6b35);
         margin-bottom: 0.5rem;
       }
     </style>
   </head>
   <body>
     <div class="rationale-page">
-      <a href="index.html" class="back-link">← Back to Main Feed</a>
+      <a href="/" class="back-link">← Back to Main Feed</a>
 
       <h1>AI News Tracker: Architecture & Workflow</h1>
 
@@ -520,12 +520,12 @@ n8n Webhook
         </pre>
       </div>
 
-      <p style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--accent, #00d9ff);">
+      <p style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--color-primary, #ff6b35);">
         <em>
           For more details, see the main application at
-          <a href="index.html" style="color: var(--accent, #00d9ff);">index.html</a>
+          <a href="/" style="color: var(--color-primary, #ff6b35);">Main Feed</a>
           or access the n8n dashboard at
-          <a href="dashboard.html" style="color: var(--accent, #00d9ff);">dashboard.html</a>.
+          <a href="/dashboard" style="color: var(--color-primary, #ff6b35);">Dashboard</a>.
         </em>
       </p>
     </div>

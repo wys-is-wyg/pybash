@@ -523,9 +523,9 @@ function updateProtocolAwareUrls() {
   const protocol = window.location.protocol;
   const isHttps = protocol === "https:";
 
-  // Update n8n dashboard iframe
+  // Update n8n dashboard iframe (if not already set in HTML)
   const n8nIframe = document.getElementById("n8n-iframe");
-  if (n8nIframe) {
+  if (n8nIframe && !n8nIframe.src) {
     // Use same protocol as current page, but note: n8n might not support HTTPS
     // For now, keep HTTP for n8n since it's on a different port
     n8nIframe.src = "http://localhost:5678";
