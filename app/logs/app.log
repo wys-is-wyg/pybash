@@ -42254,3 +42254,19 @@
 2025-12-06 00:40:53 - __main__ - INFO - Request URL: https://cloud.leonardo.ai/api/rest/v1/generations
 2025-12-06 00:40:53 - __main__ - INFO - Request payload: {'prompt': 'Video thumbnail for: Exploring New (Part 2)', 'modelId': '6bef9f1b-29cb-40c7-b9df-32b51c1f67d3', 'width': 512, 'height': 512}
 2025-12-06 00:40:53 - __main__ - INFO - Authorization header: Bearer 6c6f03e6-fad5...
+2025-12-06 00:43:47 - app.scripts.data_manager - WARNING - File not found: /app/app/data/feed.json
+2025-12-06 00:43:47 - app.main - WARNING - Feed file not found: feed.json
+2025-12-06 00:43:57 - app.scripts.data_manager - WARNING - File not found: /app/app/data/feed.json
+2025-12-06 00:43:57 - app.main - WARNING - Feed file not found: feed.json
+2025-12-06 00:44:48 - app.scripts.data_manager - WARNING - File not found: /app/app/data/feed.json
+2025-12-06 00:44:48 - app.main - WARNING - Feed file not found: feed.json
+2025-12-06 01:37:18 - app.scripts.data_manager - WARNING - File not found: /app/app/data/feed.json
+2025-12-06 01:37:18 - app.main - WARNING - Feed file not found: feed.json
+2025-12-06 01:37:58 - app.scripts.data_manager - WARNING - File not found: /app/app/data/feed.json
+2025-12-06 01:37:58 - app.main - WARNING - Feed file not found: feed.json
+2025-12-06 01:38:21 - app.scripts.data_manager - WARNING - File not found: /app/app/data/feed.json
+2025-12-06 01:38:21 - app.main - WARNING - Feed file not found: feed.json
+2025-12-06 01:40:10 - app.scripts.data_manager - WARNING - File not found: /app/app/data/feed.json
+2025-12-06 01:40:10 - app.main - WARNING - Feed file not found: feed.json
+2025-12-06 01:40:20 - app.scripts.data_manager - WARNING - File not found: /app/app/data/feed.json
+2025-12-06 01:40:20 - app.main - WARNING - Feed file not found: feed.json

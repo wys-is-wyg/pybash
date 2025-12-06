@@ -221,26 +221,31 @@ function setupNavigation() {
 
   navLinks.forEach((link) => {
     link.addEventListener("click", (e) => {
-      e.preventDefault();
-
+      const href = link.getAttribute("href");
       const targetSection = link.getAttribute("data-section");
-      if (!targetSection) return;
 
-      // Update active nav link
-      navLinks.forEach((l) => l.classList.remove("active"));
-      link.classList.add("active");
+      // If it's a hash link (#section), handle as SPA
+      if (href && href.startsWith("#")) {
+        e.preventDefault();
+        if (!targetSection) return;
 
-      // Show/hide sections
-      sections.forEach((section) => {
-        if (section.id === targetSection) {
-          section.classList.add("active");
-        } else {
-          section.classList.remove("active");
-        }
-      });
+        // Update active nav link
+        navLinks.forEach((l) => l.classList.remove("active"));
+        link.classList.add("active");
 
-      // Load section-specific content
-      loadSectionContent(targetSection);
+        // Show/hide sections
+        sections.forEach((section) => {
+          if (section.id === targetSection) {
+            section.classList.add("active");
+          } else {
+            section.classList.remove("active");
+          }
+        });
+
+        // Load section-specific content
+        loadSectionContent(targetSection);
+      }
+      // Otherwise, let the browser navigate normally (for /video-ideas, /output, etc.)
     });
   });
 }
@@ -549,11 +554,48 @@ function initialize() {
   // Update protocol-aware URLs
   updateProtocolAwareUrls();
 
+  // Check if we're on a specific route and load that section
+  const path = window.location.pathname;
+  let initialSection = "feed";
+
+  if (path === "/video-ideas") {
+    initialSection = "video-ideas";
+  } else if (path === "/output") {
+    initialSection = "output";
+  } else if (path === "/dashboard") {
+    initialSection = "dashboard";
+  } else if (path === "/rationale") {
+    initialSection = "rationale";
+  }
+
   // Setup navigation
   setupNavigation();
 
-  // Load initial feed
-  loadFeed();
+  // Activate the correct section based on route
+  if (initialSection !== "feed") {
+    const section = document.getElementById(initialSection);
+    const navLink = document.querySelector(
+      `[data-section="${initialSection}"]`
+    );
+    if (section && navLink) {
+      // Hide all sections
+      document.querySelectorAll(".content-section").forEach((s) => {
+        s.classList.remove("active");
+      });
+      // Show target section
+      section.classList.add("active");
+      // Update nav
+      document.querySelectorAll(".nav-link").forEach((l) => {
+        l.classList.remove("active");
+      });
+      navLink.classList.add("active");
+      // Load section content
+      loadSectionContent(initialSection);
+    }
+  } else {
+    // Load initial feed
+    loadFeed();
+  }
 
   // Start auto-refresh
   startAutoRefresh();

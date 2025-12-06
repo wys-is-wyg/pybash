@@ -35,6 +35,14 @@ app.get("/dashboard", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "dashboard.html"));
 });
 
+app.get("/video-ideas", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+app.get("/output", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
 // Static middleware for public files (CSS, JS, images, etc.)
 app.use(express.static("public"));
 
