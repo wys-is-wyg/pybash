@@ -15,9 +15,13 @@
 #
 # Usage:
 #   bash run_pipeline.sh [--test] [--limit N]
-#   --test: Run in test mode (limits to 6 articles, skips thumbnail generation)
+#   --test: Run in test mode (limits to 6 articles, generates thumbnails for those 6)
 #   --limit N: Limit feed to N articles (default: 30, test mode: 6)
 #   Or via cron: 0 */6 * * * /path/to/run_pipeline.sh >> /var/log/pipeline.log 2>&1
+#
+# Note: This script runs the pipeline directly. To trigger via n8n workflow, use:
+#   curl -X POST http://localhost:5678/webhook/run-pipeline
+#   Or use the webhook_trigger.sh script
 #
 # Requirements:
 #   - .env file with API keys (ANTHROPIC_API_KEY, LEONARDO_API_KEY, etc.)
@@ -43,7 +47,8 @@ while [[ $# -gt 0 ]]; do
         --test)
             TEST_MODE=true
             FEED_LIMIT=6
-            SKIP_THUMBNAILS=true
+            # Test mode still generates thumbnails, just for fewer articles
+            SKIP_THUMBNAILS=false
             shift
             ;;
         --limit)
@@ -67,8 +72,23 @@ LOGS_DIR="$APP_DIR/logs"
 LOG_FILE="$LOGS_DIR/pipeline_$(date +%Y%m%d_%H%M%S).log"
 ENV_FILE="$PROJECT_ROOT/.env"
 
-# Python executable (use python3 if available, fall back to python)
-PYTHON="${PYTHON3_BIN:-python3}"
+# Python executable - use Docker container if available, otherwise local python3
+# Check if we're running inside Docker or if container exists
+if [ -f /.dockerenv ] || [ -n "${DOCKER_CONTAINER:-}" ]; then
+    # Running inside Docker container
+    PYTHON="${PYTHON3_BIN:-python3}"
+    DOCKER_EXEC=""
+elif docker ps --format '{{.Names}}' | grep -q "^ai-news-python$" 2>/dev/null; then
+    # Container exists, use docker exec
+    PYTHON="python3"
+    DOCKER_EXEC="docker exec ai-news-python"
+    echo "[INFO] Using Docker container: ai-news-python"
+else
+    # Running locally, use local python3
+    PYTHON="${PYTHON3_BIN:-python3}"
+    DOCKER_EXEC=""
+    echo "[WARN] Running locally - ensure Python dependencies are installed"
+fi
 
 # Ensure directories exist
 mkdir -p "$DATA_DIR" "$LOGS_DIR"
@@ -177,12 +197,26 @@ trap 'error_exit ${LINENO} $?' ERR
     log "INFO" "=== STEP 1: Fetching news from feeds ==="
     if [ -f "$APP_DIR/scripts/rss_scraper.py" ]; then
         log "INFO" "Running RSS scraper..."
-        $PYTHON "$APP_DIR/scripts/rss_scraper.py" > "$DATA_DIR/raw_news.json" 2>&1 || {
-            log "ERROR" "RSS scraper failed"
-            exit 1
-        }
+        if [ -n "$DOCKER_EXEC" ]; then
+            # Script writes to file directly, just capture stderr for errors
+            $DOCKER_EXEC $PYTHON "/app/app/scripts/rss_scraper.py" 2>"$DATA_DIR/rss_scraper_stderr.log" || {
+                log "ERROR" "RSS scraper failed"
+                if [ -f "$DATA_DIR/rss_scraper_stderr.log" ]; then
+                    log "ERROR" "Error output: $(cat "$DATA_DIR/rss_scraper_stderr.log" | tail -10)"
+                fi
+                exit 1
+            }
+        else
+            $PYTHON "$APP_DIR/scripts/rss_scraper.py" 2>"$DATA_DIR/rss_scraper_stderr.log" || {
+                log "ERROR" "RSS scraper failed"
+                if [ -f "$DATA_DIR/rss_scraper_stderr.log" ]; then
+                    log "ERROR" "Error output: $(cat "$DATA_DIR/rss_scraper_stderr.log" | tail -10)"
+                fi
+                exit 1
+            }
+        fi
         log "INFO" "Raw news saved to: $DATA_DIR/raw_news.json"
-        local raw_count=$(grep -c '"title"' "$DATA_DIR/raw_news.json" 2>/dev/null || echo 0)
+        raw_count=$(grep -c '"title"' "$DATA_DIR/raw_news.json" 2>/dev/null || echo 0)
         log "INFO" "Fetched approximately $raw_count articles"
     else
         log "WARN" "RSS scraper not found, skipping..."
@@ -204,14 +238,26 @@ trap 'error_exit ${LINENO} $?' ERR
     log "INFO" "=== STEP 3: Summarizing articles ==="
     if [ -f "$APP_DIR/scripts/summarizer.py" ]; then
         log "INFO" "Running summarizer (Claude)..."
-        $PYTHON "$APP_DIR/scripts/summarizer.py" \
-            < "$DATA_DIR/raw_news.json" \
-            > "$DATA_DIR/summaries.json" 2>&1 || {
-            log "ERROR" "Summarizer failed"
-            exit 1
-        }
+        if [ -n "$DOCKER_EXEC" ]; then
+            # Script writes to file directly, just capture stderr for errors
+            $DOCKER_EXEC $PYTHON "/app/app/scripts/summarizer.py" < "$DATA_DIR/raw_news.json" 2>"$DATA_DIR/summarizer_stderr.log" || {
+                log "ERROR" "Summarizer failed"
+                if [ -f "$DATA_DIR/summarizer_stderr.log" ]; then
+                    log "ERROR" "Error output: $(cat "$DATA_DIR/summarizer_stderr.log" | tail -10)"
+                fi
+                exit 1
+            }
+        else
+            $PYTHON "$APP_DIR/scripts/summarizer.py" < "$DATA_DIR/raw_news.json" 2>"$DATA_DIR/summarizer_stderr.log" || {
+                log "ERROR" "Summarizer failed"
+                if [ -f "$DATA_DIR/summarizer_stderr.log" ]; then
+                    log "ERROR" "Error output: $(cat "$DATA_DIR/summarizer_stderr.log" | tail -10)"
+                fi
+                exit 1
+            }
+        fi
         log "INFO" "Summaries saved to: $DATA_DIR/summaries.json"
-        local summary_count=$(grep -c '"title"' "$DATA_DIR/summaries.json" 2>/dev/null || echo 0)
+        summary_count=$(grep -c '"title"' "$DATA_DIR/summaries.json" 2>/dev/null || echo 0)
         log "INFO" "Generated $summary_count summaries"
     else
         log "WARN" "Summarizer not found, skipping..."
@@ -222,39 +268,262 @@ trap 'error_exit ${LINENO} $?' ERR
     log "INFO" "=== STEP 4: Generating video ideas ==="
     if [ -f "$APP_DIR/scripts/video_idea_generator.py" ]; then
         log "INFO" "Running video idea generator..."
-        $PYTHON "$APP_DIR/scripts/video_idea_generator.py" \
-            < "$DATA_DIR/summaries.json" \
-            > "$DATA_DIR/video_ideas.json" 2>&1 || {
-            log "ERROR" "Video idea generator failed"
-            exit 1
-        }
+        if [ -n "$DOCKER_EXEC" ]; then
+            # Script writes to file directly, just capture stderr for errors
+            $DOCKER_EXEC $PYTHON "/app/app/scripts/video_idea_generator.py" < "$DATA_DIR/summaries.json" 2>"$DATA_DIR/video_ideas_stderr.log" || {
+                log "ERROR" "Video idea generator failed"
+                if [ -f "$DATA_DIR/video_ideas_stderr.log" ]; then
+                    log "ERROR" "Error output: $(cat "$DATA_DIR/video_ideas_stderr.log" | tail -10)"
+                fi
+                exit 1
+            }
+        else
+            $PYTHON "$APP_DIR/scripts/video_idea_generator.py" < "$DATA_DIR/summaries.json" 2>"$DATA_DIR/video_ideas_stderr.log" || {
+                log "ERROR" "Video idea generator failed"
+                if [ -f "$DATA_DIR/video_ideas_stderr.log" ]; then
+                    log "ERROR" "Error output: $(cat "$DATA_DIR/video_ideas_stderr.log" | tail -10)"
+                fi
+                exit 1
+            }
+        fi
         log "INFO" "Video ideas saved to: $DATA_DIR/video_ideas.json"
-        local idea_count=$(grep -c '"video_title"' "$DATA_DIR/video_ideas.json" 2>/dev/null || echo 0)
+        idea_count=$(grep -c '"video_title"' "$DATA_DIR/video_ideas.json" 2>/dev/null || echo 0)
         log "INFO" "Generated $idea_count video ideas"
     else
         log "WARN" "Video idea generator not found, skipping..."
     fi
     log "INFO" ""
 
-    # Step 5: Generate thumbnails via Leonardo API (skip in test mode)
+    # Step 5: Generate thumbnails via Leonardo API (limited to top N video ideas)
     if [ "$SKIP_THUMBNAILS" = false ]; then
-        log "INFO" "=== STEP 5: Generating thumbnails via Leonardo API ==="
-        if [ -f "$APP_DIR/scripts/leonardo_api.py" ]; then
-            log "INFO" "Running thumbnail generator..."
-            $PYTHON "$APP_DIR/scripts/leonardo_api.py" \
-                < "$DATA_DIR/video_ideas.json" \
-                > "$DATA_DIR/thumbnails.json" 2>&1 || {
-                log "WARN" "Thumbnail generator encountered issues (may be expected if API limits reached)"
+        # In test mode, check credits and prompt for confirmation
+        if [ "$TEST_MODE" = true ]; then
+            log "INFO" "=== Checking Leonardo API Credits (Test Mode) ==="
+            
+            # Function to check Leonardo credits
+            check_leonardo_credits() {
+                local api_key
+                if [ -f "$PROJECT_ROOT/.env" ]; then
+                    api_key=$(grep '^LEONARDO_API_KEY=' "$PROJECT_ROOT/.env" | cut -d '=' -f2 | tr -d '"' | tr -d "'")
+                fi
+                
+                if [ -z "$api_key" ]; then
+                    log "WARN" "LEONARDO_API_KEY not found in .env"
+                    return 1
+                fi
+                
+                local response
+                response=$(curl -s -w "\n%{http_code}" \
+                    -X GET 'https://cloud.leonardo.ai/api/rest/v1/me' \
+                    -H "Authorization: Bearer $api_key" \
+                    -H 'Content-Type: application/json' 2>/dev/null)
+                
+                local http_code
+                http_code=$(echo "$response" | tail -n1)
+                local response_body
+                response_body=$(echo "$response" | sed '$d')
+                
+                if [ "$http_code" = "200" ]; then
+                    # Extract token information (API tokens are separate from subscription tokens)
+                    local token_info
+                    token_info=$(echo "$response_body" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    if 'user_details' in data and len(data['user_details']) > 0:
+        user = data['user_details'][0]
+        sub_tokens = user.get('subscriptionTokens', 0)
+        api_tokens = user.get('apiSubscriptionTokens', 0)
+        api_paid_tokens = user.get('apiPaidTokens', 0) or 0
+        paid_tokens = user.get('paidTokens', 0)
+        # API uses apiSubscriptionTokens + apiPaidTokens, NOT regular subscriptionTokens
+        api_total = api_tokens + (api_paid_tokens if api_paid_tokens else 0)
+        print(f'{api_total}|{sub_tokens}|{api_tokens}|{api_paid_tokens}')
+    else:
+        print('0|0|0|0')
+except Exception as e:
+    print(f'0|0|0|0')
+" 2>/dev/null)
+                    
+                    if [ -n "$token_info" ]; then
+                        api_total=$(echo "$token_info" | cut -d'|' -f1)
+                        sub_tokens=$(echo "$token_info" | cut -d'|' -f2)
+                        api_sub_tokens=$(echo "$token_info" | cut -d'|' -f3)
+                        api_paid=$(echo "$token_info" | cut -d'|' -f4)
+                        
+                        # Store all token info for display
+                        echo "${api_total}|${sub_tokens}|${api_sub_tokens}|${api_paid}"
+                        return 0
+                    else
+                        log "WARN" "Could not parse token information"
+                        return 1
+                    fi
+                else
+                    log "WARN" "Failed to check credits (HTTP $http_code)"
+                    return 1
+                fi
             }
+            
+            # Check credits
+            token_info=$(check_leonardo_credits)
+            if [ $? -eq 0 ] && [ -n "$token_info" ]; then
+                api_total=$(echo "$token_info" | cut -d'|' -f1)
+                sub_tokens=$(echo "$token_info" | cut -d'|' -f2)
+                api_sub_tokens=$(echo "$token_info" | cut -d'|' -f3)
+                api_paid=$(echo "$token_info" | cut -d'|' -f4)
+                
+                log "INFO" ""
+                log "INFO" "═══════════════════════════════════════════"
+                log "INFO" "Leonardo API Credits Check"
+                log "INFO" "═══════════════════════════════════════════"
+                log "INFO" "API Subscription Tokens: $api_sub_tokens"
+                if [ -n "$api_paid" ] && [ "$api_paid" != "0" ] && [ "$api_paid" != "null" ]; then
+                    log "INFO" "API Paid Tokens: $api_paid"
+                fi
+                log "INFO" "Total API Tokens Available: $api_total"
+                log "INFO" "Regular Subscription Tokens: $sub_tokens (not used by API)"
+                log "INFO" ""
+                log "INFO" "Estimated tokens needed: ~$FEED_LIMIT (1 per thumbnail)"
+                log "INFO" ""
+                
+                # Warn if API tokens are low or zero
+                if [ "$api_total" = "0" ] || [ -z "$api_total" ] || [ "$api_total" = "null" ]; then
+                    log "WARN" "⚠️  WARNING: You have 0 API tokens available!"
+                    log "WARN" "The API requires 'apiSubscriptionTokens' or 'apiPaidTokens', not regular subscription tokens."
+                    log "WARN" "Please check your Leonardo API plan or purchase API tokens."
+                    log "WARN" ""
+                elif [ "$api_total" -lt "$FEED_LIMIT" ]; then
+                    log "WARN" "⚠️  WARNING: You may not have enough API tokens ($api_total available, ~$FEED_LIMIT needed)"
+                    log "WARN" ""
+                fi
+                
+                # Prompt for confirmation (read from /dev/tty to avoid pipe issues)
+                while true; do
+                    read -p "Proceed with thumbnail generation? (y/n): " -n 1 -r < /dev/tty
+                    echo
+                    case $REPLY in
+                        [Yy]* )
+                            log "INFO" "Proceeding with thumbnail generation..."
+                            break
+                            ;;
+                        [Nn]* )
+                            log "INFO" "Thumbnail generation cancelled by user"
+                            SKIP_THUMBNAILS=true
+                            break
+                            ;;
+                        * )
+                            echo "Please answer yes (y) or no (n)." > /dev/tty
+                            ;;
+                    esac
+                done
+                log "INFO" ""
+            else
+                log "WARN" "Could not check credits, proceeding anyway..."
+            fi
+        fi
+        
+        log "INFO" "=== STEP 5: Generating thumbnails via Leonardo API (limit: $FEED_LIMIT) ==="
+        if [ -f "$APP_DIR/scripts/leonardo_api.py" ]; then
+            # Limit video ideas to match feed limit (only generate thumbnails for top N)
+            VIDEO_IDEAS_INPUT="$DATA_DIR/video_ideas.json"
+            if [ -f "$DATA_DIR/video_ideas.json" ] && [ "$FEED_LIMIT" -lt 100 ]; then
+                log "INFO" "Limiting video ideas to $FEED_LIMIT for thumbnail generation"
+                LIMITED_FILE="$DATA_DIR/video_ideas_limited.json"
+                
+                if [ -n "$DOCKER_EXEC" ]; then
+                    $DOCKER_EXEC $PYTHON -c "
+import json
+from pathlib import Path
+
+data_file = Path('/app/app/data/video_ideas.json')
+limit_file = Path('/app/app/data/video_ideas_limited.json')
+
+with open(data_file, 'r') as f:
+    data = json.load(f)
+
+items = data.get('items', [])[:$FEED_LIMIT]
+limited_data = {
+    'items': items,
+    'total_items': len(items),
+    'limited_to': $FEED_LIMIT
+}
+
+with open(limit_file, 'w') as f:
+    json.dump(limited_data, f, indent=2)
+
+print(f'Limited video ideas to {len(items)} items')
+" 2>"$DATA_DIR/limit_ideas_stderr.log" && {
+                        if [ -f "$LIMITED_FILE" ]; then
+                            VIDEO_IDEAS_INPUT="$LIMITED_FILE"
+                            log "INFO" "Using limited video ideas file with $FEED_LIMIT items"
+                        else
+                            log "WARN" "Limited file not created, using all video ideas"
+                        fi
+                    } || {
+                        log "WARN" "Failed to limit video ideas, using all ideas"
+                    }
+                else
+                    $PYTHON -c "
+import json
+from pathlib import Path
+
+data_file = Path('$DATA_DIR/video_ideas.json')
+limit_file = Path('$DATA_DIR/video_ideas_limited.json')
+
+with open(data_file, 'r') as f:
+    data = json.load(f)
+
+items = data.get('items', [])[:$FEED_LIMIT]
+limited_data = {
+    'items': items,
+    'total_items': len(items),
+    'limited_to': $FEED_LIMIT
+}
+
+with open(limit_file, 'w') as f:
+    json.dump(limited_data, f, indent=2)
+
+print(f'Limited video ideas to {len(items)} items')
+" 2>"$DATA_DIR/limit_ideas_stderr.log" && {
+                        if [ -f "$LIMITED_FILE" ]; then
+                            VIDEO_IDEAS_INPUT="$LIMITED_FILE"
+                            log "INFO" "Using limited video ideas file with $FEED_LIMIT items"
+                        else
+                            log "WARN" "Limited file not created, using all video ideas"
+                        fi
+                    } || {
+                        log "WARN" "Failed to limit video ideas, using all ideas"
+                    }
+                fi
+            fi
+            
+            log "INFO" "Running thumbnail generator (limit: $FEED_LIMIT)..."
+            if [ -n "$DOCKER_EXEC" ]; then
+                # Convert local path to container path
+                if [ "$VIDEO_IDEAS_INPUT" = "$DATA_DIR/video_ideas_limited.json" ]; then
+                    CONTAINER_INPUT="/app/app/data/video_ideas_limited.json"
+                else
+                    CONTAINER_INPUT="/app/app/data/video_ideas.json"
+                fi
+                # Script writes to file directly, pass input file and limit as arguments
+                $DOCKER_EXEC $PYTHON "/app/app/scripts/leonardo_api.py" --input "$CONTAINER_INPUT" --limit "$FEED_LIMIT" 2>"$DATA_DIR/thumbnails_stderr.log" || {
+                    log "WARN" "Thumbnail generator encountered issues (may be expected if API limits reached)"
+                    if [ -f "$DATA_DIR/thumbnails_stderr.log" ]; then
+                        log "WARN" "Error output: $(cat "$DATA_DIR/thumbnails_stderr.log" | tail -5)"
+                    fi
+                }
+            else
+                $PYTHON "$APP_DIR/scripts/leonardo_api.py" --input "$VIDEO_IDEAS_INPUT" --limit "$FEED_LIMIT" 2>"$DATA_DIR/thumbnails_stderr.log" || {
+                    log "WARN" "Thumbnail generator encountered issues (may be expected if API limits reached)"
+                    if [ -f "$DATA_DIR/thumbnails_stderr.log" ]; then
+                        log "WARN" "Error output: $(cat "$DATA_DIR/thumbnails_stderr.log" | tail -5)"
+                    fi
+                }
+            fi
             log "INFO" "Thumbnails saved to: $DATA_DIR/thumbnails.json"
         else
             log "WARN" "Thumbnail generator not found, skipping..."
         fi
-    else
-        log "INFO" "=== STEP 5: Skipping thumbnail generation (test mode) ==="
-        # Create empty thumbnails file for compatibility
-        echo '{"items": []}' > "$DATA_DIR/thumbnails.json"
-        log "INFO" "Created empty thumbnails.json for test mode"
     fi
     log "INFO" ""
 
@@ -262,13 +531,20 @@ trap 'error_exit ${LINENO} $?' ERR
     log "INFO" "=== STEP 6: Merging data into feed.json (limit: $FEED_LIMIT) ==="
     if [ -f "$APP_DIR/scripts/data_manager.py" ]; then
         log "INFO" "Running data manager with feed limit: $FEED_LIMIT..."
-        $PYTHON "$APP_DIR/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
-            log "ERROR" "Data manager failed"
-            exit 1
-        }
+        if [ -n "$DOCKER_EXEC" ]; then
+            $DOCKER_EXEC $PYTHON "/app/app/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
+                log "ERROR" "Data manager failed"
+                exit 1
+            }
+        else
+            $PYTHON "$APP_DIR/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
+                log "ERROR" "Data manager failed"
+                exit 1
+            }
+        fi
         log "INFO" "Merged feed saved to: $DATA_DIR/feed.json"
         if [ -f "$DATA_DIR/feed.json" ]; then
-            local feed_count=$(grep -c '"title"' "$DATA_DIR/feed.json" 2>/dev/null || echo 0)
+            feed_count=$(grep -c '"title"' "$DATA_DIR/feed.json" 2>/dev/null || echo 0)
             log "INFO" "Final feed contains $feed_count items (limit: $FEED_LIMIT)"
         fi
     else

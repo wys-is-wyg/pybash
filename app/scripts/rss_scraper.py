@@ -90,14 +90,23 @@ def parse_feed_entries(entries: List[Any]) -> List[Dict[str, Any]]:
                 except (ValueError, TypeError):
                     pass
             
+            # Clean text fields to remove control characters that break JSON
+            def clean_text(text):
+                if not text:
+                    return ''
+                # Remove control characters except newlines, tabs, and carriage returns
+                import re
+                # Keep \n, \r, \t, but remove other control chars (0x00-0x1F except 0x09, 0x0A, 0x0D)
+                return re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F]', '', str(text))
+            
             news_item = {
-                'title': getattr(entry, 'title', ''),
-                'summary': getattr(entry, 'summary', ''),
-                'source': getattr(entry, 'source', {}).get('title', '') if hasattr(entry, 'source') else '',
+                'title': clean_text(getattr(entry, 'title', '')),
+                'summary': clean_text(getattr(entry, 'summary', '')),
+                'source': clean_text(getattr(entry, 'source', {}).get('title', '') if hasattr(entry, 'source') else ''),
                 'source_url': getattr(entry, 'link', ''),
                 'published_date': published_date,
-                'author': getattr(entry, 'author', ''),
-                'tags': [tag.term for tag in getattr(entry, 'tags', [])],
+                'author': clean_text(getattr(entry, 'author', '')),
+                'tags': [clean_text(tag.term) for tag in getattr(entry, 'tags', [])],
             }
             
             news_items.append(news_item)

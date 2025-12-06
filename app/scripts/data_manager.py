@@ -10,6 +10,7 @@ from typing import Dict, List, Any, Optional
 from app.config import settings
 from app.scripts.logger import setup_logger
 from app.scripts.filtering import filter_and_deduplicate
+from app.scripts.tag_categorizer import assign_visual_tags_to_articles
 
 logger = setup_logger(__name__)
 
@@ -75,6 +76,12 @@ def save_json(data: Dict[str, Any], file_path: str) -> None:
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         logger.info(f"Successfully saved JSON to {path}")
+    except (UnicodeEncodeError, TypeError) as e:
+        # If there are encoding issues, try with ensure_ascii=True to escape non-ASCII
+        logger.warning(f"Encoding issue saving JSON, retrying with ASCII encoding: {e}")
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=True)
+        logger.info(f"Successfully saved JSON to {path} (with ASCII encoding)")
     except OSError as e:
         logger.error(f"Failed to save JSON to {path}: {e}")
         raise
@@ -117,8 +124,11 @@ def merge_feeds(
     
     merged_feed = []
     
+    # Assign visual tags to news items before adding to feed
+    news_items_with_tags = assign_visual_tags_to_articles(news_items.copy())
+    
     # Add news items (with tags preserved)
-    for item in news_items:
+    for item in news_items_with_tags:
         feed_item = {
             'type': 'news',
             'title': item.get('title', ''),
@@ -127,7 +137,8 @@ def merge_feeds(
             'source_url': item.get('source_url', ''),
             'published_date': item.get('published_date', ''),
             'thumbnail_url': item.get('thumbnail_url', ''),
-            'tags': item.get('tags', []),  # Preserve tags from RSS feed
+            'tags': item.get('tags', []),  # Preserve RSS tags
+            'visual_tags': item.get('visual_tags', []),  # Visual tags for image generation
             'author': item.get('author', ''),
         }
         merged_feed.append(feed_item)
@@ -240,6 +251,11 @@ if __name__ == "__main__":
             
             # Merge with filtering and limit
             merged_data = merge_feeds(news_items, video_ideas, thumbnails, apply_filtering=True, max_items=feed_limit)
+            
+            # Ensure final feed doesn't exceed limit (in case video ideas added extra items)
+            if len(merged_data) > feed_limit:
+                logger.info(f"Limiting final feed from {len(merged_data)} to {feed_limit} items")
+                merged_data = merged_data[:feed_limit]
             
             # Generate feed.json
             feed_data = {

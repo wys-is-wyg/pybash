@@ -49,7 +49,7 @@ def initialize_leonardo_client(api_key: str = None) -> None:
     logger.info("Leonardo API client initialized")
 
 
-def generate_thumbnail(prompt: str, model_id: str = None, use_alchemy: bool = None, model_type: str = "photoreal") -> Dict[str, Any]:
+def generate_thumbnail(prompt: str, model_id: str = None, use_alchemy: bool = None, model_type: str = "photoreal", tags: List[str] = None) -> Dict[str, Any]:
     """
     Generate thumbnail image via Leonardo API.
     
@@ -77,12 +77,33 @@ def generate_thumbnail(prompt: str, model_id: str = None, use_alchemy: bool = No
     
     url = f"{settings.LEONARDO_API_BASE_URL}/generations"
     
-    # Build enhanced prompt for better results
-    enhanced_prompt = f"Professional video thumbnail, {prompt}, high quality, detailed, cinematic lighting, vibrant colors"
+    # Build enhanced prompt using the specified format
+    # Incorporate visual tags if available (strictly use only visual_tags, not RSS tags)
+    tags_section = ""
+    if tags and len(tags) > 0:
+        # Use up to 3 visual tags
+        tag_list = tags[:3]
+        tags_section = f"\n\nVisual theme focus: {', '.join(tag_list)}.\n\n"
+    
+    enhanced_prompt = (
+        f"High-end AI technology artwork in a dark futuristic theme. "
+        f"\n\n"
+        f"Deep space black (#0f1419) background with vibrant orange (#ff6b35) accent lighting. "
+        f"\n\n"
+        f"Sleek cinematic composition with glowing neural networks, holographic UI panels, data streams, and abstract tech shapes. "
+        f"\n\n"
+        f"Ultra-clean, minimal, professional, high-tech visual identity consistent with an AI news platform."
+        f"{tags_section}"
+        f"Hyper-detailed, sharp, 4K render, cinematic lighting, volumetric glow, depth-of-field, "
+        f"symmetry, centered focal point, smooth gradients, polished futuristic UI design. "
+        f"\n\n"
+        f"STRICT: no text, no words, no letters, no symbols, no logos. "
+        f"\n\n"
+        f"Pure imagery only."
+    )
     
     payload = {
         "prompt": enhanced_prompt,
-        "modelId": model_id,
         "width": settings.LEONARDO_THUMBNAIL_WIDTH,
         "height": settings.LEONARDO_THUMBNAIL_HEIGHT,
         "num_images": 1,  # Generate one image
@@ -93,9 +114,16 @@ def generate_thumbnail(prompt: str, model_id: str = None, use_alchemy: bool = No
         payload["alchemy"] = True
         payload["presetStyle"] = settings.LEONARDO_PRESET_STYLE
         if model_type == "photoreal":
+            # PhotoReal mode: don't include modelId, use photoReal instead
             payload["photoReal"] = True
             payload["photoRealStrength"] = settings.LEONARDO_PHOTOREAL_STRENGTH
+        else:
+            # For non-PhotoReal models (e.g., FluxDev), include modelId
+            payload["modelId"] = model_id
         payload["enhancePrompt"] = settings.LEONARDO_ENHANCE_PROMPT
+    else:
+        # If Alchemy is disabled, include modelId for all model types
+        payload["modelId"] = model_id
     
     logger.debug(f"Generating thumbnail with prompt: {prompt[:50]}...")
     
@@ -284,7 +312,9 @@ def download_generated_image(image_url: str, save_path: str) -> bool:
 
 def batch_generate_thumbnails(
     video_ideas: List[Dict[str, Any]],
-    output_dir: str = None
+    output_dir: str = None,
+    model_type: str = "photoreal",
+    use_alchemy: bool = True
 ) -> List[Dict[str, Any]]:
     """
     Orchestrate batch thumbnail generation with retry/rate-limit handling.
@@ -292,6 +322,8 @@ def batch_generate_thumbnails(
     Args:
         video_ideas: List of video idea dictionaries
         output_dir: Directory to save thumbnails (defaults to settings.DATA_DIR)
+        model_type: Model type to use - "photoreal" or "fluxdev" (default: "photoreal")
+        use_alchemy: Whether to use Alchemy enhancement (default: True)
         
     Returns:
         List of thumbnail dictionaries with generation results
@@ -312,17 +344,27 @@ def batch_generate_thumbnails(
         idea_title = idea.get('title', f'idea_{i}')
         prompt = f"Video thumbnail for: {idea_title}"
         
-        logger.info(f"Processing {i}/{len(video_ideas)}: {idea_title}")
+        # Get visual_tags (for Leonardo image generation) - these are the categorized visual tags
+        visual_tags = idea.get('visual_tags', [])
+        if not visual_tags:
+            # Fallback: try to get from original article reference
+            visual_tags = idea.get('original_visual_tags', [])
+        
+        # Use visual_tags for image generation (not RSS tags)
+        tags = visual_tags
+        
+        logger.info(f"Processing {i}/{len(video_ideas)}: {idea_title} (visual tags: {', '.join(tags[:3]) if tags else 'none'})")
         
         # Retry logic
         for attempt in range(max_retries):
             try:
-                # Generate thumbnail with specified model and alchemy
+                # Generate thumbnail with specified model and alchemy, including tags
                 generation_result = generate_thumbnail(
                     prompt, 
                     model_id=None,  # Will use default based on model_type
                     use_alchemy=use_alchemy,
-                    model_type=model_type
+                    model_type=model_type,
+                    tags=tags
                 )
                 generation_id = generation_result["generation_id"]
                 
@@ -400,6 +442,12 @@ def batch_generate_thumbnails(
 def main():
     """Main execution function for command-line invocation."""
     import sys
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Generate thumbnails for video ideas')
+    parser.add_argument('--input', type=str, help='Input file path (default: video_ideas.json)')
+    parser.add_argument('--limit', type=int, help='Limit number of video ideas to process')
+    args = parser.parse_args()
     
     try:
         logger.info("Starting thumbnail generation process")
@@ -408,12 +456,21 @@ def main():
         initialize_leonardo_client()
         
         # Load video ideas from file
-        input_file = settings.VIDEO_IDEAS_FILE
+        if args.input:
+            input_file = args.input
+        else:
+            input_file = settings.VIDEO_IDEAS_FILE
         logger.info(f"Loading video ideas from {input_file}")
         
         try:
             data = load_json(input_file)
             video_ideas = data.get('items', [])
+            
+            # Apply limit if specified
+            if args.limit and args.limit > 0:
+                original_count = len(video_ideas)
+                video_ideas = video_ideas[:args.limit]
+                logger.info(f"Limited video ideas from {original_count} to {len(video_ideas)}")
         except FileNotFoundError:
             logger.error(f"Input file not found: {input_file}")
             return 1

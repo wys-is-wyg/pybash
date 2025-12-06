@@ -10,6 +10,7 @@ from datetime import datetime
 from app.config import settings
 from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json
+from app.scripts.tag_categorizer import categorize_article
 
 logger = setup_logger(__name__)
 
@@ -187,9 +188,19 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
                     source_url=source_url
                 )
                 
-                # Add reference to original article
+                # Add reference to original article and preserve tags
                 video_idea['original_title'] = title
                 video_idea['original_summary'] = summary
+                video_idea['tags'] = item.get('tags', [])  # Preserve RSS tags
+                # Assign visual tags for image generation (categorize if not already present)
+                if 'visual_tags' in item and item.get('visual_tags'):
+                    video_idea['visual_tags'] = item.get('visual_tags')
+                    video_idea['tag_relevance_score'] = item.get('tag_relevance_score', 0)
+                else:
+                    # Categorize article to get visual tags
+                    visual_tags, score = categorize_article(item)
+                    video_idea['visual_tags'] = visual_tags
+                    video_idea['tag_relevance_score'] = score
                 
                 video_ideas.append(video_idea)
                 logger.debug(f"Generated idea {idea_num + 1} for article {i}/{len(summaries)}")

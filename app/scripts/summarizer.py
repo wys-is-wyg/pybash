@@ -9,6 +9,7 @@ from transformers import pipeline
 from app.config import settings
 from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json
+from app.scripts.tag_categorizer import assign_visual_tags_to_articles
 
 logger = setup_logger(__name__)
 
@@ -161,6 +162,10 @@ def main():
         if not news_items:
             logger.warning("No news items to summarize")
             return 0
+        
+        # Assign visual tags to articles before summarizing
+        logger.info("Assigning visual tags to articles...")
+        news_items = assign_visual_tags_to_articles(news_items)
         
         # Summarize articles
         summarized_items = batch_summarize_news(news_items)

@@ -5,6 +5,8 @@ Provides REST API endpoints for news feed access, pipeline triggers, and webhook
 """
 
 import subprocess
+import os
+import glob
 from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -20,6 +22,57 @@ CORS(app)
 
 # Initialize logger
 logger = setup_logger(__name__)
+
+
+def cleanup_old_data():
+    """
+    Clean up old feed data and thumbnail images before starting a new pipeline run.
+    """
+    logger.info("Cleaning up old feed data and images")
+    
+    data_dir = settings.DATA_DIR
+    removed_count = 0
+    
+    # Remove JSON data files
+    data_files = [
+        settings.RAW_NEWS_FILE,
+        settings.SUMMARIES_FILE,
+        settings.VIDEO_IDEAS_FILE,
+        settings.THUMBNAILS_FILE,
+        settings.FEED_FILE,
+    ]
+    
+    for filename in data_files:
+        file_path = settings.get_data_file_path(filename)
+        if file_path.exists():
+            try:
+                file_path.unlink()
+                removed_count += 1
+                logger.info(f"Removed: {filename}")
+            except Exception as e:
+                logger.warning(f"Failed to remove {filename}: {e}")
+    
+    # Remove thumbnail image files (thumbnail_*.png)
+    try:
+        image_pattern = str(data_dir / "thumbnail_*.png")
+        image_files = glob.glob(image_pattern)
+        for image_file in image_files:
+            try:
+                os.remove(image_file)
+                removed_count += 1
+                logger.info(f"Removed image: {Path(image_file).name}")
+            except Exception as e:
+                logger.warning(f"Failed to remove image {image_file}: {e}")
+        
+        if image_files:
+            logger.info(f"Removed {len(image_files)} thumbnail image(s)")
+    except Exception as e:
+        logger.warning(f"Error removing thumbnail images: {e}")
+    
+    if removed_count > 0:
+        logger.info(f"Cleanup complete: removed {removed_count} file(s)")
+    else:
+        logger.info("No old data to clean up")
 
 
 @app.route('/health', methods=['GET'])
@@ -194,6 +247,9 @@ def scrape_feeds():
         JSON response with scraping status
     """
     try:
+        # Clean up old data before starting new pipeline
+        cleanup_old_data()
+        
         logger.info("Triggering RSS feed scraping")
         result = subprocess.run(
             ['python', '/app/app/scripts/rss_scraper.py'],
