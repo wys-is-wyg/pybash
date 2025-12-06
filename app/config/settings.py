@@ -20,9 +20,19 @@ class Settings:
     # Leonardo AI API Configuration
     LEONARDO_API_KEY: str = os.getenv("LEONARDO_API_KEY", "")
     LEONARDO_API_BASE_URL: str = "https://cloud.leonardo.ai/api/rest/v1"
-    LEONARDO_DEFAULT_MODEL_ID: str = "6bef9f1b-29cb-40c7-b9df-32b51c1f67d3"  # Leonardo Diffusion XL
-    LEONARDO_THUMBNAIL_WIDTH: int = 512
-    LEONARDO_THUMBNAIL_HEIGHT: int = 512
+    # Model IDs - Update these with actual model IDs from Leonardo API
+    # Get model IDs from: https://docs.leonardo.ai/reference/getmodels or check your Leonardo dashboard
+    LEONARDO_PHOTOREAL_MODEL_ID: str = os.getenv("LEONARDO_PHOTOREAL_MODEL_ID", "e316348f-7773-490e-adcd-46757e738c7e")  # Leonardo Photoreal
+    LEONARDO_FLUXDEV_MODEL_ID: str = os.getenv("LEONARDO_FLUXDEV_MODEL_ID", "5c232a02-8c3a-47c6-9c7e-2b5e7b5b5b5b")  # Flux Dev (update with actual ID from API)
+    LEONARDO_DEFAULT_MODEL_ID: str = LEONARDO_PHOTOREAL_MODEL_ID  # Default to Photoreal
+    # Video thumbnail dimensions (4:3 aspect ratio)
+    LEONARDO_THUMBNAIL_WIDTH: int = 1024  # 4:3 ratio
+    LEONARDO_THUMBNAIL_HEIGHT: int = 768   # 4:3 ratio
+    # Quality settings
+    LEONARDO_USE_ALCHEMY: bool = True  # Enable Alchemy for better quality
+    LEONARDO_PHOTOREAL_STRENGTH: float = 0.5  # 0.0 to 1.0, controls photorealism
+    LEONARDO_PRESET_STYLE: str = "CINEMATIC"  # Options: CINEMATIC, ANIME, CREATIVE, DYNAMIC, ENVIRONMENT, GENERAL, ILLUSTRATION, PHOTOGRAPHY, RAYTRACED, RENDER_3D, SKETCH_BW, SKETCH_COLOR
+    LEONARDO_ENHANCE_PROMPT: bool = True  # Enable prompt enhancement
     LEONARDO_GENERATION_TIMEOUT: int = 300  # seconds
     LEONARDO_POLL_INTERVAL: int = 5  # seconds between status checks
     

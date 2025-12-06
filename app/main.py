@@ -5,7 +5,8 @@ Provides REST API endpoints for news feed access, pipeline triggers, and webhook
 """
 
 import subprocess
-from flask import Flask, jsonify, request
+from pathlib import Path
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from app.config import settings
 from app.scripts.logger import setup_logger
@@ -34,6 +35,25 @@ def health_check():
         'service': 'ai-news-tracker',
         'version': '1.0.0'
     }), 200
+
+
+@app.route('/api/thumbnails/<filename>', methods=['GET'])
+def serve_thumbnail(filename):
+    """
+    Serve thumbnail images from the data directory.
+    
+    Args:
+        filename: Name of the thumbnail file (e.g., thumbnail_xxx.png)
+    
+    Returns:
+        Image file or 404 if not found
+    """
+    try:
+        data_dir = settings.DATA_DIR
+        return send_from_directory(str(data_dir), filename)
+    except Exception as e:
+        logger.error(f"Error serving thumbnail {filename}: {e}")
+        return jsonify({'error': 'Thumbnail not found'}), 404
 
 
 @app.route('/api/news', methods=['GET'])
@@ -86,8 +106,8 @@ def refresh_feed():
                 video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
                 thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
                 
-                # Merge and generate feed
-                merged_data = merge_feeds(news_items, video_ideas, thumbnails)
+                # Merge and generate feed (use default limit of 30)
+                merged_data = merge_feeds(news_items, video_ideas, thumbnails, max_items=30)
                 generate_feed_json(merged_data)
                 
                 item_count = len(merged_data)
@@ -122,8 +142,8 @@ def refresh_feed():
                 video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
                 thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
                 
-                # Merge and generate feed
-                merged_data = merge_feeds(news_items, video_ideas, thumbnails)
+                # Merge and generate feed (use default limit of 30)
+                merged_data = merge_feeds(news_items, video_ideas, thumbnails, max_items=30)
                 generate_feed_json(merged_data)
                 
                 item_count = len(merged_data)

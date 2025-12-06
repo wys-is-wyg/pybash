@@ -25,6 +25,8 @@ services:
       - "8443:8443"
     volumes:
       - ./web/ssl:/app/ssl:ro
+      - ./web/public:/app/public
+      - ./web/server.js:/app/server.js
     environment:
       - HTTPS_PORT=8443
       - SSL_CERT_PATH=/app/ssl/cert.pem

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from app.config import settings
 from app.scripts.logger import setup_logger
+from app.scripts.filtering import filter_and_deduplicate
 
 logger = setup_logger(__name__)
 
@@ -82,7 +83,9 @@ def save_json(data: Dict[str, Any], file_path: str) -> None:
 def merge_feeds(
     news_items: List[Dict[str, Any]],
     video_ideas: List[Dict[str, Any]],
-    thumbnails: List[Dict[str, Any]]
+    thumbnails: List[Dict[str, Any]],
+    apply_filtering: bool = True,
+    max_items: int = 30
 ) -> List[Dict[str, Any]]:
     """
     Merge news items, video ideas, and thumbnails into unified feed structure.
@@ -91,11 +94,18 @@ def merge_feeds(
         news_items: List of news article dictionaries
         video_ideas: List of video idea dictionaries
         thumbnails: List of thumbnail dictionaries with image paths
+        apply_filtering: Whether to apply deduplication and relevance filtering
         
     Returns:
         List of merged feed items with unified structure
     """
     logger.info(f"Merging {len(news_items)} news items, {len(video_ideas)} video ideas, {len(thumbnails)} thumbnails")
+    
+    # Apply filtering and deduplication to news items
+    if apply_filtering and news_items:
+        logger.info(f"Applying filtering and deduplication to news items (max_items: {max_items})")
+        # Get top N best articles based on composite scoring
+        news_items = filter_and_deduplicate(news_items, similarity_threshold=0.7, min_relevance=0.1, max_items=max_items)
     
     # Create thumbnail lookup by video idea ID or title
     thumbnail_lookup = {}
@@ -107,7 +117,7 @@ def merge_feeds(
     
     merged_feed = []
     
-    # Add news items
+    # Add news items (with tags preserved)
     for item in news_items:
         feed_item = {
             'type': 'news',
@@ -117,6 +127,8 @@ def merge_feeds(
             'source_url': item.get('source_url', ''),
             'published_date': item.get('published_date', ''),
             'thumbnail_url': item.get('thumbnail_url', ''),
+            'tags': item.get('tags', []),  # Preserve tags from RSS feed
+            'author': item.get('author', ''),
         }
         merged_feed.append(feed_item)
     
@@ -133,15 +145,23 @@ def merge_feeds(
             thumbnail_url = thumb.get('image_url', '')
             thumbnail_path = thumb.get('local_path', '')
         
+        # Convert local_path to HTTP URL if available
+        thumbnail_http_url = ''
+        if thumbnail_path:
+            # Extract filename from path
+            filename = Path(thumbnail_path).name
+            thumbnail_http_url = f"/api/thumbnails/{filename}"
+        
         feed_item = {
             'type': 'video_idea',
             'title': idea.get('title', ''),
             'description': idea.get('description', ''),
             'source': idea.get('source', ''),
             'source_url': idea.get('source_url', ''),
-            'thumbnail_url': thumbnail_url,
+            'thumbnail_url': thumbnail_http_url or thumbnail_url,  # Prefer HTTP URL over external URL
             'thumbnail_path': thumbnail_path,
             'generated_date': idea.get('generated_date', ''),
+            'tags': idea.get('tags', []),  # Preserve tags if available
         }
         merged_feed.append(feed_item)
     
@@ -172,36 +192,73 @@ def generate_feed_json(merged_data: List[Dict[str, Any]], output_file: str = Non
 
 
 if __name__ == "__main__":
-    """Command-line execution for testing."""
+    """Command-line execution for testing and pipeline."""
     import sys
+    import argparse
+    from datetime import datetime
     
-    if len(sys.argv) < 2:
-        print("Usage: python data_manager.py <command> [args]")
-        print("Commands:")
-        print("  load <file>     - Load and print JSON file")
-        print("  save <file>     - Save test data to JSON file")
-        print("  merge           - Merge test data files")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='AI News Tracker Data Manager')
+    parser.add_argument('--limit', type=int, default=30, help='Maximum number of articles in feed (default: 30)')
+    parser.add_argument('command', nargs='?', help='Command to execute (load, save, merge)')
+    parser.add_argument('args', nargs='*', help='Command arguments')
     
-    command = sys.argv[1]
-    
-    if command == "load" and len(sys.argv) > 2:
-        data = load_json(sys.argv[2])
-        print(json.dumps(data, indent=2))
-    
-    elif command == "save" and len(sys.argv) > 2:
-        test_data = {"test": "data", "items": [1, 2, 3]}
-        save_json(test_data, sys.argv[2])
-        print(f"Saved test data to {sys.argv[2]}")
-    
-    elif command == "merge":
-        # Test merge with sample data
-        news = [{"title": "Test News", "source": "test.com"}]
-        ideas = [{"title": "Test Idea", "source": "test.com"}]
-        thumbs = [{"title": "Test Idea", "image_url": "test.jpg"}]
-        merged = merge_feeds(news, ideas, thumbs)
-        print(json.dumps(merged, indent=2))
-    
+    # Parse arguments
+    if len(sys.argv) > 1 and sys.argv[1] in ['load', 'save', 'merge']:
+        # Old-style command parsing for backward compatibility
+        command = sys.argv[1]
+        
+        if command == "load" and len(sys.argv) > 2:
+            data = load_json(sys.argv[2])
+            print(json.dumps(data, indent=2))
+        elif command == "save" and len(sys.argv) > 2:
+            test_data = {"test": "data", "items": [1, 2, 3]}
+            save_json(test_data, sys.argv[2])
+            print(f"Saved test data to {sys.argv[2]}")
+        elif command == "merge":
+            # Test merge with sample data
+            news = [{"title": "Test News", "source": "test.com"}]
+            ideas = [{"title": "Test Idea", "source": "test.com"}]
+            thumbs = [{"title": "Test Idea", "image_url": "test.jpg"}]
+            merged = merge_feeds(news, ideas, thumbs)
+            print(json.dumps(merged, indent=2))
+        else:
+            print(f"Unknown command: {command}")
     else:
-        print(f"Unknown command: {command}")
+        # New-style: pipeline mode with --limit flag
+        args = parser.parse_args()
+        feed_limit = args.limit
+        
+        logger.info(f"Running data manager in pipeline mode (feed limit: {feed_limit})")
+        
+        try:
+            # Load all pipeline outputs
+            news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
+            video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
+            thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
+            
+            logger.info(f"Loaded {len(news_items)} news items, {len(video_ideas)} video ideas, {len(thumbnails)} thumbnails")
+            
+            # Merge with filtering and limit
+            merged_data = merge_feeds(news_items, video_ideas, thumbnails, apply_filtering=True, max_items=feed_limit)
+            
+            # Generate feed.json
+            feed_data = {
+                'version': '1.0',
+                'generated_at': datetime.utcnow().isoformat(),
+                'items': merged_data,
+                'total_items': len(merged_data),
+            }
+            save_json(feed_data, settings.FEED_FILE)
+            
+            logger.info(f"Successfully generated feed.json with {len(merged_data)} items")
+            print(f"✓ Feed generated: {len(merged_data)} items (limit: {feed_limit})")
+            
+        except FileNotFoundError as e:
+            logger.error(f"Required data file not found: {e}")
+            print(f"Error: Required data file not found: {e}")
+            sys.exit(1)
+        except Exception as e:
+            logger.error(f"Error in data manager: {e}", exc_info=True)
+            print(f"Error: {e}")
+            sys.exit(1)
 

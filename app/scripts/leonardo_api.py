@@ -5,6 +5,7 @@ Handles image generation, status polling, and batch processing for video thumbna
 """
 
 import time
+import os
 import requests
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -48,13 +49,15 @@ def initialize_leonardo_client(api_key: str = None) -> None:
     logger.info("Leonardo API client initialized")
 
 
-def generate_thumbnail(prompt: str, model_id: str = None) -> Dict[str, Any]:
+def generate_thumbnail(prompt: str, model_id: str = None, use_alchemy: bool = None, model_type: str = "photoreal") -> Dict[str, Any]:
     """
     Generate thumbnail image via Leonardo API.
     
     Args:
         prompt: Text prompt for image generation
         model_id: Model ID to use (defaults to settings.LEONARDO_DEFAULT_MODEL_ID)
+        use_alchemy: Whether to use Alchemy enhancement (defaults to settings.LEONARDO_USE_ALCHEMY)
+        model_type: Model type - "photoreal" or "fluxdev" (defaults to "photoreal")
         
     Returns:
         Dictionary with generation_id and status
@@ -62,18 +65,37 @@ def generate_thumbnail(prompt: str, model_id: str = None) -> Dict[str, Any]:
     if _api_headers is None:
         initialize_leonardo_client()
     
+    # Select model based on type
     if model_id is None:
-        model_id = settings.LEONARDO_DEFAULT_MODEL_ID
+        if model_type == "fluxdev":
+            model_id = settings.LEONARDO_FLUXDEV_MODEL_ID
+        else:
+            model_id = settings.LEONARDO_PHOTOREAL_MODEL_ID
+    
+    if use_alchemy is None:
+        use_alchemy = settings.LEONARDO_USE_ALCHEMY
     
     url = f"{settings.LEONARDO_API_BASE_URL}/generations"
     
+    # Build enhanced prompt for better results
+    enhanced_prompt = f"Professional video thumbnail, {prompt}, high quality, detailed, cinematic lighting, vibrant colors"
+    
     payload = {
-        "prompt": prompt,
+        "prompt": enhanced_prompt,
         "modelId": model_id,
         "width": settings.LEONARDO_THUMBNAIL_WIDTH,
         "height": settings.LEONARDO_THUMBNAIL_HEIGHT,
-        # Note: Leonardo API doesn't accept numImages - defaults to 1 image
+        "num_images": 1,  # Generate one image
     }
+    
+    # Add Alchemy parameters if enabled
+    if use_alchemy:
+        payload["alchemy"] = True
+        payload["presetStyle"] = settings.LEONARDO_PRESET_STYLE
+        if model_type == "photoreal":
+            payload["photoReal"] = True
+            payload["photoRealStrength"] = settings.LEONARDO_PHOTOREAL_STRENGTH
+        payload["enhancePrompt"] = settings.LEONARDO_ENHANCE_PROMPT
     
     logger.debug(f"Generating thumbnail with prompt: {prompt[:50]}...")
     
@@ -295,8 +317,13 @@ def batch_generate_thumbnails(
         # Retry logic
         for attempt in range(max_retries):
             try:
-                # Generate thumbnail
-                generation_result = generate_thumbnail(prompt)
+                # Generate thumbnail with specified model and alchemy
+                generation_result = generate_thumbnail(
+                    prompt, 
+                    model_id=None,  # Will use default based on model_type
+                    use_alchemy=use_alchemy,
+                    model_type=model_type
+                )
                 generation_id = generation_result["generation_id"]
                 
                 # Poll for completion
@@ -395,8 +422,10 @@ def main():
             logger.warning("No video ideas to process")
             return 0
         
-        # Generate thumbnails
-        thumbnails = batch_generate_thumbnails(video_ideas)
+        # Generate thumbnails with Photoreal model and Alchemy
+        # Try Photoreal first, then FluxDev as fallback
+        model_type = os.getenv("LEONARDO_MODEL_TYPE", "photoreal")  # "photoreal" or "fluxdev"
+        thumbnails = batch_generate_thumbnails(video_ideas, model_type=model_type, use_alchemy=True)
         
         # Save thumbnails metadata
         output_file = settings.THUMBNAILS_FILE

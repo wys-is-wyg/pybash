@@ -14,7 +14,9 @@
 #   7. Update Flask API with new feed
 #
 # Usage:
-#   bash run_pipeline.sh
+#   bash run_pipeline.sh [--test] [--limit N]
+#   --test: Run in test mode (limits to 6 articles, skips thumbnail generation)
+#   --limit N: Limit feed to N articles (default: 30, test mode: 6)
 #   Or via cron: 0 */6 * * * /path/to/run_pipeline.sh >> /var/log/pipeline.log 2>&1
 #
 # Requirements:
@@ -31,6 +33,31 @@
 
 set -euo pipefail
 
+# Parse command-line arguments
+TEST_MODE=false
+FEED_LIMIT=30
+SKIP_THUMBNAILS=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --test)
+            TEST_MODE=true
+            FEED_LIMIT=6
+            SKIP_THUMBNAILS=true
+            shift
+            ;;
+        --limit)
+            FEED_LIMIT="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--test] [--limit N]"
+            exit 1
+            ;;
+    esac
+done
+
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
@@ -45,6 +72,50 @@ PYTHON="${PYTHON3_BIN:-python3}"
 
 # Ensure directories exist
 mkdir -p "$DATA_DIR" "$LOGS_DIR"
+
+# Cleanup function to remove old data and images
+cleanup_old_data() {
+    log "INFO" "=== CLEANUP: Removing old feed data and images ==="
+    
+    # Remove JSON data files
+    local data_files=(
+        "$DATA_DIR/raw_news.json"
+        "$DATA_DIR/summaries.json"
+        "$DATA_DIR/video_ideas.json"
+        "$DATA_DIR/thumbnails.json"
+        "$DATA_DIR/feed.json"
+    )
+    
+    local removed_count=0
+    for file in "${data_files[@]}"; do
+        if [ -f "$file" ]; then
+            rm -f "$file"
+            removed_count=$((removed_count + 1))
+            log "INFO" "Removed: $(basename "$file")"
+        fi
+    done
+    
+    # Remove thumbnail image files (thumbnail_*.png)
+    if [ -d "$DATA_DIR" ]; then
+        local image_count=0
+        while IFS= read -r -d '' image_file; do
+            rm -f "$image_file"
+            image_count=$((image_count + 1))
+            log "INFO" "Removed image: $(basename "$image_file")"
+        done < <(find "$DATA_DIR" -maxdepth 1 -name "thumbnail_*.png" -type f -print0 2>/dev/null)
+        
+        if [ $image_count -gt 0 ]; then
+            log "INFO" "Removed $image_count thumbnail image(s)"
+        fi
+    fi
+    
+    if [ $removed_count -gt 0 ] || [ ${image_count:-0} -gt 0 ]; then
+        log "INFO" "Cleanup complete: removed $removed_count data file(s) and ${image_count:-0} image(s)"
+    else
+        log "INFO" "No old data to clean up"
+    fi
+    log "INFO" ""
+}
 
 # Create or touch .env if it doesn't exist
 if [ ! -f "$ENV_FILE" ]; then
@@ -87,12 +158,20 @@ trap 'error_exit ${LINENO} $?' ERR
 {
     log "INFO" "=========================================="
     log "INFO" "Starting AI News Tracker Pipeline"
+    if [ "$TEST_MODE" = true ]; then
+        log "INFO" "TEST MODE: Limited to $FEED_LIMIT articles"
+    else
+        log "INFO" "Feed limit: $FEED_LIMIT articles"
+    fi
     log "INFO" "=========================================="
     log "INFO" "Project Root: $PROJECT_ROOT"
     log "INFO" "App Directory: $APP_DIR"
     log "INFO" "Data Directory: $DATA_DIR"
     log "INFO" "Python: $PYTHON"
     log "INFO" ""
+
+    # Step 0: Cleanup old data and images
+    cleanup_old_data
 
     # Step 1: Fetch news from all feeds (RSS scraper, Reddit, Twitter/X)
     log "INFO" "=== STEP 1: Fetching news from feeds ==="
@@ -157,33 +236,40 @@ trap 'error_exit ${LINENO} $?' ERR
     fi
     log "INFO" ""
 
-    # Step 5: Generate thumbnails via Leonardo API
-    log "INFO" "=== STEP 5: Generating thumbnails via Leonardo API ==="
-    if [ -f "$APP_DIR/scripts/leonardo_api.py" ]; then
-        log "INFO" "Running thumbnail generator..."
-        $PYTHON "$APP_DIR/scripts/leonardo_api.py" \
-            < "$DATA_DIR/video_ideas.json" \
-            > "$DATA_DIR/thumbnails.json" 2>&1 || {
-            log "WARN" "Thumbnail generator encountered issues (may be expected if API limits reached)"
-        }
-        log "INFO" "Thumbnails saved to: $DATA_DIR/thumbnails.json"
+    # Step 5: Generate thumbnails via Leonardo API (skip in test mode)
+    if [ "$SKIP_THUMBNAILS" = false ]; then
+        log "INFO" "=== STEP 5: Generating thumbnails via Leonardo API ==="
+        if [ -f "$APP_DIR/scripts/leonardo_api.py" ]; then
+            log "INFO" "Running thumbnail generator..."
+            $PYTHON "$APP_DIR/scripts/leonardo_api.py" \
+                < "$DATA_DIR/video_ideas.json" \
+                > "$DATA_DIR/thumbnails.json" 2>&1 || {
+                log "WARN" "Thumbnail generator encountered issues (may be expected if API limits reached)"
+            }
+            log "INFO" "Thumbnails saved to: $DATA_DIR/thumbnails.json"
+        else
+            log "WARN" "Thumbnail generator not found, skipping..."
+        fi
     else
-        log "WARN" "Thumbnail generator not found, skipping..."
+        log "INFO" "=== STEP 5: Skipping thumbnail generation (test mode) ==="
+        # Create empty thumbnails file for compatibility
+        echo '{"items": []}' > "$DATA_DIR/thumbnails.json"
+        log "INFO" "Created empty thumbnails.json for test mode"
     fi
     log "INFO" ""
 
     # Step 6: Merge all data into unified feed
-    log "INFO" "=== STEP 6: Merging data into feed.json ==="
+    log "INFO" "=== STEP 6: Merging data into feed.json (limit: $FEED_LIMIT) ==="
     if [ -f "$APP_DIR/scripts/data_manager.py" ]; then
-        log "INFO" "Running data manager..."
-        $PYTHON "$APP_DIR/scripts/data_manager.py" 2>&1 || {
+        log "INFO" "Running data manager with feed limit: $FEED_LIMIT..."
+        $PYTHON "$APP_DIR/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
             log "ERROR" "Data manager failed"
             exit 1
         }
         log "INFO" "Merged feed saved to: $DATA_DIR/feed.json"
         if [ -f "$DATA_DIR/feed.json" ]; then
             local feed_count=$(grep -c '"title"' "$DATA_DIR/feed.json" 2>/dev/null || echo 0)
-            log "INFO" "Final feed contains $feed_count items"
+            log "INFO" "Final feed contains $feed_count items (limit: $FEED_LIMIT)"
         fi
     else
         log "WARN" "Data manager not found, skipping merge..."
