@@ -179,8 +179,11 @@ def merge_feeds(
     Returns:
         List of merged feed items with unified structure
     """
-    if thumbnails is None:
-        thumbnails = []
+    # Thumbnails parameter is deprecated (kept for backward compatibility)
+    # Tag images are now pre-generated and assigned based on visual_tags
+    if thumbnails:
+        logger.debug(f"Ignoring {len(thumbnails)} thumbnails (deprecated - using pre-generated tag images)")
+    
     logger.info(f"Merging {len(news_items)} news items, {len(video_ideas)} video ideas (using pre-generated tag images)")
     
     # Apply filtering and deduplication to news items
@@ -192,14 +195,6 @@ def merge_feeds(
         logger.info(f"Applying filtering and deduplication to news items (max_items: {max_items}, news_slots: {news_slots}, video_idea_slots: {video_idea_slots})")
         # Get top N best articles based on composite scoring (reserve slots for video ideas)
         news_items = filter_and_deduplicate(news_items, similarity_threshold=0.7, min_relevance=0.1, max_items=news_slots)
-    
-    # Create thumbnail lookup by video idea ID or title
-    thumbnail_lookup = {}
-    for thumb in thumbnails:
-        # Match thumbnails to video ideas by ID, title, or source
-        key = thumb.get('video_idea_id') or thumb.get('title') or thumb.get('source', '')
-        if key:
-            thumbnail_lookup[key] = thumb
     
     merged_feed = []
     
@@ -473,18 +468,10 @@ if __name__ == "__main__":
             news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
             video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
             
-            # Thumbnails are optional (deprecated - using pre-generated tag images now)
-            thumbnails = []
-            if Path(settings.THUMBNAILS_FILE).exists():
-                thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
-                logger.info(f"Loaded {len(thumbnails)} thumbnails (deprecated - using tag images)")
-            else:
-                logger.info("No thumbnails.json found (using pre-generated tag images)")
-            
             logger.info(f"Loaded {len(news_items)} news items, {len(video_ideas)} video ideas")
             
-            # Merge with filtering and limit
-            merged_data = merge_feeds(news_items, video_ideas, thumbnails, apply_filtering=True, max_items=feed_limit)
+            # Merge with filtering and limit (tag images are pre-generated)
+            merged_data = merge_feeds(news_items, video_ideas, apply_filtering=True, max_items=feed_limit)
             
             # Ensure final feed doesn't exceed limit (in case video ideas added extra items)
             if len(merged_data) > feed_limit:

@@ -6,7 +6,6 @@ Provides REST API endpoints for news feed access, pipeline triggers, and webhook
 
 import subprocess
 import os
-import glob
 import time
 import requests
 from pathlib import Path
@@ -28,7 +27,7 @@ logger = setup_logger(__name__)
 
 def cleanup_old_data():
     """
-    Clean up old feed data and thumbnail images before starting a new pipeline run.
+    Clean up old feed data files before starting a new pipeline run.
     """
     logger.info("Cleaning up old feed data and images")
     
@@ -54,23 +53,6 @@ def cleanup_old_data():
             except Exception as e:
                 logger.warning(f"Failed to remove {filename}: {e}")
     
-    # Remove thumbnail image files (thumbnail_*.png)
-    try:
-        image_pattern = str(data_dir / "thumbnail_*.png")
-        image_files = glob.glob(image_pattern)
-        for image_file in image_files:
-            try:
-                os.remove(image_file)
-                removed_count += 1
-                logger.info(f"Removed image: {Path(image_file).name}")
-            except Exception as e:
-                logger.warning(f"Failed to remove image {image_file}: {e}")
-        
-        if image_files:
-            logger.info(f"Removed {len(image_files)} thumbnail image(s)")
-    except Exception as e:
-        logger.warning(f"Error removing thumbnail images: {e}")
-    
     if removed_count > 0:
         logger.info(f"Cleanup complete: removed {removed_count} file(s)")
     else:
@@ -90,21 +72,6 @@ def health_check():
         'service': 'ai-news-tracker',
         'version': '1.0.0'
     }), 200
-
-
-@app.route('/api/tag-images/<filename>', methods=['GET'])
-def serve_tag_image(filename):
-    """
-    DEPRECATED: Tag images are now served as static files from web/public/tag_images.
-    This endpoint is kept for backward compatibility but should not be used.
-    
-    Tag images are now in the repo at web/public/tag_images/ and served by the web server.
-    """
-    logger.warning(f"Deprecated endpoint /api/tag-images/{filename} called - images should be served from /tag_images/")
-    return jsonify({
-        'error': 'This endpoint is deprecated. Tag images are served from /tag_images/',
-        'message': 'Tag images are now in web/public/tag_images/ and served as static files'
-    }), 404
 
 
 @app.route('/api/news', methods=['GET'])
@@ -159,15 +126,8 @@ def refresh_feed():
                 news_items = load_json(settings.SUMMARIES_FILE).get('items', [])
                 video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
                 
-                # Thumbnails file is optional (deprecated - using tag images instead)
-                try:
-                    thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
-                except FileNotFoundError:
-                    logger.debug("thumbnails.json not found (using tag images instead)")
-                    thumbnails = []
-                
-                # Merge and generate feed with filtering and limit
-                merged_data = merge_feeds(news_items, video_ideas, thumbnails, apply_filtering=True, max_items=feed_limit)
+                # Merge and generate feed with filtering and limit (tag images are pre-generated)
+                merged_data = merge_feeds(news_items, video_ideas, apply_filtering=True, max_items=feed_limit)
                 generate_feed_json(merged_data)
                 
                 item_count = len(merged_data)
@@ -201,15 +161,8 @@ def refresh_feed():
                 news_items = load_json(settings.SUMMARIES_FILE).get('items', [])
                 video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
                 
-                # Thumbnails file is optional (deprecated - using tag images instead)
-                try:
-                    thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
-                except FileNotFoundError:
-                    logger.debug("thumbnails.json not found (using tag images instead)")
-                    thumbnails = []
-                
-                # Merge and generate feed (use default limit of 12)
-                merged_data = merge_feeds(news_items, video_ideas, thumbnails, max_items=12)
+                # Merge and generate feed (use default limit of 12, tag images are pre-generated)
+                merged_data = merge_feeds(news_items, video_ideas, max_items=12)
                 generate_feed_json(merged_data)
                 
                 item_count = len(merged_data)
@@ -371,24 +324,6 @@ def generate_ideas():
         return jsonify({'error': 'Failed to trigger generation'}), 500
 
 
-# DEPRECATED: Thumbnail generation removed from pipeline
-# Tag images are now pre-generated separately using generate_tag_images.sh
-@app.route('/api/generate-thumbnails', methods=['GET', 'POST'])
-def generate_thumbnails():
-    """
-    DEPRECATED: Thumbnail generation removed from pipeline.
-    Tag images are now pre-generated separately using generate_tag_images.sh.
-    
-    Returns:
-        JSON response with instructions
-    """
-    return jsonify({
-        'status': 'info',
-        'message': 'Thumbnail generation removed from pipeline. Use generate_tag_images.sh to generate tag images separately.',
-        'instructions': 'Run: bash app/scripts/generate_tag_images.sh'
-    }), 200
-
-
 @app.route('/webhook/n8n', methods=['POST'])
 def n8n_webhook():
     """
@@ -418,14 +353,13 @@ def n8n_webhook():
         # If workflow completed successfully, merge data and update feed
         if status == 'completed' and 'data' in data:
             try:
-                # Load all pipeline outputs
+                # Load all pipeline outputs (tag images are pre-generated)
                 news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
                 video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
-                thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
                 
                 # Merge and generate feed with limit (default 12)
                 feed_limit = getattr(settings, 'FEED_LIMIT', 30)
-                merged_data = merge_feeds(news_items, video_ideas, thumbnails, apply_filtering=True, max_items=feed_limit)
+                merged_data = merge_feeds(news_items, video_ideas, apply_filtering=True, max_items=feed_limit)
                 generate_feed_json(merged_data)
                 
                 logger.info(f"Feed updated from n8n webhook: {len(merged_data)} items")
