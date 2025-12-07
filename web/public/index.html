@@ -15,8 +15,11 @@
     <header class="navbar">
       <div class="navbar-container">
         <div class="navbar-brand">
-          <h1>AI News Tracker</h1>
-          <p class="tagline">AI & ML News • Summaries • Video Ideas</p>
+          <img src="/images/logo.png" alt="AI News Tracker Logo" class="navbar-logo" />
+          <div class="navbar-brand-text">
+            <h1>KiwiLab AI News Tracker</h1>
+            <p class="tagline">AI & ML News • Summaries • Video Ideas</p>
+          </div>
         </div>
         <nav class="navbar-menu">
           <ul>
@@ -41,6 +44,9 @@
               >
             </li>
           </ul>
+          <button id="trigger-pipeline-btn" class="trigger-pipeline-btn" title="Run Pipeline">
+            Run Pipeline
+          </button>
         </nav>
       </div>
     </header>
@@ -219,6 +225,9 @@
 
           <h3>Automation & Scheduling</h3>
           <p><strong>n8n Workflow:</strong> Webhook-triggered orchestration</p>
+          <div class="n8n-workflow-image">
+            <img src="/images/n8n.png" alt="n8n Workflow Diagram" class="n8n-diagram" />
+          </div>
           <ul>
             <li>POST /webhook/run-pipeline triggers full pipeline</li>
             <li>Cron scheduling every 6 hours via bash script</li>

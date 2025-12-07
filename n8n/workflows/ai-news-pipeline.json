@@ -67,11 +67,8 @@
     },
     {
       "parameters": {
-        "method": "POST",
+        "method": "GET",
         "url": "http://python-app:5001/api/refresh",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"status\": \"completed\",\n  \"workflow\": \"ai-news-pipeline\",\n  \"timestamp\": \"{{ $now.toISO() }}\"\n}",
         "options": {}
       },
       "id": "refresh-feed",

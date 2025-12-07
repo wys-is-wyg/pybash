@@ -951,10 +951,77 @@ function setupTagFilters() {
 }
 
 
+// Trigger Pipeline Button Handler
+function setupTriggerPipelineButton() {
+  const triggerBtn = document.getElementById("trigger-pipeline-btn");
+  if (!triggerBtn) return;
+
+  triggerBtn.addEventListener("click", async function () {
+    // Disable button and show loading state with spinner
+    triggerBtn.disabled = true;
+    triggerBtn.classList.add("loading");
+    triggerBtn.textContent = "Processing...";
+
+    // Client-side timeout backup (95 seconds - slightly longer than server timeout)
+    const clientTimeout = setTimeout(() => {
+      triggerBtn.textContent = "Redirecting...";
+      setTimeout(() => {
+        window.location.reload(true); // Hard refresh
+      }, 1000);
+    }, 95000); // 95 seconds
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/trigger-pipeline`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      // Clear client timeout since we got a response
+      clearTimeout(clientTimeout);
+
+      const data = await response.json();
+
+      if (response.ok && data.status === "success") {
+        // Pipeline completed successfully - show redirecting, then refresh
+        triggerBtn.textContent = "Redirecting...";
+        setTimeout(() => {
+          window.location.reload(true); // Hard refresh
+        }, 1000); // 1 second pause
+      } else if (data.status === "timeout") {
+        // Pipeline still running - refresh anyway after delay
+        triggerBtn.textContent = "Redirecting...";
+        setTimeout(() => {
+          window.location.reload(true); // Hard refresh
+        }, 1000); // 1 second pause
+      } else {
+        // Error occurred
+        triggerBtn.textContent = "Error - Click to retry";
+        triggerBtn.disabled = false;
+        triggerBtn.classList.remove("loading");
+        alert(`Pipeline error: ${data.message || "Unknown error"}`);
+      }
+    } catch (error) {
+      // Clear client timeout on error
+      clearTimeout(clientTimeout);
+      console.error("Error triggering pipeline:", error);
+      triggerBtn.textContent = "Error - Click to retry";
+      triggerBtn.disabled = false;
+      triggerBtn.classList.remove("loading");
+      alert(`Failed to trigger pipeline: ${error.message}`);
+    }
+  });
+}
+
 // Initialize when DOM is ready
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initialize);
+  document.addEventListener("DOMContentLoaded", function () {
+    initialize();
+    setupTriggerPipelineButton();
+  });
 } else {
   // DOM is already ready
   initialize();
+  setupTriggerPipelineButton();
 }

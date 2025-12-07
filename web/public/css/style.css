@@ -100,6 +100,34 @@ p {
   justify-content: space-between;
 }
 
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.navbar-logo {
+  height: 5rem;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .navbar-logo {
+    height: 4rem;
+  }
+
+  .navbar-brand {
+    gap: 0.5rem;
+  }
+}
+
+.navbar-brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
 .navbar-brand h1 {
   font-size: 1.125rem;
   margin: 0;
@@ -110,6 +138,11 @@ p {
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   margin: 0;
+}
+
+.navbar-menu {
+  display: flex;
+  align-items: center;
 }
 
 .navbar-menu ul {
@@ -146,6 +179,63 @@ p {
   color: var(--color-primary);
   background-color: rgba(255, 107, 53, 0.1);
   border-color: rgba(255, 107, 53, 0.3);
+}
+
+/* Trigger Pipeline Button */
+.trigger-pipeline-btn {
+  margin-left: 1rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 9999px;
+  background-color: var(--color-primary);
+  color: white;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.trigger-pipeline-btn:hover {
+  background-color: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+}
+
+.trigger-pipeline-btn:active {
+  transform: translateY(0);
+}
+
+.trigger-pipeline-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.trigger-pipeline-btn.loading {
+  position: relative;
+  padding-right: 2.5rem; /* Make room for spinner */
+  color: white; /* Keep text visible */
+}
+
+.trigger-pipeline-btn.loading::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  right: 1rem;
+  margin-top: -8px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Main Content */
@@ -718,6 +808,20 @@ p {
 
 .rationale-content li {
   margin-bottom: 0.5rem;
+}
+
+/* n8n Workflow Image */
+.n8n-workflow-image {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+.n8n-diagram {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 .pipeline-diagram {

@@ -7,6 +7,8 @@ Provides REST API endpoints for news feed access, pipeline triggers, and webhook
 import subprocess
 import os
 import glob
+import time
+import requests
 from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -174,10 +176,16 @@ def refresh_feed():
         if request.method == 'GET':
             logger.info("Merging feed from data files (GET request)")
             try:
-                # Load all pipeline outputs
-                news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
+                # Load all pipeline outputs (use summaries.json, not raw_news.json)
+                news_items = load_json(settings.SUMMARIES_FILE).get('items', [])
                 video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
-                thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
+                
+                # Thumbnails file is optional (deprecated - using tag images instead)
+                try:
+                    thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
+                except FileNotFoundError:
+                    logger.debug("thumbnails.json not found (using tag images instead)")
+                    thumbnails = []
                 
                 # Merge and generate feed with filtering and limit
                 merged_data = merge_feeds(news_items, video_ideas, thumbnails, apply_filtering=True, max_items=feed_limit)
@@ -192,13 +200,13 @@ def refresh_feed():
                     'items_count': item_count
                 }), 200
             except FileNotFoundError as e:
-                logger.warning(f"Data file not found: {e}")
+                logger.error(f"Required data file not found: {e}")
                 return jsonify({
-                    'status': 'warning',
-                    'message': 'Some data files not found, feed may be incomplete'
-                }), 200
+                    'status': 'error',
+                    'message': f'Required data file not found: {str(e)}'
+                }), 500
             except Exception as e:
-                logger.error(f"Error merging feed from data files: {e}")
+                logger.error(f"Error merging feed from data files: {e}", exc_info=True)
                 return jsonify({'error': f'Failed to merge feed: {str(e)}'}), 500
         
         # POST request: try to get JSON body, but fall back to merging from files if no body
@@ -210,10 +218,16 @@ def refresh_feed():
         if not data:
             logger.info("Merging feed from data files (POST without body)")
             try:
-                # Load all pipeline outputs
-                news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
+                # Load all pipeline outputs (use summaries.json, not raw_news.json)
+                news_items = load_json(settings.SUMMARIES_FILE).get('items', [])
                 video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
-                thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
+                
+                # Thumbnails file is optional (deprecated - using tag images instead)
+                try:
+                    thumbnails = load_json(settings.THUMBNAILS_FILE).get('items', [])
+                except FileNotFoundError:
+                    logger.debug("thumbnails.json not found (using tag images instead)")
+                    thumbnails = []
                 
                 # Merge and generate feed (use default limit of 12)
                 merged_data = merge_feeds(news_items, video_ideas, thumbnails, max_items=12)
@@ -228,13 +242,13 @@ def refresh_feed():
                     'items_count': item_count
                 }), 200
             except FileNotFoundError as e:
-                logger.warning(f"Data file not found: {e}")
+                logger.error(f"Required data file not found: {e}")
                 return jsonify({
-                    'status': 'warning',
-                    'message': 'Some data files not found, feed may be incomplete'
-                }), 200
+                    'status': 'error',
+                    'message': f'Required data file not found: {str(e)}'
+                }), 500
             except Exception as e:
-                logger.error(f"Error merging feed from data files: {e}")
+                logger.error(f"Error merging feed from data files: {e}", exc_info=True)
                 return jsonify({'error': f'Failed to merge feed: {str(e)}'}), 500
         
         # POST with body: validate and save directly
@@ -447,6 +461,178 @@ def n8n_webhook():
     except Exception as e:
         logger.error(f"Error processing n8n webhook: {e}")
         return jsonify({'error': 'Failed to process webhook'}), 500
+
+
+@app.route('/api/trigger-pipeline', methods=['POST'])
+def trigger_pipeline():
+    """
+    Trigger the n8n webhook pipeline and wait for completion.
+    
+    Returns:
+        JSON response with status and message
+    """
+    try:
+        # Get webhook URL from environment
+        webhook_url = os.getenv('N8N_WEBHOOK_URL', '')
+        
+        # If not set, or if it contains localhost (wrong for Docker), use Docker service name
+        if not webhook_url or 'localhost' in webhook_url or '127.0.0.1' in webhook_url:
+            # Use Docker service name for container-to-container communication
+            n8n_port = settings.N8N_PORT
+            webhook_url = f"http://n8n:{n8n_port}/webhook/run-pipeline"
+            logger.info(f"Using Docker service webhook URL: {webhook_url}")
+        else:
+            logger.info(f"Using configured webhook URL from environment")
+        
+        # Get initial feed state (if exists)
+        feed_file = settings.get_data_file_path(settings.FEED_FILE)
+        initial_timestamp = None
+        initial_item_count = 0
+        feed_existed = feed_file.exists()
+        if feed_existed:
+            try:
+                feed_data = load_json(settings.FEED_FILE)
+                initial_timestamp = feed_data.get('generated_at')
+                initial_item_count = len(feed_data.get('items', []))
+            except:
+                pass
+        
+        # Construct payload
+        import datetime
+        payload = {
+            "trigger_source": "web_ui",
+            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "triggered_by": "web_ui_button"
+        }
+        
+        logger.info(f"Triggering n8n webhook: {webhook_url}")
+        
+        # Send webhook request - n8n may not respond immediately if workflow is long-running
+        # We'll treat any successful send (or timeout) as "webhook accepted" and start polling
+        webhook_triggered = False
+        try:
+            response = requests.post(
+                webhook_url,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=10  # Short timeout - we just need to send the request
+            )
+            
+            if response.status_code in [200, 201, 202]:
+                logger.info(f"Webhook acknowledged with status {response.status_code}")
+                webhook_triggered = True
+            else:
+                logger.warning(f"Webhook returned unexpected status {response.status_code}: {response.text}")
+                # Still proceed - workflow might have started
+                webhook_triggered = True
+                
+        except requests.exceptions.Timeout:
+            # Timeout is OK - n8n may have accepted the request but not responded yet
+            logger.info("Webhook request timed out (workflow may still be running)")
+            webhook_triggered = True
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"Failed to connect to n8n webhook: {e}")
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to connect to n8n: {str(e)}'
+            }), 500
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error sending webhook request: {e}")
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to trigger webhook: {str(e)}'
+            }), 500
+        
+        if not webhook_triggered:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to trigger webhook'
+            }), 500
+        
+        logger.info("Webhook triggered, starting to poll for completion...")
+        
+        # Poll for completion by checking if feed was updated
+        # Average pipeline time is 50s, so 90s timeout is reasonable
+        max_wait_time = 90  # 90 seconds max (average is 50s)
+        poll_interval = 3  # Check every 3 seconds
+        start_time = time.time()
+        
+        while time.time() - start_time < max_wait_time:
+            time.sleep(poll_interval)
+            
+            # Check if feed file exists and was updated
+            if feed_file.exists():
+                try:
+                    feed_data = load_json(settings.FEED_FILE)
+                    current_timestamp = feed_data.get('generated_at')
+                    current_item_count = len(feed_data.get('items', []))
+                    
+                    # Check if feed was just created (didn't exist before)
+                    if not feed_existed and current_item_count > 0:
+                        logger.info(f"Pipeline completed - feed created with {current_item_count} items")
+                        return jsonify({
+                            'status': 'success',
+                            'message': 'Pipeline completed successfully',
+                            'feed_updated': True,
+                            'items_count': current_item_count
+                        }), 200
+                    
+                    # Check if timestamp changed
+                    if current_timestamp and current_timestamp != initial_timestamp:
+                        logger.info(f"Pipeline completed - feed updated (timestamp changed)")
+                        return jsonify({
+                            'status': 'success',
+                            'message': 'Pipeline completed successfully',
+                            'feed_updated': True,
+                            'items_count': current_item_count
+                        }), 200
+                    
+                    # Check if item count increased significantly (feed was refreshed)
+                    if current_item_count > initial_item_count + 5:  # At least 5 new items
+                        logger.info(f"Pipeline completed - feed updated ({initial_item_count} -> {current_item_count} items)")
+                        return jsonify({
+                            'status': 'success',
+                            'message': 'Pipeline completed successfully',
+                            'feed_updated': True,
+                            'items_count': current_item_count
+                        }), 200
+                        
+                except Exception as e:
+                    logger.debug(f"Error checking feed: {e}")
+                    pass
+        
+        # Timeout after 90s - redirect anyway (pipeline may still be running in background)
+        elapsed_time = time.time() - start_time
+        logger.info(f"Polling timeout after {elapsed_time:.1f}s - redirecting (pipeline may still be running)")
+        
+        # Check if feed exists now (even if we didn't detect the update)
+        feed_exists_now = feed_file.exists()
+        if feed_exists_now:
+            try:
+                feed_data = load_json(settings.FEED_FILE)
+                current_item_count = len(feed_data.get('items', []))
+                logger.info(f"Feed exists with {current_item_count} items - redirecting")
+            except:
+                pass
+        
+        return jsonify({
+            'status': 'timeout',
+            'message': 'Redirecting after 90s timeout. Pipeline may still be running in background.',
+            'feed_updated': feed_exists_now
+        }), 202
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error triggering webhook: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to trigger webhook: {str(e)}'
+        }), 500
+    except Exception as e:
+        logger.error(f"Error in trigger_pipeline: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to trigger pipeline: {str(e)}'
+        }), 500
 
 
 @app.errorhandler(404)
