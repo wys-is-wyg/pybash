@@ -95,37 +95,16 @@ def health_check():
 @app.route('/api/tag-images/<filename>', methods=['GET'])
 def serve_tag_image(filename):
     """
-    Serve tag images from the tag_images directory.
+    DEPRECATED: Tag images are now served as static files from web/public/tag_images.
+    This endpoint is kept for backward compatibility but should not be used.
     
-    Args:
-        filename: Name of the tag image file (e.g., tag_001.png)
-    
-    Returns:
-        Image file or 404 if not found
+    Tag images are now in the repo at web/public/tag_images/ and served by the web server.
     """
-    try:
-        tag_images_dir = settings.DATA_DIR / "tag_images"
-        tag_images_path = tag_images_dir / filename
-        
-        # Log for debugging
-        logger.info(f"Serving tag image: {tag_images_path} (exists: {tag_images_path.exists()})")
-        logger.info(f"DATA_DIR: {settings.DATA_DIR}, tag_images_dir: {tag_images_dir}")
-        
-        if not tag_images_dir.exists():
-            logger.error(f"Tag images directory does not exist: {tag_images_dir}")
-            return jsonify({'error': f'Tag images directory not found'}), 404
-        
-        if not tag_images_path.exists():
-            logger.warning(f"Tag image not found: {tag_images_path}")
-            # List available files for debugging
-            available = list(tag_images_dir.glob("*.png"))
-            logger.warning(f"Available tag images: {[f.name for f in available[:5]]}")
-            return jsonify({'error': f'Tag image not found: {filename}'}), 404
-        
-        return send_from_directory(str(tag_images_dir), filename)
-    except Exception as e:
-        logger.error(f"Error serving tag image {filename}: {e}", exc_info=True)
-        return jsonify({'error': f'Tag image error: {str(e)}'}), 404
+    logger.warning(f"Deprecated endpoint /api/tag-images/{filename} called - images should be served from /tag_images/")
+    return jsonify({
+        'error': 'This endpoint is deprecated. Tag images are served from /tag_images/',
+        'message': 'Tag images are now in web/public/tag_images/ and served as static files'
+    }), 404
 
 
 @app.route('/api/news', methods=['GET'])

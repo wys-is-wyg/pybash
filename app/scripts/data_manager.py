@@ -293,7 +293,7 @@ def merge_feeds(
         """
         if not visual_tags:
             logger.debug("No visual tags provided for image lookup")
-            return "/api/tag-images/generic1.jpg"
+            return "/tag_images/generic1.jpg"
         
         # Try to find a semantic match for the first tag
         first_tag = visual_tags[0].lower().strip()
@@ -302,7 +302,7 @@ def merge_feeds(
         if first_tag in TAG_TO_IMAGE_MAPPING:
             image_name = TAG_TO_IMAGE_MAPPING[first_tag]
             logger.debug(f"Mapped tag '{first_tag}' to semantic image: {image_name}")
-            return f"/api/tag-images/{image_name}"
+            return f"/tag_images/{image_name}"
         
         # Check if any tag matches (in case first tag doesn't match but another does)
         for tag in visual_tags:
@@ -310,7 +310,7 @@ def merge_feeds(
             if tag_lower in TAG_TO_IMAGE_MAPPING:
                 image_name = TAG_TO_IMAGE_MAPPING[tag_lower]
                 logger.debug(f"Mapped tag '{tag_lower}' to semantic image: {image_name}")
-                return f"/api/tag-images/{image_name}"
+                return f"/tag_images/{image_name}"
         
         # No semantic match found - use generic image based on hash for consistency
         import hashlib
@@ -319,7 +319,7 @@ def merge_feeds(
         generic_image = GENERIC_IMAGES[generic_index]
         
         logger.debug(f"No semantic match for tags {visual_tags}, using generic: {generic_image}")
-        return f"/api/tag-images/{generic_image}"
+        return f"/tag_images/{generic_image}"
     
     # Helper function to get category from visual tags (deprecated - tags are now flat)
     def get_category_from_tags(visual_tags: List[str]) -> str:
