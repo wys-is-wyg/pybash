@@ -52,7 +52,7 @@ VIRALITY_FACTORS = [
 
 def extract_key_topics(text: str, max_topics: int = 5) -> List[str]:
     """
-    Extract key topics/keywords from text.
+    Extract key topics/keywords from text, prioritizing entities, companies, and AI/tech terms.
     
     Args:
         text: Text to analyze
@@ -68,34 +68,92 @@ def extract_key_topics(text: str, max_topics: int = 5) -> List[str]:
     is_valid, sanitized_text, reason = validate_for_video_ideas(text)
     if not is_valid:
         logger.warning(f"Input validation failed for topic extraction: {reason}")
-        # Return empty list rather than processing potentially dangerous input
         return []
     
     # Use sanitized text
     text = sanitized_text
     
-    # Simple keyword extraction: find capitalized words and important phrases
-    # Remove common stop words
-    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those'}
+    # Common sentence starters and non-entity words to exclude
+    excluded_words = {
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+        'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+        'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those',
+        'sometimes', 'after', 'before', 'during', 'while', 'when', 'where', 'why', 'how', 'what', 'which',
+        'who', 'whom', 'whose', 'if', 'then', 'else', 'because', 'since', 'until', 'unless', 'although',
+        'however', 'therefore', 'moreover', 'furthermore', 'nevertheless', 'meanwhile', 'additionally',
+        'creator', 'creators', 'creates', 'created', 'creating', 'creation'
+    }
     
-    # Find capitalized words (likely proper nouns or important terms)
-    capitalized_words = re.findall(r'\b[A-Z][a-z]+\b', text)
+    # Known AI/tech companies and entities (prioritize these)
+    known_entities = {
+        'openai', 'deepmind', 'anthropic', 'google', 'microsoft', 'meta', 'facebook', 'amazon', 'aws',
+        'nvidia', 'intel', 'amd', 'tesla', 'spacex', 'apple', 'ibm', 'oracle', 'salesforce', 'palantir',
+        'elon musk', 'sam altman', 'sundar pichai', 'satya nadella', 'mark zuckerberg', 'jeff bezos',
+        'jensen huang', 'tim cook', 'larry page', 'sergey brin', 'bill gates', 'steve jobs',
+        'gpt', 'claude', 'gemini', 'llama', 'mistral', 'copilot', 'chatgpt', 'bard', 'sora', 'dall-e',
+        'transformer', 'bert', 'gpt-3', 'gpt-4', 'gpt-5', 'claude-3', 'claude-4', 'palm', 'palm-2',
+        'neuralink', 'waymo', 'cruise', 'arize', 'hugging face', 'stability ai', 'midjourney',
+        'mad men'  # Example: TV show that might appear in AI context
+    }
     
-    # Find multi-word phrases (2-3 words) that might be concepts
-    phrases = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b', text)
-    
-    # Combine and filter
     topics = []
-    for word in capitalized_words:
-        if word.lower() not in stop_words and word not in topics:
-            topics.append(word)
+    seen_lower = set()
     
-    for phrase in phrases:
-        if phrase not in topics:
-            topics.append(phrase)
+    # First, find multi-word entities (2-3 words) - these are most likely to be real entities
+    # Pattern: Capitalized word + (optional capitalized word) + (optional capitalized word)
+    multi_word_entities = re.findall(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b', text)
+    for entity in multi_word_entities:
+        entity_lower = entity.lower()
+        if entity_lower not in seen_lower and entity_lower not in excluded_words:
+            # Check if it contains known entity keywords or looks like a proper entity
+            if any(known in entity_lower for known in known_entities) or len(entity.split()) >= 2:
+                topics.append(entity)
+                seen_lower.add(entity_lower)
     
-    # Return top N topics
-    return topics[:max_topics]
+    # Find single capitalized words, but prioritize known entities and filter out common words
+    single_words = re.findall(r'\b([A-Z][a-z]+)\b', text)
+    
+    # Known AI/tech terms (single words)
+    ai_tech_terms = {
+        'ai', 'ml', 'llm', 'nlp', 'cv', 'gan', 'rnn', 'cnn', 'transformer', 'bert', 'gpt', 'claude',
+        'neural', 'deep', 'learning', 'algorithm', 'model', 'dataset', 'training', 'inference',
+        'robotics', 'automation', 'autonomous', 'quantum', 'blockchain', 'crypto', 'web3'
+    }
+    
+    for word in single_words:
+        word_lower = word.lower()
+        if word_lower not in seen_lower and word_lower not in excluded_words:
+            # Prioritize known entities and AI/tech terms
+            if word_lower in known_entities or word_lower in ai_tech_terms:
+                topics.append(word)
+                seen_lower.add(word_lower)
+            # Only add other capitalized words if they appear multiple times (likely important)
+            elif text.count(word) >= 2:
+                topics.append(word)
+                seen_lower.add(word_lower)
+    
+    # Also look for known entity patterns in lowercase (e.g., "DeepMind" might appear as "deepmind")
+    text_lower = text.lower()
+    for entity in known_entities:
+        if entity in text_lower and entity not in seen_lower:
+            # Capitalize properly
+            entity_title = ' '.join(word.capitalize() for word in entity.split())
+            topics.append(entity_title)
+            seen_lower.add(entity)
+    
+    # Return top N topics, prioritizing multi-word entities
+    # Sort: multi-word first, then known entities, then others
+    def topic_priority(topic):
+        topic_lower = topic.lower()
+        if len(topic.split()) > 1:
+            return 0  # Multi-word entities first
+        elif topic_lower in known_entities or topic_lower in ai_tech_terms:
+            return 1  # Known entities second
+        else:
+            return 2  # Others last
+    
+    topics_sorted = sorted(topics, key=topic_priority)
+    return topics_sorted[:max_topics]
 
 
 def generate_video_idea_with_huggingface(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:

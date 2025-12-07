@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Optional
 from app.config import settings
 from app.scripts.logger import setup_logger
 from app.scripts.filtering import filter_and_deduplicate
-from app.scripts.tag_categorizer import assign_visual_tags_to_articles
+from app.scripts.tag_categorizer import assign_visual_tags_to_articles, AI_TOPICS
 
 logger = setup_logger(__name__)
 
@@ -233,29 +233,93 @@ def merge_feeds(
         except Exception as e:
             logger.warning(f"Failed to load tag images metadata: {e}")
     
-    # Function to get tag image for a visual tag
+    # Mapping from AI_TOPICS to semantic image names
+    # Topics that don't have a direct match will use generic images
+    TAG_TO_IMAGE_MAPPING = {
+        # Direct semantic matches
+        "llm": "llm.jpg",
+        "large language model": "llm.jpg",
+        "genai": "genai.jpg",
+        "generative ai": "genai.jpg",
+        "neural network": "neuralnetwork.jpg",
+        "computer vision": "computer_vision.jpg",
+        "vision model": "computer_vision.jpg",
+        "gpu": "gpu.jpg",
+        "chip": "chip.jpg",
+        "robotics": "robot.jpg",
+        "autonomous system": "robot.jpg",
+        "autonomous vehicle": "car.jpg",
+        "cybersecurity ai": "cybersecurity.jpg",
+        "ai regulation": "cybersecurity.jpg",  # Governance related
+        "ai safety": "cybersecurity.jpg",
+        "ai governance": "cybersecurity.jpg",
+        "data science": "computer.jpg",
+        "compute": "computer.jpg",
+        "machine learning": "network.jpg",
+        "ml": "network.jpg",
+        "deep learning": "network.jpg",
+        "foundation model": "network.jpg",
+        "transformer model": "network.jpg",
+        "nvidia": "gpu.jpg",  # Company -> hardware
+        "openai": "llm.jpg",  # Company -> LLM
+        "anthropic": "llm.jpg",  # Company -> LLM
+        "google ai": "llm.jpg",  # Company -> LLM
+        "deepmind": "neuralnetwork.jpg",  # Company -> neural networks
+        "meta ai": "llm.jpg",  # Company -> LLM
+        "training data": "computer.jpg",
+        "training run": "computer.jpg",
+        "model weights": "network.jpg",
+        "model release": "network.jpg",
+        "ai startup": "web.jpg",
+        "ai tool": "web.jpg",
+        "ai feature": "web.jpg",
+        "ai assistant": "web.jpg",
+        "automation": "robot.jpg",
+        "speech recognition": "computer.jpg",
+        "text-to-speech": "computer.jpg",
+        "image generation": "genai.jpg",
+        "video generation": "genai.jpg",
+        "multimodal": "genai.jpg",
+        "predictive model": "network.jpg",
+    }
+    
+    # Generic images for topics that don't have semantic matches
+    GENERIC_IMAGES = [f"generic{i}.jpg" for i in range(1, 9)]  # generic1.jpg to generic8.jpg
+    
     def get_tag_image(visual_tags: List[str]) -> str:
-        """Get a tag image URL for visual tags using consistent hash-based mapping across all 30 images."""
+        """
+        Get a tag image URL for visual tags using semantic mapping.
+        Maps AI_TOPICS to semantic image names, falls back to generic images.
+        """
         if not visual_tags:
             logger.debug("No visual tags provided for image lookup")
-            # Fallback: use first image
-            return "/api/tag-images/tag_001.png"
+            return "/api/tag-images/generic1.jpg"
         
-        if not tag_images_metadata:
-            logger.warning("No tag images metadata loaded")
-            return "/api/tag-images/tag_001.png"
+        # Try to find a semantic match for the first tag
+        first_tag = visual_tags[0].lower().strip()
         
-        # Use hash of first tag to consistently select an image from all 30 images
-        # This ensures the same tag always gets the same image
+        # Check direct mapping
+        if first_tag in TAG_TO_IMAGE_MAPPING:
+            image_name = TAG_TO_IMAGE_MAPPING[first_tag]
+            logger.debug(f"Mapped tag '{first_tag}' to semantic image: {image_name}")
+            return f"/api/tag-images/{image_name}"
+        
+        # Check if any tag matches (in case first tag doesn't match but another does)
+        for tag in visual_tags:
+            tag_lower = tag.lower().strip()
+            if tag_lower in TAG_TO_IMAGE_MAPPING:
+                image_name = TAG_TO_IMAGE_MAPPING[tag_lower]
+                logger.debug(f"Mapped tag '{tag_lower}' to semantic image: {image_name}")
+                return f"/api/tag-images/{image_name}"
+        
+        # No semantic match found - use generic image based on hash for consistency
         import hashlib
-        tag_hash = int(hashlib.md5(visual_tags[0].lower().encode()).hexdigest(), 16)
-        image_num = 1 + (tag_hash % 30)  # Map to images 1-30
+        tag_hash = int(hashlib.md5(first_tag.encode()).hexdigest(), 16)
+        generic_index = tag_hash % len(GENERIC_IMAGES)
+        generic_image = GENERIC_IMAGES[generic_index]
         
-        # Format as tag_XXX.png
-        filename = f"tag_{image_num:03d}.png"
-        
-        logger.debug(f"Mapped tags {visual_tags} to image {filename}")
-        return f"/api/tag-images/{filename}"
+        logger.debug(f"No semantic match for tags {visual_tags}, using generic: {generic_image}")
+        return f"/api/tag-images/{generic_image}"
     
     # Helper function to get category from visual tags (deprecated - tags are now flat)
     def get_category_from_tags(visual_tags: List[str]) -> str:
