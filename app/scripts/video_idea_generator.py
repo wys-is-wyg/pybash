@@ -30,6 +30,11 @@ VIDEO_TITLE_TEMPLATES = [
     "{topic} Explained Simply",
     "The Truth About {topic}",
     "{topic}: A Deep Dive",
+    "{topic} Revolution: What's Next?",
+    "Inside {topic}: The Full Story",
+    "{topic} Uncovered: Expert Analysis",
+    "The {topic} Breakthrough Explained",
+    "{topic}: From Concept to Reality",
 ]
 
 # Virality factors based on content analysis
@@ -128,33 +133,81 @@ def generate_video_idea_with_huggingface(item: Dict[str, Any]) -> Optional[Dict[
         video_title_template = random.choice(VIDEO_TITLE_TEMPLATES)
         video_title = video_title_template.format(topic=main_topic)
         
-        # Generate video description - create a compelling video concept, not just article summary
-        # Use video-focused language and structure
-        video_description_parts = []
+        # Generate video description - create a compelling, varied video concept
+        # Use diverse hooks and value propositions to avoid repetition
         
-        # Hook/intro
+        # Diverse hook options
+        hooks = [
+            f"Discover how {main_topic} is revolutionizing the AI industry.",
+            f"Explore the cutting-edge developments in {main_topic}.",
+            f"Uncover the latest innovations in {main_topic}.",
+            f"Take a deep dive into {main_topic} and its impact on AI.",
+            f"Learn about the breakthrough developments in {main_topic}.",
+            f"Get insights into how {main_topic} is shaping the future of AI.",
+            f"Understand the significance of {main_topic} in today's AI landscape.",
+            f"Discover what makes {main_topic} a game-changer for AI.",
+        ]
+        
+        # Diverse content hooks
+        content_hooks = [
+            "This breakthrough technology is changing everything we know about AI.",
+            "Get an exclusive look at what's coming next in AI technology.",
+            "Learn what this means for the future of artificial intelligence.",
+            "We'll break down the key innovations and their real-world impact.",
+            "This technology represents a major shift in how we approach AI.",
+            "Join us as we explore the implications and opportunities ahead.",
+            "We'll examine the technical breakthroughs and practical applications.",
+            "Discover the trends and developments that matter most.",
+        ]
+        
+        # Diverse value propositions
+        value_props = [
+            "This comprehensive guide breaks down everything you need to know.",
+            "We'll explain the key concepts and real-world implications.",
+            "We'll dive deep into the technical details and practical applications.",
+            "You'll learn the essential insights and what they mean for you.",
+            "We'll cover the critical points and why they matter.",
+            "This analysis provides actionable insights and expert perspectives.",
+            "We'll explore the nuances and help you understand the bigger picture.",
+            "Get expert analysis and practical takeaways you can use.",
+        ]
+        
+        # Select hooks based on content analysis for variety
+        # Use article characteristics to guide selection
+        title_lower = title.lower()
+        summary_lower = summary.lower()
+        
+        # Choose hook based on content
         if any(tag in ['ai startup', 'generative ai', 'llm'] for tag in visual_tags):
-            video_description_parts.append(f"Discover how {main_topic} is revolutionizing the AI industry.")
+            hook = hooks[0]  # "Discover how..."
+        elif "new" in title_lower or "breakthrough" in summary_lower:
+            hook = hooks[4]  # "Learn about the breakthrough..."
+        elif any(word in title_lower for word in ['future', 'next', 'coming']):
+            hook = hooks[5]  # "Get insights into how..."
         else:
-            video_description_parts.append(f"Explore the cutting-edge developments in {main_topic}.")
+            # Use hash of title to consistently select different hooks for variety
+            hook_index = hash(title) % len(hooks)
+            hook = hooks[hook_index]
         
-        # Main content hook
-        if "new" in title.lower() or "breakthrough" in summary.lower():
-            video_description_parts.append("This breakthrough technology is changing everything we know about AI.")
-        elif any(word in title.lower() for word in ['future', 'next', 'coming', 'upcoming']):
-            video_description_parts.append("Get an exclusive look at what's coming next in AI technology.")
+        # Choose content hook
+        if "breakthrough" in summary_lower or "revolution" in summary_lower:
+            content_hook = content_hooks[0]
+        elif any(word in title_lower for word in ['future', 'next', 'coming']):
+            content_hook = content_hooks[1]
         else:
-            video_description_parts.append("Learn what this means for the future of artificial intelligence.")
+            content_hook_index = (hash(title) + 1) % len(content_hooks)
+            content_hook = content_hooks[content_hook_index]
         
-        # Value proposition
-        if "tutorial" in title.lower() or "how" in title.lower():
-            video_description_parts.append("This comprehensive guide breaks down everything you need to know.")
-        elif "explained" in title.lower() or "understanding" in title.lower():
-            video_description_parts.append("We'll explain the key concepts and real-world implications.")
+        # Choose value prop
+        if "tutorial" in title_lower or "how" in title_lower:
+            value_prop = value_props[0]
+        elif "explained" in title_lower or "understanding" in title_lower:
+            value_prop = value_props[1]
         else:
-            video_description_parts.append("We'll dive deep into the technical details and practical applications.")
+            value_prop_index = (hash(title) + 2) % len(value_props)
+            value_prop = value_props[value_prop_index]
         
-        video_description = " ".join(video_description_parts)
+        video_description = f"{hook} {content_hook} {value_prop}"
         
         # Generate trend analysis
         trend_analysis = f"This topic represents current developments in {main_topic} with significant potential for engaging video content. "
@@ -187,11 +240,82 @@ def generate_video_idea_with_huggingface(item: Dict[str, Any]) -> Optional[Dict[
             "Conclusion: Future outlook and what to watch for"
         ]
         
-        # Calculate scores based on content analysis
-        trend_score = 0.7 if any(tag in ['ai startup', 'generative ai', 'llm'] for tag in visual_tags) else 0.6
-        seo_score = 0.7 if len(target_keywords) >= 5 else 0.5
-        uniqueness_score = 0.6 if "new" in title.lower() or "breakthrough" in summary.lower() else 0.5
-        engagement_score = (trend_score + seo_score + uniqueness_score) / 3
+        # Calculate nuanced scores based on comprehensive content analysis
+        title_lower = title.lower()
+        summary_lower = summary.lower()
+        
+        # Trend score: Based on tags, recency indicators, and topic relevance
+        trend_score = 0.5  # Base score
+        
+        # Boost for trending tags
+        if any(tag in ['ai startup', 'generative ai', 'llm', 'large language model'] for tag in visual_tags):
+            trend_score += 0.15
+        elif any(tag in ['neural network', 'deep learning', 'computer vision'] for tag in visual_tags):
+            trend_score += 0.10
+        
+        # Boost for recency indicators
+        if any(word in title_lower for word in ['new', 'latest', 'recent', 'announces', 'unveils']):
+            trend_score += 0.10
+        elif any(word in summary_lower[:200] for word in ['announced', 'released', 'launched', 'unveiled']):
+            trend_score += 0.08
+        
+        # Boost for breakthrough/innovation language
+        if any(word in summary_lower for word in ['breakthrough', 'revolutionary', 'game-changer', 'milestone']):
+            trend_score += 0.12
+        
+        # Cap at 1.0
+        trend_score = min(trend_score, 1.0)
+        
+        # SEO score: Based on keyword count, topic specificity, and searchability
+        seo_score = 0.4  # Base score
+        
+        # Boost for keyword count
+        keyword_count = len(target_keywords)
+        if keyword_count >= 7:
+            seo_score += 0.25
+        elif keyword_count >= 5:
+            seo_score += 0.20
+        elif keyword_count >= 3:
+            seo_score += 0.15
+        
+        # Boost for specific AI/ML terms (better search intent)
+        specific_terms = ['llm', 'gpt', 'claude', 'transformer', 'neural', 'deep learning']
+        if any(term in summary_lower for term in specific_terms):
+            seo_score += 0.15
+        
+        # Boost for question/explainer format (better search intent)
+        if any(word in title_lower for word in ['how', 'what', 'why', 'explained', 'guide']):
+            seo_score += 0.10
+        
+        # Cap at 1.0
+        seo_score = min(seo_score, 1.0)
+        
+        # Uniqueness score: Based on novelty, specificity, and differentiation
+        uniqueness_score = 0.4  # Base score
+        
+        # Boost for novelty indicators
+        if any(word in title_lower for word in ['new', 'first', 'breakthrough', 'unveils', 'announces']):
+            uniqueness_score += 0.20
+        elif "breakthrough" in summary_lower or "revolutionary" in summary_lower:
+            uniqueness_score += 0.15
+        
+        # Boost for specific company/product mentions (more unique than generic topics)
+        if any(word in title_lower for word in ['openai', 'google', 'microsoft', 'anthropic', 'meta']):
+            uniqueness_score += 0.15
+        
+        # Boost for specific technology mentions
+        if any(word in summary_lower for word in ['gpt-', 'claude', 'gemini', 'llama', 'mistral']):
+            uniqueness_score += 0.10
+        
+        # Penalty for very generic topics
+        if main_topic.lower() in ['ai', 'artificial intelligence', 'technology', 'machine learning']:
+            uniqueness_score -= 0.10
+        
+        # Cap between 0.0 and 1.0
+        uniqueness_score = max(0.0, min(uniqueness_score, 1.0))
+        
+        # Engagement score: Weighted average
+        engagement_score = (trend_score * 0.4 + seo_score * 0.35 + uniqueness_score * 0.25)
         
         video_idea = {
             'video_title': video_title,

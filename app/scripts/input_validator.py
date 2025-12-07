@@ -101,8 +101,9 @@ class InputValidator:
                 return False, reason
 
         # Check for repeated suspicious sequences (potential obfuscation)
-        # Look for 3+ consecutive special characters
-        repeated_special = re.search(r"[^\w\s]{3,}", text)
+        # Look for 8+ consecutive special characters (allow common patterns like "...", "---", "===", "???")
+        # Exclude common punctuation patterns and question marks (which are common in summaries)
+        repeated_special = re.search(r"[^\w\s\.\,\-\:\!\?\'\"\(\)]{8,}", text)
         if repeated_special:
             reason = f"Detected repeated special characters: {repeated_special.group()[:20]}..."
             logger.warning(f"Input validation failed: {reason}")
@@ -193,5 +194,8 @@ def validate_for_video_ideas(text: str) -> Tuple[bool, str, Optional[str]]:
         Tuple of (is_valid, sanitized_text, reason_if_invalid)
     """
     # Video ideas use template-based generation, so less strict
-    return InputValidator.validate_and_sanitize(text, strict_mode=False)
+    # Just sanitize and allow (don't reject for validation failures)
+    sanitized = InputValidator.sanitize(text)
+    # Always return valid for video ideas (we sanitize but don't reject)
+    return True, sanitized, None
 

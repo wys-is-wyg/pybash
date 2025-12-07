@@ -163,26 +163,93 @@ function createFeedCard(item) {
     content.appendChild(visualTagsContainer);
   }
 
-  // Source info
+  // Scores (if available)
+  if (item.trend_score !== undefined || item.seo_score !== undefined || item.uniqueness_score !== undefined) {
+    const scores = document.createElement("div");
+    scores.className = "news-card-scores";
+    const scoreParts = [];
+    if (item.trend_score !== undefined) {
+      scoreParts.push(`Trend: ${(item.trend_score * 100).toFixed(0)}%`);
+    }
+    if (item.seo_score !== undefined) {
+      scoreParts.push(`SEO: ${(item.seo_score * 100).toFixed(0)}%`);
+    }
+    if (item.uniqueness_score !== undefined) {
+      scoreParts.push(`Uniqueness: ${(item.uniqueness_score * 100).toFixed(0)}%`);
+    }
+    scores.textContent = scoreParts.join(" • ");
+    content.appendChild(scores);
+  }
+
+  // Source info and article link
   const source = document.createElement("div");
   source.className = "news-card-meta";
-  if (item.source) {
-    const sourceText = document.createElement("span");
-    sourceText.textContent = `Source: ${item.source}`;
-    source.appendChild(sourceText);
-  }
   if (item.published_date) {
     const dateText = document.createElement("span");
     dateText.textContent = formatDate(item.published_date);
     source.appendChild(dateText);
+  }
+  if (item.source_url) {
+    const articleLink = document.createElement("a");
+    articleLink.href = item.source_url;
+    articleLink.target = "_blank";
+    articleLink.rel = "noopener noreferrer";
+    articleLink.className = "news-card-article-link";
+    articleLink.textContent = "Read Article →";
+    source.appendChild(articleLink);
   }
 
   content.appendChild(title);
   content.appendChild(summary);
   content.appendChild(source);
 
+  // Video idea toggle button (if video idea exists) - add to content first
+  let videoIdeaDiv = null;
+  if (item.video_idea) {
+    // Video idea toggle button - add at the very end (bottom of card)
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "video-idea-toggle";
+    toggleBtn.textContent = "Show Video Idea";
+    toggleBtn.setAttribute("aria-label", "Toggle video idea");
+    
+    // Create video idea content div
+    videoIdeaDiv = document.createElement("div");
+    videoIdeaDiv.className = "video-idea-content";
+    videoIdeaDiv.style.display = "none";
+    
+    const videoIdeaTitle = document.createElement("h4");
+    videoIdeaTitle.className = "video-idea-title";
+    videoIdeaTitle.textContent = item.video_idea.title || "Video Idea";
+    videoIdeaDiv.appendChild(videoIdeaTitle);
+    
+    const videoIdeaDesc = document.createElement("p");
+    videoIdeaDesc.className = "video-idea-description";
+    videoIdeaDesc.textContent = item.video_idea.description || "";
+    videoIdeaDiv.appendChild(videoIdeaDesc);
+    
+    // Toggle handler
+    toggleBtn.onclick = function(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      if (videoIdeaDiv) {
+        const isHidden = videoIdeaDiv.style.display === "none" || videoIdeaDiv.style.display === "";
+        videoIdeaDiv.style.display = isHidden ? "block" : "none";
+        toggleBtn.textContent = isHidden ? "Hide Video Idea" : "Show Video Idea";
+      }
+    };
+    
+    // Append button to content AFTER source (at very bottom)
+    content.appendChild(toggleBtn);
+  }
+
+  // Append thumbnail and content to card
   card.appendChild(thumbnail);
   card.appendChild(content);
+  
+  // Append video idea content to card LAST (after thumbnail and content, so it appears at bottom)
+  if (videoIdeaDiv) {
+    card.appendChild(videoIdeaDiv);
+  }
 
   return card;
 }

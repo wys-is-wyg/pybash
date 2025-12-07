@@ -203,6 +203,17 @@ def merge_feeds(
     
     merged_feed = []
     
+    # Create a lookup map of video ideas by source_url for quick matching
+    video_ideas_lookup = {}
+    for idea in video_ideas:
+        source_url = idea.get('source_url', '')
+        original_title = idea.get('original_title', '')
+        if source_url:
+            video_ideas_lookup[source_url] = idea
+        elif original_title:
+            # Fallback: match by title if no source_url
+            video_ideas_lookup[original_title.lower()] = idea
+    
     # Assign visual tags to news items before adding to feed
     news_items_with_tags = assign_visual_tags_to_articles(news_items.copy())
     
@@ -257,6 +268,16 @@ def merge_feeds(
         thumbnail_url = get_tag_image(visual_tags)
         category = get_category_from_tags(visual_tags)
         
+        # Find associated video idea
+        source_url = item.get('source_url', '')
+        item_title = item.get('title', '').lower()
+        associated_video_idea = None
+        
+        if source_url and source_url in video_ideas_lookup:
+            associated_video_idea = video_ideas_lookup[source_url]
+        elif item_title in video_ideas_lookup:
+            associated_video_idea = video_ideas_lookup[item_title]
+        
         feed_item = {
             'type': 'news',
             'title': clean_html_and_entities(item.get('title', '')),
@@ -269,6 +290,17 @@ def merge_feeds(
             'category': category,  # Category ID for filtering
             'author': clean_html_and_entities(item.get('author', '')),
         }
+        
+        # Add scores and video idea if available
+        if associated_video_idea:
+            feed_item['trend_score'] = associated_video_idea.get('trend_score')
+            feed_item['seo_score'] = associated_video_idea.get('seo_score')
+            feed_item['uniqueness_score'] = associated_video_idea.get('uniqueness_score')
+            feed_item['video_idea'] = {
+                'title': clean_html_and_entities(associated_video_idea.get('title', '')),
+                'description': clean_html_and_entities(associated_video_idea.get('description', '')),
+            }
+        
         merged_feed.append(feed_item)
     
     # Add video ideas with tag images (limit to reserved slots)
