@@ -675,8 +675,20 @@ def validate_pipeline_password():
                 'message': 'Password is required'
             }), 400
         
+        # Get admin password from settings
+        admin_pwd = settings.ADMIN_PWD
+        
+        # If ADMIN_PWD is not set, allow any password (for development)
+        # In production, ADMIN_PWD should be set in .env
+        if not admin_pwd:
+            logger.warning("ADMIN_PWD not set in environment - allowing any password (development mode)")
+            return jsonify({
+                'valid': True,
+                'message': 'Password validated (development mode - no password set)'
+            }), 200
+        
         # Compare with ADMIN_PWD from settings (constant-time comparison to prevent timing attacks)
-        if hmac.compare_digest(password, settings.ADMIN_PWD):
+        if hmac.compare_digest(password, admin_pwd):
             return jsonify({
                 'valid': True,
                 'message': 'Password validated'

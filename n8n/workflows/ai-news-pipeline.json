@@ -67,8 +67,9 @@
     },
     {
       "parameters": {
-        "method": "GET",
+        "method": "POST",
         "url": "http://python-app:5001/api/refresh",
+        "sendBody": false,
         "options": {}
       },
       "id": "refresh-feed",
@@ -157,4 +158,3 @@
   "updatedAt": "2024-01-01T00:00:00.000Z",
   "versionId": "1"
 }
-

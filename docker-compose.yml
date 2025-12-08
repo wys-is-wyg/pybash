@@ -10,7 +10,6 @@ services:
       - .env
     volumes:
       - ./app:/app/app
-      - ./app/data:/app/app/data
     networks:
       - ai-network
     restart: always

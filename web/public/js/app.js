@@ -67,7 +67,6 @@ function renderFeed(feedData) {
 
   // Update tag filter buttons (use all data to show all available tags)
   updateTagFilters(feedData, "feed-tag-filters");
-  updateSourceFilters(feedData, "feed-source-filters");
 
   // Filter by tag if not "all"
   let filteredData = feedData;
@@ -164,7 +163,11 @@ function createFeedCard(item) {
   }
 
   // Scores (if available)
-  if (item.trend_score !== undefined || item.seo_score !== undefined || item.uniqueness_score !== undefined) {
+  if (
+    item.trend_score !== undefined ||
+    item.seo_score !== undefined ||
+    item.uniqueness_score !== undefined
+  ) {
     const scores = document.createElement("div");
     scores.className = "news-card-scores";
     const scoreParts = [];
@@ -175,7 +178,9 @@ function createFeedCard(item) {
       scoreParts.push(`SEO: ${(item.seo_score * 100).toFixed(0)}%`);
     }
     if (item.uniqueness_score !== undefined) {
-      scoreParts.push(`Uniqueness: ${(item.uniqueness_score * 100).toFixed(0)}%`);
+      scoreParts.push(
+        `Uniqueness: ${(item.uniqueness_score * 100).toFixed(0)}%`
+      );
     }
     scores.textContent = scoreParts.join(" • ");
     content.appendChild(scores);
@@ -206,25 +211,27 @@ function createFeedCard(item) {
   // Video ideas toggle button (if video ideas exist) - support multiple ideas per article
   let videoIdeaDiv = null;
   const videoIdeas = item.video_ideas || [];
-  
+
   if (videoIdeas.length > 0) {
     // Video idea toggle button - add at the very end (bottom of card)
     const toggleBtn = document.createElement("button");
     toggleBtn.className = "video-idea-toggle";
-    toggleBtn.textContent = `Show Video Idea${videoIdeas.length > 1 ? `s (${videoIdeas.length})` : ''}`;
+    toggleBtn.textContent = `Show Video Idea${
+      videoIdeas.length > 1 ? `s (${videoIdeas.length})` : ""
+    }`;
     toggleBtn.setAttribute("aria-label", "Toggle video ideas");
-    
+
     // Create video idea content div
     videoIdeaDiv = document.createElement("div");
     videoIdeaDiv.className = "video-idea-content";
-    
+
     // Add all video ideas
     videoIdeas.forEach((idea, index) => {
       const videoIdeaTitle = document.createElement("h4");
       videoIdeaTitle.className = "video-idea-title";
       videoIdeaTitle.textContent = idea.title || `Video Idea ${index + 1}`;
       videoIdeaDiv.appendChild(videoIdeaTitle);
-      
+
       if (idea.description) {
         const videoIdeaDesc = document.createElement("p");
         videoIdeaDesc.className = "video-idea-description";
@@ -232,26 +239,30 @@ function createFeedCard(item) {
         videoIdeaDiv.appendChild(videoIdeaDesc);
       }
     });
-    
+
     // Toggle handler with fade animation
-    toggleBtn.onclick = function(e) {
+    toggleBtn.onclick = function (e) {
       e.stopPropagation();
       e.preventDefault();
       if (videoIdeaDiv) {
         const isHidden = !videoIdeaDiv.classList.contains("visible");
-        
+
         if (isHidden) {
           // Fade in
           videoIdeaDiv.classList.add("visible");
-          toggleBtn.textContent = `Hide Video Idea${videoIdeas.length > 1 ? `s (${videoIdeas.length})` : ''}`;
+          toggleBtn.textContent = `Hide Video Idea${
+            videoIdeas.length > 1 ? `s (${videoIdeas.length})` : ""
+          }`;
         } else {
           // Fade out
           videoIdeaDiv.classList.remove("visible");
-          toggleBtn.textContent = `Show Video Idea${videoIdeas.length > 1 ? `s (${videoIdeas.length})` : ''}`;
+          toggleBtn.textContent = `Show Video Idea${
+            videoIdeas.length > 1 ? `s (${videoIdeas.length})` : ""
+          }`;
         }
       }
     };
-    
+
     // Append button to content AFTER source (at very bottom)
     content.appendChild(toggleBtn);
   }
@@ -259,7 +270,7 @@ function createFeedCard(item) {
   // Append thumbnail and content to card
   card.appendChild(thumbnail);
   card.appendChild(content);
-  
+
   // Append video idea content to card LAST (after thumbnail and content, so it appears at bottom)
   if (videoIdeaDiv) {
     card.appendChild(videoIdeaDiv);
@@ -388,12 +399,28 @@ function setupNavigation() {
         navLinks.forEach((l) => l.classList.remove("active"));
         link.classList.add("active");
 
-        // Show/hide sections
+        // Show/hide sections with fade transition
         sections.forEach((section) => {
           if (section.id === targetSection) {
-            section.classList.add("active");
+            // Fade in new section
+            section.style.display = "block";
+            // Force reflow to ensure display is set before animation
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                section.classList.add("active");
+              });
+            });
           } else {
-            section.classList.remove("active");
+            // Fade out old section, then remove from flow
+            if (section.classList.contains("active")) {
+              section.classList.remove("active");
+              // Wait for fade out animation to complete
+              setTimeout(() => {
+                section.style.display = "none";
+              }, 400); // Match CSS animation duration
+            } else {
+              section.style.display = "none";
+            }
           }
         });
 
@@ -414,12 +441,28 @@ function setupNavigation() {
       navLinks.forEach((l) => l.classList.remove("active"));
       navLink.classList.add("active");
 
-      // Show/hide sections
+      // Show/hide sections with fade transition
       sections.forEach((s) => {
         if (s.id === hash) {
-          s.classList.add("active");
+          // Fade in new section
+          s.style.display = "block";
+          // Force reflow to ensure display is set before animation
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              s.classList.add("active");
+            });
+          });
         } else {
-          s.classList.remove("active");
+          // Fade out old section, then remove from flow
+          if (s.classList.contains("active")) {
+            s.classList.remove("active");
+            // Wait for fade out transition to complete
+            setTimeout(() => {
+              s.style.display = "none";
+            }, 400); // Match CSS transition duration
+          } else {
+            s.style.display = "none";
+          }
         }
       });
 
@@ -485,12 +528,14 @@ async function loadVideoIdeas() {
     const feedData = await fetchFeed();
     // Filter for news items that have video ideas attached
     let videoIdeas = feedData.filter(
-      (item) => item.video_ideas && Array.isArray(item.video_ideas) && item.video_ideas.length > 0
+      (item) =>
+        item.video_ideas &&
+        Array.isArray(item.video_ideas) &&
+        item.video_ideas.length > 0
     );
 
     // Update tag filter buttons (use all video ideas to show all available tags)
     updateTagFilters(videoIdeas, "video-ideas-tag-filters");
-    updateSourceFilters(videoIdeas, "video-ideas-source-filters");
 
     // Filter by tag if not "all"
     if (currentVideoIdeasTag !== "all") {
@@ -593,7 +638,7 @@ function createVideoIdeaCard(item) {
   // Video ideas section - display all video ideas from the array
   const videoIdeasSection = document.createElement("div");
   videoIdeasSection.className = "video-ideas-section";
-  
+
   const videoIdeas = item.video_ideas || [];
   if (videoIdeas.length > 0) {
     videoIdeas.forEach((idea, index) => {
@@ -604,7 +649,7 @@ function createVideoIdeaCard(item) {
           videoIdeaTitle.textContent = idea.title;
           videoIdeasSection.appendChild(videoIdeaTitle);
         }
-        
+
         if (idea.description) {
           const videoIdeaDesc = document.createElement("p");
           videoIdeaDesc.className = "video-idea-description";
@@ -614,7 +659,7 @@ function createVideoIdeaCard(item) {
       }
     });
   }
-  
+
   if (videoIdeasSection.children.length > 0) {
     content.appendChild(videoIdeasSection);
   }
@@ -672,16 +717,20 @@ function setupVideoIdeasFilters(ideas) {
       // Search in article title and summary
       const title = (item.title || "").toLowerCase();
       const summary = (item.summary || "").toLowerCase();
-      
+
       // Search in video ideas titles and descriptions
       const videoIdeas = item.video_ideas || [];
-      const videoIdeasText = videoIdeas.map(idea => 
-        ((idea.title || "") + " " + (idea.description || "")).toLowerCase()
-      ).join(" ");
-      
-      return title.includes(searchTerm) || 
-             summary.includes(searchTerm) || 
-             videoIdeasText.includes(searchTerm);
+      const videoIdeasText = videoIdeas
+        .map((idea) =>
+          ((idea.title || "") + " " + (idea.description || "")).toLowerCase()
+        )
+        .join(" ");
+
+      return (
+        title.includes(searchTerm) ||
+        summary.includes(searchTerm) ||
+        videoIdeasText.includes(searchTerm)
+      );
     });
 
     // Sort
@@ -827,12 +876,19 @@ function initialize() {
   const navLink = document.querySelector(`[data-section="${initialSection}"]`);
 
   if (section && navLink) {
-    // Hide all sections
+    // Hide all sections (remove from DOM flow)
     document.querySelectorAll(".content-section").forEach((s) => {
       s.classList.remove("active");
+      s.style.display = "none";
     });
-    // Show target section
-    section.classList.add("active");
+    // Show target section with fade in
+    section.style.display = "block";
+    // Force reflow to ensure display is set before animation
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        section.classList.add("active");
+      });
+    });
     // Update nav
     document.querySelectorAll(".nav-link").forEach((l) => {
       l.classList.remove("active");
@@ -885,7 +941,12 @@ function updateTagFilters(data, filterContainerId) {
     btn.className = "filter-btn";
     btn.dataset.tag = tag;
     btn.textContent = tag;
-    if (tag === (filterContainerId === "feed-tag-filters" ? currentFeedTag : currentVideoIdeasTag)) {
+    if (
+      tag ===
+      (filterContainerId === "feed-tag-filters"
+        ? currentFeedTag
+        : currentVideoIdeasTag)
+    ) {
       btn.classList.add("active");
     }
     container.appendChild(btn);
@@ -917,20 +978,6 @@ function updateSourceFilters(data, filterContainerId) {
   if (allButton) {
     container.appendChild(allButton);
   }
-
-  // Add buttons for each source
-  const sortedSources = Array.from(allSources).sort();
-  sortedSources.forEach((source) => {
-    const btn = document.createElement("button");
-    btn.className = "filter-btn";
-    btn.dataset.source = source;
-    btn.textContent = source;
-    const currentSource = filterContainerId === "feed-source-filters" ? currentFeedSource : currentVideoIdeasSource;
-    if (source === currentSource) {
-      btn.classList.add("active");
-    }
-    container.appendChild(btn);
-  });
 }
 
 /**
@@ -950,28 +997,6 @@ function setupTagFilters() {
 
         // Update filter
         currentFeedTag = e.target.dataset.tag;
-
-        // Re-render feed with new filter
-        if (currentFeedData.length > 0) {
-          renderFeed(currentFeedData);
-        }
-      }
-    });
-  }
-
-  // Feed source filters
-  const feedSourceFilters = document.getElementById("feed-source-filters");
-  if (feedSourceFilters) {
-    feedSourceFilters.addEventListener("click", (e) => {
-      if (e.target.classList.contains("filter-btn")) {
-        // Update active state
-        feedSourceFilters.querySelectorAll(".filter-btn").forEach((btn) => {
-          btn.classList.remove("active");
-        });
-        e.target.classList.add("active");
-
-        // Update filter
-        currentFeedSource = e.target.dataset.source;
 
         // Re-render feed with new filter
         if (currentFeedData.length > 0) {
@@ -1001,7 +1026,6 @@ function setupTagFilters() {
     });
   }
 }
-
 
 /**
  * Sets up contact form submission handler
@@ -1050,7 +1074,8 @@ function setupContactForm() {
       if (response.ok && data.status === "success") {
         // Success
         if (statusDiv) {
-          statusDiv.textContent = data.message || "Your message has been sent successfully!";
+          statusDiv.textContent =
+            data.message || "Your message has been sent successfully!";
           statusDiv.className = "form-message success";
           statusDiv.style.display = "block";
         }
@@ -1068,7 +1093,8 @@ function setupContactForm() {
       } else {
         // Error
         if (statusDiv) {
-          statusDiv.textContent = data.error || "Failed to send message. Please try again.";
+          statusDiv.textContent =
+            data.error || "Failed to send message. Please try again.";
           statusDiv.className = "form-message error";
           statusDiv.style.display = "block";
         }
@@ -1081,9 +1107,10 @@ function setupContactForm() {
       }
     } catch (error) {
       console.error("Error submitting contact form:", error);
-      
+
       if (statusDiv) {
-        statusDiv.textContent = "Network error. Please check your connection and try again.";
+        statusDiv.textContent =
+          "Network error. Please check your connection and try again.";
         statusDiv.className = "form-message error";
         statusDiv.style.display = "block";
       }
@@ -1102,30 +1129,30 @@ function showPasswordModal() {
   const modal = document.getElementById("password-modal");
   const passwordInput = document.getElementById("password-input");
   const passwordError = document.getElementById("password-error");
-  
+
   if (!modal) return;
-  
+
   modal.classList.add("show");
   passwordInput.value = "";
   passwordInput.focus();
   passwordError.style.display = "none";
-  
+
   // Close modal handlers
   const closeBtn = document.getElementById("password-modal-close");
   const cancelBtn = document.getElementById("password-cancel-btn");
-  
+
   const closeModal = () => {
     modal.classList.remove("show");
   };
-  
+
   if (closeBtn) closeBtn.onclick = closeModal;
   if (cancelBtn) cancelBtn.onclick = closeModal;
-  
+
   // Close on background click
   modal.onclick = (e) => {
     if (e.target === modal) closeModal();
   };
-  
+
   // Submit on Enter key
   passwordInput.onkeypress = (e) => {
     if (e.key === "Enter") {
@@ -1138,7 +1165,7 @@ async function validatePasswordAndTriggerPipeline(password) {
   const triggerBtn = document.getElementById("trigger-pipeline-btn");
   const modal = document.getElementById("password-modal");
   const passwordError = document.getElementById("password-error");
-  
+
   try {
     // Validate password with backend
     const response = await fetch(`${API_BASE_URL}/validate-pipeline-password`, {
@@ -1180,21 +1207,22 @@ function setupTriggerPipelineButton() {
     submitBtn.onclick = async () => {
       const passwordInput = document.getElementById("password-input");
       const password = passwordInput.value.trim();
-      
+
       if (!password) {
-        document.getElementById("password-error").textContent = "Please enter a password";
+        document.getElementById("password-error").textContent =
+          "Please enter a password";
         document.getElementById("password-error").style.display = "block";
         return;
       }
-      
+
       submitBtn.disabled = true;
       submitBtn.textContent = "Validating...";
-      
+
       const isValid = await validatePasswordAndTriggerPipeline(password);
-      
+
       submitBtn.disabled = false;
       submitBtn.textContent = "Submit";
-      
+
       if (isValid) {
         // Close modal and trigger pipeline
         document.getElementById("password-modal").classList.remove("show");
@@ -1236,7 +1264,9 @@ function setupTriggerPipelineButton() {
       // Start polling progress
       localProgressInterval = setInterval(async () => {
         try {
-          const progressResponse = await fetch(`${API_BASE_URL}/pipeline-progress`);
+          const progressResponse = await fetch(
+            `${API_BASE_URL}/pipeline-progress`
+          );
           const progress = await progressResponse.json();
 
           if (progress.status === "running") {
@@ -1244,7 +1274,7 @@ function setupTriggerPipelineButton() {
             const percent = progress.progress_percent || 0;
             const step = progress.current_step || "";
             const remaining = progress.estimated_seconds_remaining || 0;
-            
+
             let timeText = "";
             if (remaining > 0) {
               if (remaining < 60) {
@@ -1255,7 +1285,7 @@ function setupTriggerPipelineButton() {
                 timeText = `~${minutes}m ${seconds}s left`;
               }
             }
-            
+
             triggerBtn.textContent = `${step} (${percent}%) ${timeText}`.trim();
           } else if (progress.status === "completed") {
             // Pipeline completed
@@ -1287,7 +1317,6 @@ function setupTriggerPipelineButton() {
           window.location.reload(true); // Hard refresh
         }, 2000);
       }, 120000); // 2 minutes max
-
     } catch (error) {
       if (localProgressInterval) {
         clearInterval(localProgressInterval);
