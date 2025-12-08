@@ -430,6 +430,9 @@ async function loadSectionContent(sectionId) {
     case "output":
       await loadOutputFeed();
       break;
+    case "contact":
+      // Contact form is static, no loading needed
+      break;
     // dashboard and rationale are static, no loading needed
   }
 }
@@ -951,6 +954,100 @@ function setupTagFilters() {
 }
 
 
+/**
+ * Sets up contact form submission handler
+ */
+function setupContactForm() {
+  const contactForm = document.getElementById("contact-form");
+  if (!contactForm) return;
+
+  const submitBtn = document.getElementById("contact-submit");
+  const statusDiv = document.getElementById("contact-message-status");
+
+  contactForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    // Disable submit button
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Sending...";
+    }
+
+    // Hide previous status messages
+    if (statusDiv) {
+      statusDiv.style.display = "none";
+      statusDiv.className = "form-message";
+    }
+
+    // Get form data
+    const formData = {
+      name: document.getElementById("contact-name").value.trim(),
+      email: document.getElementById("contact-email").value.trim(),
+      subject: document.getElementById("contact-subject").value.trim(),
+      message: document.getElementById("contact-message").value.trim(),
+    };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/contact`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.status === "success") {
+        // Success
+        if (statusDiv) {
+          statusDiv.textContent = data.message || "Your message has been sent successfully!";
+          statusDiv.className = "form-message success";
+          statusDiv.style.display = "block";
+        }
+
+        // Reset form
+        contactForm.reset();
+
+        // Re-enable submit button after a delay
+        setTimeout(() => {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Send Message";
+          }
+        }, 2000);
+      } else {
+        // Error
+        if (statusDiv) {
+          statusDiv.textContent = data.error || "Failed to send message. Please try again.";
+          statusDiv.className = "form-message error";
+          statusDiv.style.display = "block";
+        }
+
+        // Re-enable submit button
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Send Message";
+        }
+      }
+    } catch (error) {
+      console.error("Error submitting contact form:", error);
+      
+      if (statusDiv) {
+        statusDiv.textContent = "Network error. Please check your connection and try again.";
+        statusDiv.className = "form-message error";
+        statusDiv.style.display = "block";
+      }
+
+      // Re-enable submit button
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Send Message";
+      }
+    }
+  });
+}
+
 // Trigger Pipeline Button Handler
 function setupTriggerPipelineButton() {
   const triggerBtn = document.getElementById("trigger-pipeline-btn");
@@ -1019,9 +1116,11 @@ if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", function () {
     initialize();
     setupTriggerPipelineButton();
+    setupContactForm();
   });
 } else {
   // DOM is already ready
   initialize();
   setupTriggerPipelineButton();
+  setupContactForm();
 }

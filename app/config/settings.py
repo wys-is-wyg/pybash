@@ -106,6 +106,14 @@ class Settings:
     N8N_AUTH_PASSWORD: str = os.getenv("N8N_AUTH_PASSWORD", "")
     N8N_BASE_URL: str = f"http://n8n:{N8N_PORT}"
     
+    # Email Configuration
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "mailhog")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "1025"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_USE_TLS: bool = os.getenv("SMTP_USE_TLS", "false").lower() == "true"
+    CONTACT_EMAIL: str = os.getenv("CONTACT_EMAIL", "kiwifruitpeter@gmail.com")
+    
     @classmethod
     def get_data_file_path(cls, filename: str) -> Path:
         """Get full path to a data file."""

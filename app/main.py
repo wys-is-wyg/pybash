@@ -8,6 +8,9 @@ import subprocess
 import os
 import time
 import requests
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -546,6 +549,96 @@ def trigger_pipeline():
             'status': 'error',
             'message': f'Failed to trigger pipeline: {str(e)}'
         }), 500
+
+
+@app.route('/api/contact', methods=['POST'])
+def contact_form():
+    """
+    Handle contact form submissions and send email.
+    
+    Expected JSON body:
+        {
+            "name": "John Doe",
+            "email": "john@example.com",
+            "subject": "Question about AI News",
+            "message": "Hello, I have a question..."
+        }
+    
+    Returns:
+        JSON response with status
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        # Validate required fields
+        required_fields = ['name', 'email', 'subject', 'message']
+        for field in required_fields:
+            if field not in data or not data[field].strip():
+                return jsonify({'error': f'Missing or empty field: {field}'}), 400
+        
+        name = data['name'].strip()
+        email = data['email'].strip()
+        subject = data['subject'].strip()
+        message = data['message'].strip()
+        
+        # Basic email validation
+        if '@' not in email or '.' not in email.split('@')[1]:
+            return jsonify({'error': 'Invalid email address'}), 400
+        
+        # Create email message
+        msg = MIMEMultipart()
+        msg['From'] = email
+        msg['To'] = settings.CONTACT_EMAIL
+        msg['Subject'] = f"Contact Form: {subject}"
+        
+        # Email body
+        body = f"""
+New contact form submission from AI News Tracker:
+
+Name: {name}
+Email: {email}
+Subject: {subject}
+
+Message:
+{message}
+
+---
+This message was sent from the AI News Tracker contact form.
+"""
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Send email via SMTP
+        try:
+            smtp_server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT)
+            
+            if settings.SMTP_USE_TLS:
+                smtp_server.starttls()
+            
+            if settings.SMTP_USER and settings.SMTP_PASSWORD:
+                smtp_server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            
+            smtp_server.send_message(msg)
+            smtp_server.quit()
+            
+            logger.info(f"Contact form submitted: {name} ({email}) - {subject}")
+            
+            return jsonify({
+                'status': 'success',
+                'message': 'Your message has been sent successfully!'
+            }), 200
+            
+        except Exception as e:
+            logger.error(f"Error sending email: {e}")
+            return jsonify({
+                'error': 'Failed to send email. Please try again later.'
+            }), 500
+        
+    except Exception as e:
+        logger.error(f"Error processing contact form: {e}")
+        return jsonify({'error': 'Failed to process contact form'}), 500
 
 
 @app.errorhandler(404)

@@ -52,6 +52,16 @@ services:
       - ai-network
     restart: always
 
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: ai-news-mailhog
+    ports:
+      - "1025:1025"  # SMTP server
+      - "8025:8025"  # Web UI
+    networks:
+      - ai-network
+    restart: always
+
 volumes:
   n8n_data:
 
