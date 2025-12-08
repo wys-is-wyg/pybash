@@ -617,8 +617,10 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
             
             # Format each video idea
             for idea_num, video_idea_data in enumerate(video_ideas_data):
+                video_title = video_idea_data.get('video_title', title)
                 video_idea = {
-                    'title': video_idea_data.get('video_title', title),
+                    'title': video_title,  # Keep for backward compatibility
+                    'video_title': video_title,  # Add explicit video_title field
                     'description': video_idea_data.get('video_description', summary),
                     'concept_summary': video_idea_data.get('concept_summary', ''),
                     'why_matters_builders': video_idea_data.get('why_matters_builders', ''),

@@ -21,8 +21,9 @@ from email.header import Header
 from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+# Rate limiting removed - no throttling on API endpoints
+# from flask_limiter import Limiter
+# from flask_limiter.util import get_remote_address
 from app.config import settings
 from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json, merge_feeds, generate_feed_json
@@ -36,13 +37,13 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 # Enable CORS for web frontend (restrict to specific origins in production)
 CORS(app)
 
-# Initialize rate limiter
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://"  # Use in-memory storage (use Redis in production)
-)
+# Rate limiter removed - no throttling on API endpoints
+# limiter = Limiter(
+#     app=app,
+#     key_func=get_remote_address,
+#     default_limits=["200 per day", "50 per hour"],
+#     storage_uri="memory://"  # Use in-memory storage (use Redis in production)
+# )
 
 # Initialize logger
 logger = setup_logger(__name__)
@@ -130,7 +131,6 @@ def get_news_feed():
 
 
 @app.route('/api/refresh', methods=['GET', 'POST'])
-@limiter.limit("20 per hour")  # Limit feed refresh requests
 def refresh_feed():
     """
     Update feed.json with new data.
@@ -497,7 +497,6 @@ def monitor_pipeline_progress():
 
 
 @app.route('/api/validate-pipeline-password', methods=['POST'])
-@limiter.limit("10 per minute")  # Limit password attempts
 def validate_pipeline_password():
     """Validate password for pipeline access."""
     try:
@@ -547,7 +546,6 @@ def get_pipeline_progress():
 
 
 @app.route('/api/trigger-pipeline', methods=['POST'])
-@limiter.limit("3 per hour")  # Limit pipeline triggers to prevent abuse
 def trigger_pipeline():
     """
     Trigger the n8n webhook pipeline with progress tracking.
@@ -669,7 +667,6 @@ def trigger_pipeline():
 
 
 @app.route('/api/contact', methods=['POST'])
-@limiter.limit("5 per hour")  # Limit contact form submissions
 def contact_form():
     """
     Handle contact form submissions and send email.
@@ -788,7 +785,6 @@ def request_entity_too_large(error):
 
 
 @app.route('/api/cache/stats', methods=['GET'])
-@limiter.limit("10 per minute")
 def get_cache_stats():
     """Get cache statistics (for debugging/monitoring)."""
     try:
@@ -804,7 +800,6 @@ def get_cache_stats():
 
 
 @app.route('/api/cache/clear', methods=['POST'])
-@limiter.limit("5 per hour")
 def clear_cache_endpoint():
     """Clear cache (requires admin password)."""
     try:

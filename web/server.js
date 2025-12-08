@@ -19,6 +19,8 @@ app.use(
   createProxyMiddleware({
     target: "http://python-app:5001",
     changeOrigin: true,
+    timeout: 60000, // 60 second timeout for API requests
+    proxyTimeout: 60000, // 60 second proxy timeout
   })
 );
 

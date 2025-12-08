@@ -2,13 +2,13 @@
 
 ## Overview
 
-This document describes the guardrails and security measures in place to prevent prompt injection attacks when using Hugging Face models.
+This document describes the guardrails and security measures in place to prevent prompt injection attacks when using AI models (sumy, llama-cpp-python, and Hugging Face transformers).
 
 ## Current Guardrails
 
 ### 1. Input Validation (`app/scripts/input_validator.py`)
 
-**Purpose**: Validates and sanitizes all input before passing to Hugging Face models.
+**Purpose**: Validates and sanitizes all input before passing to AI models (sumy, llama-cpp-python, Hugging Face).
 
 **Protection Against**:
 - Prompt injection patterns (hex escapes, unicode escapes, script tags, etc.)
@@ -73,19 +73,22 @@ is_valid, sanitized_text, reason = validate_for_video_ideas(text)
 #### Summarization Pipeline (`app/scripts/summarizer.py`)
 1. Input validation via `validate_for_summarization()`
 2. HTML/entity cleaning
-3. Length limits enforced by Hugging Face pipeline
-4. Output cleaning (HTML/entities removed from generated summary)
+3. **Primary**: Uses `sumy` library (TextRank algorithm) - fast extractive summarization, no model loading
+4. **Fallback**: Hugging Face transformers (`facebook/bart-large-cnn`) - length limits enforced by pipeline
+5. Output cleaning (HTML/entities removed from generated summary)
 
 #### Video Idea Generation (`app/scripts/video_idea_generator.py`)
 1. Input validation via `validate_for_video_ideas()` (lenient mode)
 2. Topic extraction with validation
-3. Template-based generation (no direct model calls, lower risk)
+3. **Uses llama-cpp-python** with local LLM model (Llama 3.2 3B Instruct) for generation
+4. Prompt-based generation with structured JSON output format
+5. Model caching for performance (loaded once per worker process)
 
 ## Security Layers
 
 ### Layer 1: Input Validation (Pre-Processing)
 - **Location**: `app/scripts/input_validator.py`
-- **When**: Before any Hugging Face model call
+- **When**: Before any AI model call (sumy, llama-cpp-python, or Hugging Face)
 - **Action**: Validates and sanitizes input, rejects suspicious content
 
 ### Layer 2: Content Cleaning (Pre-Processing)
@@ -99,19 +102,38 @@ is_valid, sanitized_text, reason = validate_for_video_ideas(text)
 - **Action**: Filters for relevance, removes off-topic content
 
 ### Layer 4: Model Constraints (During Processing)
-- **Location**: Hugging Face pipeline configuration
+- **Location**: Model-specific configurations
 - **When**: During model inference
-- **Action**: Enforces max_length/min_length, prevents excessive generation
+- **Action**: 
+  - **sumy**: Sentence count limits, stop word filtering
+  - **llama-cpp-python**: max_tokens limits, stop sequences, temperature control
+  - **Hugging Face**: max_length/min_length constraints, prevents excessive generation
 
-## Why Hugging Face is Safer
+## Current Architecture
 
-1. **No Prompt Templates**: Hugging Face models receive raw text, not formatted prompts with system instructions. This reduces injection risk.
+### Summarization
+- **Primary**: `sumy` library with TextRank algorithm
+  - Fast extractive summarization (selects important sentences)
+  - No model loading required
+  - Lower injection risk (no prompt templates)
+- **Fallback**: Hugging Face `facebook/bart-large-cnn` (if sumy unavailable)
+  - Abstractive summarization (generates new text)
+  - Requires model download (~1.6GB)
 
-2. **Deterministic Processing**: The summarization pipeline uses `do_sample=False`, making output more predictable.
+### Video Idea Generation
+- **Uses**: `llama-cpp-python` with local LLM (Llama 3.2 3B Instruct)
+  - Runs locally in Docker (no external API calls)
+  - Structured prompt format with JSON output
+  - Model cached per worker process for performance
+  - Input validation and sanitization before prompt construction
 
-3. **Template-Based Video Ideas**: Video idea generation uses template-based keyword extraction, not direct model calls.
+## Security Benefits
 
-4. **Local Processing**: Models run locally in Docker, reducing external attack surface.
+1. **Local Processing**: All models run locally in Docker, reducing external attack surface
+2. **Input Validation**: Comprehensive validation before any model processing
+3. **No External APIs**: No reliance on external AI services (except optional Leonardo API for thumbnails)
+4. **Model Caching**: Models loaded once per worker, reducing attack surface
+5. **Structured Outputs**: JSON format validation for video ideas reduces injection risk
 
 ## Remaining Risks and Mitigations
 
@@ -162,10 +184,12 @@ for test in test_cases:
 ## Recommendations
 
 1. **Monitor Logs**: Check for validation failures in logs
-2. **Regular Updates**: Keep Hugging Face transformers library updated
-3. **Rate Limiting**: Consider rate limiting on API endpoints
+2. **Regular Updates**: Keep dependencies updated (sumy, llama-cpp-python, transformers)
+3. **Rate Limiting**: ✅ **IMPLEMENTED** - Rate limiting added to all API endpoints
 4. **Input Source Validation**: Validate RSS feed sources are trusted
 5. **Output Validation**: Consider adding output validation for generated summaries
+6. **Model Updates**: Keep LLM model files updated (download newer GGUF models if available)
+7. **Cache Management**: Monitor cache usage via `/api/cache/stats` endpoint
 
 ## Files Modified
 

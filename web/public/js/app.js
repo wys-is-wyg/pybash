@@ -203,28 +203,35 @@ function createFeedCard(item) {
   content.appendChild(summary);
   content.appendChild(source);
 
-  // Video idea toggle button (if video idea exists) - add to content first
+  // Video ideas toggle button (if video ideas exist) - support multiple ideas per article
   let videoIdeaDiv = null;
-  if (item.video_idea) {
+  const videoIdeas = item.video_ideas || (item.video_idea ? [item.video_idea] : []);
+  
+  if (videoIdeas.length > 0) {
     // Video idea toggle button - add at the very end (bottom of card)
     const toggleBtn = document.createElement("button");
     toggleBtn.className = "video-idea-toggle";
-    toggleBtn.textContent = "Show Video Idea";
-    toggleBtn.setAttribute("aria-label", "Toggle video idea");
+    toggleBtn.textContent = `Show Video Idea${videoIdeas.length > 1 ? `s (${videoIdeas.length})` : ''}`;
+    toggleBtn.setAttribute("aria-label", "Toggle video ideas");
     
     // Create video idea content div
     videoIdeaDiv = document.createElement("div");
     videoIdeaDiv.className = "video-idea-content";
     
-    const videoIdeaTitle = document.createElement("h4");
-    videoIdeaTitle.className = "video-idea-title";
-    videoIdeaTitle.textContent = item.video_idea.title || "Video Idea";
-    videoIdeaDiv.appendChild(videoIdeaTitle);
-    
-    const videoIdeaDesc = document.createElement("p");
-    videoIdeaDesc.className = "video-idea-description";
-    videoIdeaDesc.textContent = item.video_idea.description || "";
-    videoIdeaDiv.appendChild(videoIdeaDesc);
+    // Add all video ideas
+    videoIdeas.forEach((idea, index) => {
+      const videoIdeaTitle = document.createElement("h4");
+      videoIdeaTitle.className = "video-idea-title";
+      videoIdeaTitle.textContent = idea.title || `Video Idea ${index + 1}`;
+      videoIdeaDiv.appendChild(videoIdeaTitle);
+      
+      if (idea.description) {
+        const videoIdeaDesc = document.createElement("p");
+        videoIdeaDesc.className = "video-idea-description";
+        videoIdeaDesc.textContent = idea.description;
+        videoIdeaDiv.appendChild(videoIdeaDesc);
+      }
+    });
     
     // Toggle handler with fade animation
     toggleBtn.onclick = function(e) {
@@ -236,11 +243,11 @@ function createFeedCard(item) {
         if (isHidden) {
           // Fade in
           videoIdeaDiv.classList.add("visible");
-          toggleBtn.textContent = "Hide Video Idea";
+          toggleBtn.textContent = `Hide Video Idea${videoIdeas.length > 1 ? `s (${videoIdeas.length})` : ''}`;
         } else {
           // Fade out
           videoIdeaDiv.classList.remove("visible");
-          toggleBtn.textContent = "Show Video Idea";
+          toggleBtn.textContent = `Show Video Idea${videoIdeas.length > 1 ? `s (${videoIdeas.length})` : ''}`;
         }
       }
     };
@@ -476,8 +483,9 @@ async function loadVideoIdeas() {
 
   try {
     const feedData = await fetchFeed();
+    // Only show standalone video idea items, not news items with video ideas attached
     let videoIdeas = feedData.filter(
-      (item) => item.type === "video_idea" || item.video_idea
+      (item) => item.type === "video_idea"
     );
 
     // Update tag filter buttons (use all video ideas to show all available tags)
@@ -545,7 +553,7 @@ function createVideoIdeaCard(idea) {
   if (idea.thumbnail_url) {
     const img = document.createElement("img");
     img.src = idea.thumbnail_url;
-    img.alt = idea.title || "Video idea thumbnail";
+    img.alt = idea.original_title || "Video idea thumbnail";
     img.loading = "lazy";
     img.onerror = function () {
       this.style.display = "none";
@@ -558,31 +566,55 @@ function createVideoIdeaCard(idea) {
   const content = document.createElement("div");
   content.className = "news-card-content";
 
-  // Title
-  const title = document.createElement("h3");
-  title.className = "news-card-title";
-  title.textContent = idea.title || "Untitled Video Idea";
-  content.appendChild(title);
-
-  // Description - for video ideas, always use description (video concept), never original_summary
-  // For news items, use summary
-  let descriptionText = "";
-  if (idea.type === "video_idea") {
-    // Video ideas should have description (the video concept), not original_summary
-    descriptionText = idea.description || "";
+  // Article title (original article this video idea is based on)
+  const articleTitle = document.createElement("h3");
+  articleTitle.className = "news-card-title";
+  const originalTitle = idea.original_title || idea.title || "Untitled Article";
+  if (idea.source_url) {
+    const titleLink = document.createElement("a");
+    titleLink.href = idea.source_url;
+    titleLink.target = "_blank";
+    titleLink.rel = "noopener noreferrer";
+    titleLink.textContent = originalTitle;
+    articleTitle.appendChild(titleLink);
   } else {
-    // News items use summary
-    descriptionText = idea.summary || idea.description || "";
+    articleTitle.textContent = originalTitle;
+  }
+  content.appendChild(articleTitle);
+
+  // Video ideas section
+  const videoIdeasSection = document.createElement("div");
+  videoIdeasSection.className = "video-ideas-section";
+  
+  // Build video ideas from structured fields
+  const whyMatters = idea.why_matters_builders || "";
+  const exampleWorkflow = idea.example_workflow || "";
+  const predictedImpact = idea.predicted_impact || "";
+  
+  if (whyMatters || exampleWorkflow || predictedImpact) {
+    const videoIdeaTitle = document.createElement("h4");
+    videoIdeaTitle.className = "video-idea-title";
+    videoIdeaTitle.textContent = idea.video_title || idea.title || "Video Idea";
+    videoIdeasSection.appendChild(videoIdeaTitle);
+    
+    const parts = [];
+    if (whyMatters) parts.push(`Why This Matters for AI Builders: ${whyMatters}`);
+    if (exampleWorkflow) parts.push(`Example Workflow: ${exampleWorkflow}`);
+    if (predictedImpact) parts.push(`Predicted Impact: ${predictedImpact}`);
+    
+    if (parts.length > 0) {
+      const videoIdeaDesc = document.createElement("p");
+      videoIdeaDesc.className = "video-idea-description";
+      videoIdeaDesc.textContent = parts.join("\n\n");
+      videoIdeasSection.appendChild(videoIdeaDesc);
+    }
   }
   
-  if (descriptionText) {
-    const desc = document.createElement("p");
-    desc.className = "news-card-summary";
-    desc.textContent = descriptionText;
-    content.appendChild(desc);
+  if (videoIdeasSection.children.length > 0) {
+    content.appendChild(videoIdeasSection);
   }
 
-  // Meta information (source, scores, etc.)
+  // Meta information (source only, no scores)
   const meta = document.createElement("div");
   meta.className = "news-card-meta";
 
@@ -593,33 +625,7 @@ function createVideoIdeaCard(idea) {
     meta.appendChild(source);
   }
 
-  // Add trend/SEO scores if available
-  if (idea.trend_score !== undefined || idea.seo_score !== undefined) {
-    const scores = document.createElement("span");
-    scores.className = "news-card-scores";
-    const scoreParts = [];
-    if (idea.trend_score !== undefined) {
-      scoreParts.push(`Trend: ${(idea.trend_score * 100).toFixed(0)}%`);
-    }
-    if (idea.seo_score !== undefined) {
-      scoreParts.push(`SEO: ${(idea.seo_score * 100).toFixed(0)}%`);
-    }
-    scores.textContent = scoreParts.join(" • ");
-    meta.appendChild(scores);
-  }
-
   content.appendChild(meta);
-
-  // Source URL link
-  if (idea.source_url) {
-    const link = document.createElement("a");
-    link.href = idea.source_url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.className = "news-card-link";
-    link.textContent = "Read more →";
-    content.appendChild(link);
-  }
 
   card.appendChild(content);
   return card;

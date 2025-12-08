@@ -187,9 +187,9 @@ def merge_feeds(
     logger.info(f"Merging {len(news_items)} news items, {len(video_ideas)} video ideas (using pre-generated tag images)")
     
     # Apply filtering and deduplication to news items
-    # Reserve some slots for video ideas (30% of max_items, minimum 1)
-    video_idea_slots = max(1, int(max_items * 0.3))
-    news_slots = max_items - video_idea_slots
+    # Add all video ideas (no limit) - they're separate from news items
+    video_idea_slots = len(video_ideas)  # Add all video ideas
+    news_slots = max_items  # News items can use full limit since video ideas are separate
     
     if apply_filtering and news_items:
         logger.info(f"Applying filtering and deduplication to news items (max_items: {max_items}, news_slots: {news_slots}, video_idea_slots: {video_idea_slots})")
@@ -199,15 +199,21 @@ def merge_feeds(
     merged_feed = []
     
     # Create a lookup map of video ideas by source_url for quick matching
+    # Store as list to support multiple video ideas per article
     video_ideas_lookup = {}
     for idea in video_ideas:
         source_url = idea.get('source_url', '')
         original_title = idea.get('original_title', '')
         if source_url:
-            video_ideas_lookup[source_url] = idea
+            if source_url not in video_ideas_lookup:
+                video_ideas_lookup[source_url] = []
+            video_ideas_lookup[source_url].append(idea)
         elif original_title:
             # Fallback: match by title if no source_url
-            video_ideas_lookup[original_title.lower()] = idea
+            key = original_title.lower()
+            if key not in video_ideas_lookup:
+                video_ideas_lookup[key] = []
+            video_ideas_lookup[key].append(idea)
     
     # Assign visual tags to news items before adding to feed
     news_items_with_tags = assign_visual_tags_to_articles(news_items.copy())
@@ -327,15 +333,15 @@ def merge_feeds(
         thumbnail_url = get_tag_image(visual_tags)
         category = get_category_from_tags(visual_tags)
         
-        # Find associated video idea
+        # Find associated video ideas (can be multiple per article)
         source_url = item.get('source_url', '')
         item_title = item.get('title', '').lower()
-        associated_video_idea = None
+        associated_video_ideas = []
         
         if source_url and source_url in video_ideas_lookup:
-            associated_video_idea = video_ideas_lookup[source_url]
+            associated_video_ideas = video_ideas_lookup[source_url]
         elif item_title in video_ideas_lookup:
-            associated_video_idea = video_ideas_lookup[item_title]
+            associated_video_ideas = video_ideas_lookup[item_title]
         
         feed_item = {
             'type': 'news',
@@ -350,15 +356,74 @@ def merge_feeds(
             'author': clean_html_and_entities(item.get('author', '')),
         }
         
-        # Add scores and video idea if available
-        if associated_video_idea:
-            feed_item['trend_score'] = associated_video_idea.get('trend_score')
-            feed_item['seo_score'] = associated_video_idea.get('seo_score')
-            feed_item['uniqueness_score'] = associated_video_idea.get('uniqueness_score')
-            feed_item['video_idea'] = {
-                'title': clean_html_and_entities(associated_video_idea.get('title', '')),
-                'description': clean_html_and_entities(associated_video_idea.get('description', '')),
-            }
+        # Add scores and video ideas if available (can be multiple)
+        if associated_video_ideas:
+            # Use scores from first video idea
+            first_idea = associated_video_ideas[0]
+            feed_item['trend_score'] = first_idea.get('trend_score')
+            feed_item['seo_score'] = first_idea.get('seo_score')
+            feed_item['uniqueness_score'] = first_idea.get('uniqueness_score')
+            
+            # Build video ideas list with proper formatting
+            video_ideas_list = []
+            for idea in associated_video_ideas:
+                # Extract actual video idea title from description field (contains JSON with real title)
+                video_title = idea.get('video_title') or idea.get('title', '')
+                description_text = idea.get('description', '')
+                
+                # Try to extract title from JSON in description field
+                import re
+                import json as json_lib
+                json_match = re.search(r'\{[^{}]*"title"\s*:\s*"([^"]+)"[^{}]*\}', description_text, re.DOTALL)
+                if json_match:
+                    try:
+                        # Try to parse the JSON to get the actual title
+                        json_str = json_match.group(0)
+                        parsed = json_lib.loads(json_str)
+                        if 'title' in parsed:
+                            video_title = parsed['title']
+                    except:
+                        # If JSON parsing fails, extract title from regex match
+                        title_match = re.search(r'"title"\s*:\s*"([^"]+)"', json_str)
+                        if title_match:
+                            video_title = title_match.group(1)
+                
+                # Extract concept_summary from description or use the concept_summary field
+                concept_summary = idea.get('concept_summary', '')
+                if not concept_summary and json_match:
+                    try:
+                        json_str = json_match.group(0)
+                        parsed = json_lib.loads(json_str)
+                        if 'concept_summary' in parsed:
+                            concept_summary = parsed['concept_summary']
+                    except:
+                        concept_match = re.search(r'"concept_summary"\s*:\s*"([^"]+)"', json_str)
+                        if concept_match:
+                            concept_summary = concept_match.group(1)
+                
+                # Build description: concept_summary + structured fields
+                why_matters = idea.get('why_matters_builders', '')
+                example_workflow = idea.get('example_workflow', '')
+                predicted_impact = idea.get('predicted_impact', '')
+                
+                description_parts = []
+                if concept_summary:
+                    description_parts.append(concept_summary)
+                if why_matters:
+                    description_parts.append(f"Why This Matters for AI Builders: {why_matters}")
+                if example_workflow:
+                    description_parts.append(f"Example Workflow: {example_workflow}")
+                if predicted_impact:
+                    description_parts.append(f"Predicted Impact: {predicted_impact}")
+                
+                video_description = "\n\n".join(description_parts) if description_parts else ""
+                
+                video_ideas_list.append({
+                    'title': clean_html_and_entities(video_title),
+                    'description': clean_html_and_entities(video_description),
+                })
+            
+            feed_item['video_ideas'] = video_ideas_list  # Multiple video ideas
         
         merged_feed.append(feed_item)
     
@@ -376,10 +441,60 @@ def merge_feeds(
         # Get category from visual tags
         category = get_category_from_tags(visual_tags)
         
+        # Extract actual video idea title from description field (contains JSON with real title)
+        video_title = idea.get('video_title') or idea.get('title', '')
+        description_text = idea.get('description', '')
+        
+        # Try to extract title from JSON in description field
+        json_match = re.search(r'\{[^{}]*"title"\s*:\s*"([^"]+)"[^{}]*\}', description_text, re.DOTALL)
+        if json_match:
+            try:
+                # Try to parse the JSON to get the actual title
+                json_str = json_match.group(0)
+                parsed = json.loads(json_str)
+                if 'title' in parsed:
+                    video_title = parsed['title']
+            except:
+                # If JSON parsing fails, extract title from regex match
+                title_match = re.search(r'"title"\s*:\s*"([^"]+)"', json_str)
+                if title_match:
+                    video_title = title_match.group(1)
+        
+        # Extract concept_summary from description or use the concept_summary field
+        concept_summary = idea.get('concept_summary', '')
+        if not concept_summary and json_match:
+            try:
+                json_str = json_match.group(0)
+                parsed = json.loads(json_str)
+                if 'concept_summary' in parsed:
+                    concept_summary = parsed['concept_summary']
+            except:
+                concept_match = re.search(r'"concept_summary"\s*:\s*"([^"]+)"', json_str)
+                if concept_match:
+                    concept_summary = concept_match.group(1)
+        
+        # Build description: concept_summary + structured fields
+        why_matters = idea.get('why_matters_builders', '')
+        example_workflow = idea.get('example_workflow', '')
+        predicted_impact = idea.get('predicted_impact', '')
+        
+        description_parts = []
+        if concept_summary:
+            description_parts.append(concept_summary)
+        if why_matters:
+            description_parts.append(f"Why This Matters for AI Builders: {why_matters}")
+        if example_workflow:
+            description_parts.append(f"Example Workflow: {example_workflow}")
+        if predicted_impact:
+            description_parts.append(f"Predicted Impact: {predicted_impact}")
+        
+        video_description = "\n\n".join(description_parts) if description_parts else ""
+        
         feed_item = {
             'type': 'video_idea',
-            'title': clean_html_and_entities(idea.get('title', '')),
-            'description': clean_html_and_entities(idea.get('description', '')),  # Video idea description (not article summary)
+            'title': clean_html_and_entities(video_title),
+            'video_title': clean_html_and_entities(video_title),  # Explicit video_title field
+            'description': clean_html_and_entities(video_description),  # Built from structured fields
             'source': idea.get('source', ''),
             'source_url': idea.get('source_url', ''),
             'thumbnail_url': thumbnail_http_url,  # Tag image URL
@@ -387,14 +502,13 @@ def merge_feeds(
             'tags': idea.get('tags', []),  # Preserve tags if available
             'visual_tags': visual_tags,  # Preserve visual tags
             'category': category,  # Category ID for filtering
-            # Preserve additional video idea fields for frontend
-            'trend_analysis': idea.get('trend_analysis', ''),
-            'virality_factors': idea.get('virality_factors', []),
-            'target_keywords': idea.get('target_keywords', []),
-            'trend_score': idea.get('trend_score'),
-            'seo_score': idea.get('seo_score'),
+            # Structured fields for building description
+            'why_matters_builders': clean_html_and_entities(idea.get('why_matters_builders', '')),
+            'example_workflow': clean_html_and_entities(idea.get('example_workflow', '')),
+            'predicted_impact': clean_html_and_entities(idea.get('predicted_impact', '')),
             'original_title': clean_html_and_entities(idea.get('original_title', '')),  # Reference to original article
             'original_summary': clean_html_and_entities(idea.get('original_summary', '')),  # Reference to original article summary
+            # Note: trend_score, seo_score removed - these belong on news items, not video ideas
         }
         merged_feed.append(feed_item)
     
@@ -471,12 +585,12 @@ if __name__ == "__main__":
             logger.info(f"Loaded {len(news_items)} news items, {len(video_ideas)} video ideas")
             
             # Merge with filtering and limit (tag images are pre-generated)
+            # Note: video ideas are added separately and don't count toward news limit
             merged_data = merge_feeds(news_items, video_ideas, apply_filtering=True, max_items=feed_limit)
             
-            # Ensure final feed doesn't exceed limit (in case video ideas added extra items)
-            if len(merged_data) > feed_limit:
-                logger.info(f"Limiting final feed from {len(merged_data)} to {feed_limit} items")
-                merged_data = merged_data[:feed_limit]
+            # Don't limit the feed - video ideas are separate from news items
+            # The feed_limit only applies to news items, video ideas are added on top
+            logger.info(f"Final feed contains {len(merged_data)} items ({len([x for x in merged_data if x.get('type') == 'news'])} news, {len([x for x in merged_data if x.get('type') == 'video_idea'])} video ideas)")
             
             # Generate feed.json
             feed_data = {
