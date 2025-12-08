@@ -2,6 +2,7 @@
 Data management utilities for AI News Tracker.
 
 Handles JSON file operations and data merging for the pipeline.
+Phase 2: Simplified merge by article_id with clean data structure.
 """
 
 import json
@@ -54,108 +55,64 @@ def clean_html_and_entities(text: str) -> str:
     # Remove HTML tags using regex
     text = re.sub(r'<[^>]+>', '', text)
     
-    # Remove common HTML artifacts (in case unescape missed some)
-    text = re.sub(r'&nbsp;', ' ', text)
-    text = re.sub(r'&amp;', '&', text)
-    text = re.sub(r'&lt;', '<', text)
-    text = re.sub(r'&gt;', '>', text)
-    text = re.sub(r'&quot;', '"', text)
-    text = re.sub(r'&#8217;', "'", text)
-    text = re.sub(r'&#8230;', '...', text)
-    text = re.sub(r'&#39;', "'", text)
-    
-    # Clean up extra whitespace
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    return text
-
-
-def clean_html_and_entities(text: str) -> str:
-    """
-    Remove HTML tags and decode HTML entities from text.
-    
-    Args:
-        text: Text that may contain HTML tags and entities
-        
-    Returns:
-        Cleaned text without HTML tags or entities
-    """
-    if not text:
-        return ""
-    
-    # First decode HTML entities (e.g., &#8217; -> ', &amp; -> &)
-    text = html.unescape(text)
-    
-    # Remove HTML tags using regex
-    text = re.sub(r'<[^>]+>', '', text)
-    
-    # Remove common HTML artifacts (in case unescape missed some)
-    text = re.sub(r'&nbsp;', ' ', text)
-    text = re.sub(r'&amp;', '&', text)
-    text = re.sub(r'&lt;', '<', text)
-    text = re.sub(r'&gt;', '>', text)
-    text = re.sub(r'&quot;', '"', text)
-    text = re.sub(r'&#8217;', "'", text)
-    text = re.sub(r'&#8230;', '...', text)
-    text = re.sub(r'&#39;', "'", text)
-    
-    # Clean up extra whitespace
-    text = re.sub(r'\s+', ' ', text).strip()
+    # Clean up whitespace
+    text = ' '.join(text.split())
     
     return text
 
 
 def load_json(file_path: str) -> Dict[str, Any]:
     """
-    Load JSON data from a file.
+    Load JSON data from file.
     
     Args:
-        file_path: Path to JSON file (relative to data directory or absolute)
+        file_path: Path to JSON file
         
     Returns:
-        Dictionary containing parsed JSON data
+        Dictionary containing JSON data
         
     Raises:
         FileNotFoundError: If file doesn't exist
         json.JSONDecodeError: If file contains invalid JSON
     """
     path = Path(file_path)
-    
-    # If relative path, assume it's in data directory
     if not path.is_absolute():
-        path = settings.get_data_file_path(file_path)
+        # Relative paths are relative to DATA_DIR
+        path = settings.DATA_DIR / file_path
+    
+    if not path.exists():
+        raise FileNotFoundError(f"JSON file not found: {path}")
     
     logger.debug(f"Loading JSON from: {path}")
     
     try:
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        logger.info(f"Successfully loaded JSON from {path}")
+        logger.debug(f"Successfully loaded JSON from {path}")
         return data
-    except FileNotFoundError:
-        logger.warning(f"File not found: {path}")
-        raise
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in {path}: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to load JSON from {path}: {e}")
         raise
 
 
 def save_json(data: Dict[str, Any], file_path: str) -> None:
     """
-    Save data to a JSON file.
+    Save JSON data to file.
     
     Args:
         data: Dictionary to save as JSON
-        file_path: Path to JSON file (relative to data directory or absolute)
+        file_path: Output file path (relative to DATA_DIR or absolute)
         
     Raises:
         OSError: If file cannot be written
     """
     path = Path(file_path)
-    
-    # If relative path, assume it's in data directory
     if not path.is_absolute():
-        path = settings.get_data_file_path(file_path)
+        # Relative paths are relative to DATA_DIR
+        path = settings.DATA_DIR / file_path
     
     # Ensure directory exists
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -177,85 +134,66 @@ def save_json(data: Dict[str, Any], file_path: str) -> None:
         raise
 
 
-def merge_feeds(
-    news_items: List[Dict[str, Any]],
-    video_ideas: List[Dict[str, Any]],
-    thumbnails: List[Dict[str, Any]] = None,  # Deprecated - no longer used
-    apply_filtering: bool = True,
-    max_items: int = 30
-) -> List[Dict[str, Any]]:
+def extract_video_idea_from_description(description: str) -> Dict[str, str]:
     """
-    Merge news items and video ideas into unified feed structure.
-    Tag images are assigned based on visual_tags from pre-generated tag_images.
+    Extract clean video title and description from video_description field.
+    Handles both old format (JSON embedded in description) and new format (clean fields).
     
     Args:
-        news_items: List of news article dictionaries
-        video_ideas: List of video idea dictionaries
-        thumbnails: Deprecated - no longer used (tag images are pre-generated)
-        apply_filtering: Whether to apply deduplication and relevance filtering
+        description: Video description that may contain embedded JSON
         
     Returns:
-        List of merged feed items with unified structure
+        Dict with 'title' and 'description' keys
     """
-    # Thumbnails parameter is deprecated (kept for backward compatibility)
-    # Tag images are now pre-generated and assigned based on visual_tags
-    if thumbnails:
-        logger.debug(f"Ignoring {len(thumbnails)} thumbnails (deprecated - using pre-generated tag images)")
+    if not description:
+        return {'title': '', 'description': ''}
     
-    logger.info(f"Merging {len(news_items)} news items, {len(video_ideas)} video ideas (using pre-generated tag images)")
+    # Try to extract JSON from description (old format)
+    json_match = re.search(r'\{[^{}]*"title"\s*:\s*"([^"]+)"[^{}]*\}', description, re.DOTALL)
     
-    # Apply filtering and deduplication to news items
-    # Add all video ideas (no limit) - they're separate from news items
-    video_idea_slots = len(video_ideas)  # Add all video ideas
-    news_slots = max_items  # News items can use full limit since video ideas are separate
+    title = ''
+    clean_description = ''
     
-    if apply_filtering and news_items:
-        logger.info(f"Applying filtering and deduplication to news items (max_items: {max_items}, news_slots: {news_slots}, video_idea_slots: {video_idea_slots})")
-        # Get top N best articles based on composite scoring (reserve slots for video ideas)
-        news_items = filter_and_deduplicate(news_items, similarity_threshold=0.7, min_relevance=0.1, max_items=news_slots)
-    
-    merged_feed = []
-    
-    # Create a lookup map of video ideas by source_url for quick matching
-    # Store as list to support multiple video ideas per article
-    video_ideas_lookup = {}
-    for idea in video_ideas:
-        source_url = idea.get('source_url', '')
-        original_title = idea.get('original_title', '')
-        if source_url:
-            if source_url not in video_ideas_lookup:
-                video_ideas_lookup[source_url] = []
-            video_ideas_lookup[source_url].append(idea)
-        elif original_title:
-            # Fallback: match by title if no source_url
-            key = original_title.lower()
-            if key not in video_ideas_lookup:
-                video_ideas_lookup[key] = []
-            video_ideas_lookup[key].append(idea)
-    
-    # Assign visual tags to news items before adding to feed
-    news_items_with_tags = assign_visual_tags_to_articles(news_items.copy())
-    
-    # Load tag images metadata for news items too
-    tag_images_metadata = {}
-    tag_images_dir = settings.DATA_DIR / "tag_images"
-    tag_metadata_file = tag_images_dir / "tag_images_metadata.json"
-    
-    if tag_metadata_file.exists():
+    if json_match:
+        # Old format: JSON embedded in description
         try:
-            tag_metadata = load_json(str(tag_metadata_file))
-            for img in tag_metadata.get("images", []):
-                tag = img.get("tag", "")
-                if tag:
-                    tag_images_metadata[tag] = img
-            logger.info(f"Loaded {len(tag_images_metadata)} tag images from metadata")
-        except Exception as e:
-            logger.warning(f"Failed to load tag images metadata: {e}")
+            json_str = json_match.group(0)
+            parsed = json.loads(json_str)
+            title = parsed.get('title', '')
+            clean_description = parsed.get('concept_summary', '')
+        except:
+            # Fallback: extract with regex
+            title_match = re.search(r'"title"\s*:\s*"([^"]+)"', json_str)
+            if title_match:
+                title = title_match.group(1)
+            concept_match = re.search(r'"concept_summary"\s*:\s*"([^"]+)"', json_str)
+            if concept_match:
+                clean_description = concept_match.group(1)
+    else:
+        # New format: description is already clean, use as-is
+        clean_description = description
+    
+    return {
+        'title': title,
+        'description': clean_description
+    }
+
+
+def get_tag_image_url(visual_tags: List[str]) -> str:
+    """
+    Get tag image URL for visual tags using semantic mapping.
+    
+    Args:
+        visual_tags: List of visual tag strings
+        
+    Returns:
+        URL path to tag image (e.g., "/tag_images/llm.jpg")
+    """
+    if not visual_tags:
+        return "/tag_images/generic1.jpg"
     
     # Mapping from AI_TOPICS to semantic image names
-    # Topics that don't have a direct match will use generic images
     TAG_TO_IMAGE_MAPPING = {
-        # Direct semantic matches
         "llm": "llm.jpg",
         "large language model": "llm.jpg",
         "genai": "genai.jpg",
@@ -269,7 +207,7 @@ def merge_feeds(
         "autonomous system": "robot.jpg",
         "autonomous vehicle": "car.jpg",
         "cybersecurity ai": "cybersecurity.jpg",
-        "ai regulation": "cybersecurity.jpg",  # Governance related
+        "ai regulation": "cybersecurity.jpg",
         "ai safety": "cybersecurity.jpg",
         "ai governance": "cybersecurity.jpg",
         "data science": "computer.jpg",
@@ -279,12 +217,12 @@ def merge_feeds(
         "deep learning": "network.jpg",
         "foundation model": "network.jpg",
         "transformer model": "network.jpg",
-        "nvidia": "gpu.jpg",  # Company -> hardware
-        "openai": "llm.jpg",  # Company -> LLM
-        "anthropic": "llm.jpg",  # Company -> LLM
-        "google ai": "llm.jpg",  # Company -> LLM
-        "deepmind": "neuralnetwork.jpg",  # Company -> neural networks
-        "meta ai": "llm.jpg",  # Company -> LLM
+        "nvidia": "gpu.jpg",
+        "openai": "llm.jpg",
+        "anthropic": "llm.jpg",
+        "google ai": "llm.jpg",
+        "deepmind": "neuralnetwork.jpg",
+        "meta ai": "llm.jpg",
         "training data": "computer.jpg",
         "training run": "computer.jpg",
         "model weights": "network.jpg",
@@ -302,236 +240,238 @@ def merge_feeds(
         "predictive model": "network.jpg",
     }
     
-    # Generic images for topics that don't have semantic matches
-    GENERIC_IMAGES = [f"generic{i}.jpg" for i in range(1, 9)]  # generic1.jpg to generic8.jpg
+    GENERIC_IMAGES = [f"generic{i}.jpg" for i in range(1, 9)]
     
-    def get_tag_image(visual_tags: List[str]) -> str:
-        """
-        Get a tag image URL for visual tags using semantic mapping.
-        Maps AI_TOPICS to semantic image names, falls back to generic images.
-        """
-        if not visual_tags:
-            logger.debug("No visual tags provided for image lookup")
-            return "/tag_images/generic1.jpg"
-        
-        # Try to find a semantic match for the first tag
-        first_tag = visual_tags[0].lower().strip()
-        
-        # Check direct mapping
-        if first_tag in TAG_TO_IMAGE_MAPPING:
-            image_name = TAG_TO_IMAGE_MAPPING[first_tag]
-            logger.debug(f"Mapped tag '{first_tag}' to semantic image: {image_name}")
-            return f"/tag_images/{image_name}"
-        
-        # Check if any tag matches (in case first tag doesn't match but another does)
-        for tag in visual_tags:
-            tag_lower = tag.lower().strip()
-            if tag_lower in TAG_TO_IMAGE_MAPPING:
-                image_name = TAG_TO_IMAGE_MAPPING[tag_lower]
-                logger.debug(f"Mapped tag '{tag_lower}' to semantic image: {image_name}")
-                return f"/tag_images/{image_name}"
-        
-        # No semantic match found - use generic image based on hash for consistency
-        import hashlib
-        tag_hash = int(hashlib.md5(first_tag.encode()).hexdigest(), 16)
-        generic_index = tag_hash % len(GENERIC_IMAGES)
-        generic_image = GENERIC_IMAGES[generic_index]
-        
-        logger.debug(f"No semantic match for tags {visual_tags}, using generic: {generic_image}")
-        return f"/tag_images/{generic_image}"
+    # Try to find a semantic match for the first tag
+    first_tag = visual_tags[0].lower().strip()
     
-    # Helper function to get category from visual tags (deprecated - tags are now flat)
-    def get_category_from_tags(visual_tags: List[str]) -> str:
-        """Get category - now just returns 'all' since we use flat tags."""
-        return "all"  # Categories removed, using flat tag system
+    if first_tag in TAG_TO_IMAGE_MAPPING:
+        return f"/tag_images/{TAG_TO_IMAGE_MAPPING[first_tag]}"
     
-    # Add news items (with tags preserved)
+    # Check if any tag matches
+    for tag in visual_tags:
+        tag_lower = tag.lower().strip()
+        if tag_lower in TAG_TO_IMAGE_MAPPING:
+            return f"/tag_images/{TAG_TO_IMAGE_MAPPING[tag_lower]}"
+    
+    # No semantic match - use generic image based on hash for consistency
+    tag_hash = int(hashlib.md5(first_tag.encode()).hexdigest(), 16)
+    generic_index = tag_hash % len(GENERIC_IMAGES)
+    return f"/tag_images/{GENERIC_IMAGES[generic_index]}"
+
+
+def merge_feeds(
+    news_items: List[Dict[str, Any]],
+    video_ideas: List[Dict[str, Any]],
+    thumbnails: List[Dict[str, Any]] = None,  # Deprecated - no longer used
+    apply_filtering: bool = True,
+    max_items: int = 30
+) -> List[Dict[str, Any]]:
+    """
+    Simplified merge: lightweight merge by article_id.
+    
+    Args:
+        news_items: List of news article dictionaries (from filtered_news.json + summaries.json)
+        video_ideas: List of video idea dictionaries (from video_ideas.json)
+        thumbnails: Deprecated - no longer used
+        apply_filtering: Whether to apply deduplication and relevance filtering
+        max_items: Maximum number of news items (video ideas are separate)
+        
+    Returns:
+        List of merged feed items with unified structure
+    """
+    if thumbnails:
+        logger.debug(f"Ignoring {len(thumbnails)} thumbnails (deprecated)")
+    
+    logger.info(f"Merging {len(news_items)} news items, {len(video_ideas)} video ideas")
+    
+    # Apply filtering to news items if requested
+    if apply_filtering and news_items:
+        logger.info(f"Applying filtering to news items (max_items: {max_items})")
+        news_items = filter_and_deduplicate(news_items, similarity_threshold=0.7, min_relevance=0.1, max_items=max_items)
+    
+    # Create lookup map of video ideas by article_id
+    video_ideas_by_article = {}
+    for idea in video_ideas:
+        article_id = idea.get('article_id', '')
+        if article_id:
+            if article_id not in video_ideas_by_article:
+                video_ideas_by_article[article_id] = []
+            video_ideas_by_article[article_id].append(idea)
+    
+    logger.info(f"Grouped {len(video_ideas)} video ideas into {len(video_ideas_by_article)} articles")
+    
+    # Assign visual tags to news items
+    news_items_with_tags = assign_visual_tags_to_articles(news_items.copy())
+    
+    merged_feed = []
+    
+    # Merge news items with their video ideas
     for item in news_items_with_tags:
+        article_id = item.get('article_id', '')
         visual_tags = item.get('visual_tags', [])
-        thumbnail_url = get_tag_image(visual_tags)
-        category = get_category_from_tags(visual_tags)
-        
-        # Find associated video ideas (can be multiple per article)
-        source_url = item.get('source_url', '')
-        item_title = item.get('title', '').lower()
-        associated_video_ideas = []
-        
-        if source_url and source_url in video_ideas_lookup:
-            associated_video_ideas = video_ideas_lookup[source_url]
-        elif item_title in video_ideas_lookup:
-            associated_video_ideas = video_ideas_lookup[item_title]
+        thumbnail_url = get_tag_image_url(visual_tags)
         
         feed_item = {
             'type': 'news',
+            'article_id': article_id,
             'title': clean_html_and_entities(item.get('title', '')),
             'summary': clean_html_and_entities(item.get('summary', '')),
             'source': item.get('source', ''),
             'source_url': item.get('source_url', ''),
             'published_date': item.get('published_date', ''),
             'thumbnail_url': thumbnail_url,
-            'visual_tags': visual_tags,  # Only visual tags from categorization
-            'category': category,  # Category ID for filtering
+            'visual_tags': visual_tags,
+            'category': 'all',  # Flat tag system
             'author': clean_html_and_entities(item.get('author', '')),
         }
         
-        # Add scores and video ideas if available (can be multiple)
-        if associated_video_ideas:
-            # Use scores from first video idea
-            first_idea = associated_video_ideas[0]
-            feed_item['trend_score'] = first_idea.get('trend_score')
-            feed_item['seo_score'] = first_idea.get('seo_score')
-            feed_item['uniqueness_score'] = first_idea.get('uniqueness_score')
-            
-            # Build video ideas list with proper formatting
+        # Add video ideas if available
+        if article_id in video_ideas_by_article:
             video_ideas_list = []
-            for idea in associated_video_ideas:
-                # Extract actual video idea title from description field (contains JSON with real title)
-                video_title = idea.get('video_title') or idea.get('title', '')
-                description_text = idea.get('description', '')
-                
-                # Try to extract title from JSON in description field
-                import re
-                import json as json_lib
-                json_match = re.search(r'\{[^{}]*"title"\s*:\s*"([^"]+)"[^{}]*\}', description_text, re.DOTALL)
-                if json_match:
-                    try:
-                        # Try to parse the JSON to get the actual title
-                        json_str = json_match.group(0)
-                        parsed = json_lib.loads(json_str)
-                        if 'title' in parsed:
-                            video_title = parsed['title']
-                    except:
-                        # If JSON parsing fails, extract title from regex match
-                        title_match = re.search(r'"title"\s*:\s*"([^"]+)"', json_str)
-                        if title_match:
-                            video_title = title_match.group(1)
-                
-                # Extract concept_summary from description or use the concept_summary field
-                concept_summary = idea.get('concept_summary', '')
-                if not concept_summary and json_match:
-                    try:
-                        json_str = json_match.group(0)
-                        parsed = json_lib.loads(json_str)
-                        if 'concept_summary' in parsed:
-                            concept_summary = parsed['concept_summary']
-                    except:
-                        concept_match = re.search(r'"concept_summary"\s*:\s*"([^"]+)"', json_str)
-                        if concept_match:
-                            concept_summary = concept_match.group(1)
-                
-                # Build description: concept_summary + structured fields
-                why_matters = idea.get('why_matters_builders', '')
-                example_workflow = idea.get('example_workflow', '')
-                predicted_impact = idea.get('predicted_impact', '')
-                
-                description_parts = []
-                if concept_summary:
-                    description_parts.append(concept_summary)
-                if why_matters:
-                    description_parts.append(f"Why This Matters for AI Builders: {why_matters}")
-                if example_workflow:
-                    description_parts.append(f"Example Workflow: {example_workflow}")
-                if predicted_impact:
-                    description_parts.append(f"Predicted Impact: {predicted_impact}")
-                
-                video_description = "\n\n".join(description_parts) if description_parts else ""
+            for idea in video_ideas_by_article[article_id]:
+                # Extract clean title and description
+                video_data = extract_video_idea_from_description(idea.get('video_description', ''))
+                video_title = video_data.get('title') or idea.get('video_title', '')
+                video_desc = video_data.get('description') or idea.get('video_description', '')
                 
                 video_ideas_list.append({
                     'title': clean_html_and_entities(video_title),
-                    'description': clean_html_and_entities(video_description),
+                    'description': clean_html_and_entities(video_desc),
                 })
             
-            feed_item['video_ideas'] = video_ideas_list  # Multiple video ideas
+            feed_item['video_ideas'] = video_ideas_list
         
         merged_feed.append(feed_item)
     
-    # Add video ideas with tag images (limit to reserved slots)
-    video_ideas_to_add = video_ideas[:video_idea_slots] if len(video_ideas) > video_idea_slots else video_ideas
-    logger.info(f"Adding {len(video_ideas_to_add)} video ideas (out of {len(video_ideas)} available)")
+    # Add standalone video ideas (video ideas without matching news items)
+    # These are video ideas that don't have a corresponding article
+    processed_article_ids = {item.get('article_id') for item in news_items_with_tags}
+    standalone_ideas = []
     
-    for idea in video_ideas_to_add:
-        # Get visual tags for this idea
-        visual_tags = idea.get('visual_tags', [])
-        
-        # Get tag image based on visual tags
-        thumbnail_http_url = get_tag_image(visual_tags)
-        
-        # Get category from visual tags
-        category = get_category_from_tags(visual_tags)
-        
-        # Extract actual video idea title from description field (contains JSON with real title)
-        video_title = idea.get('video_title') or idea.get('title', '')
-        description_text = idea.get('description', '')
-        
-        # Try to extract title from JSON in description field
-        json_match = re.search(r'\{[^{}]*"title"\s*:\s*"([^"]+)"[^{}]*\}', description_text, re.DOTALL)
-        if json_match:
-            try:
-                # Try to parse the JSON to get the actual title
-                json_str = json_match.group(0)
-                parsed = json.loads(json_str)
-                if 'title' in parsed:
-                    video_title = parsed['title']
-            except:
-                # If JSON parsing fails, extract title from regex match
-                title_match = re.search(r'"title"\s*:\s*"([^"]+)"', json_str)
-                if title_match:
-                    video_title = title_match.group(1)
-        
-        # Extract concept_summary from description or use the concept_summary field
-        concept_summary = idea.get('concept_summary', '')
-        if not concept_summary and json_match:
-            try:
-                json_str = json_match.group(0)
-                parsed = json.loads(json_str)
-                if 'concept_summary' in parsed:
-                    concept_summary = parsed['concept_summary']
-            except:
-                concept_match = re.search(r'"concept_summary"\s*:\s*"([^"]+)"', json_str)
-                if concept_match:
-                    concept_summary = concept_match.group(1)
-        
-        # Build description: concept_summary + structured fields
-        why_matters = idea.get('why_matters_builders', '')
-        example_workflow = idea.get('example_workflow', '')
-        predicted_impact = idea.get('predicted_impact', '')
-        
-        description_parts = []
-        if concept_summary:
-            description_parts.append(concept_summary)
-        if why_matters:
-            description_parts.append(f"Why This Matters for AI Builders: {why_matters}")
-        if example_workflow:
-            description_parts.append(f"Example Workflow: {example_workflow}")
-        if predicted_impact:
-            description_parts.append(f"Predicted Impact: {predicted_impact}")
-        
-        video_description = "\n\n".join(description_parts) if description_parts else ""
-        
-        feed_item = {
-            'type': 'video_idea',
-            'title': clean_html_and_entities(video_title),
-            'video_title': clean_html_and_entities(video_title),  # Explicit video_title field
-            'description': clean_html_and_entities(video_description),  # Built from structured fields
-            'source': idea.get('source', ''),
-            'source_url': idea.get('source_url', ''),
-            'thumbnail_url': thumbnail_http_url,  # Tag image URL
-            'generated_date': idea.get('generated_date', ''),
-            'tags': idea.get('tags', []),  # Preserve tags if available
-            'visual_tags': visual_tags,  # Preserve visual tags
-            'category': category,  # Category ID for filtering
-            # Structured fields for building description
-            'why_matters_builders': clean_html_and_entities(idea.get('why_matters_builders', '')),
-            'example_workflow': clean_html_and_entities(idea.get('example_workflow', '')),
-            'predicted_impact': clean_html_and_entities(idea.get('predicted_impact', '')),
-            'original_title': clean_html_and_entities(idea.get('original_title', '')),  # Reference to original article
-            'original_summary': clean_html_and_entities(idea.get('original_summary', '')),  # Reference to original article summary
-            # Note: trend_score, seo_score removed - these belong on news items, not video ideas
-        }
-        merged_feed.append(feed_item)
+    for idea in video_ideas:
+        article_id = idea.get('article_id', '')
+        if article_id and article_id not in processed_article_ids:
+            visual_tags = idea.get('visual_tags', [])
+            if not visual_tags:
+                # Assign tags if missing
+                # Create a minimal article dict for tag assignment
+                temp_article = {
+                    'title': idea.get('video_title', ''),
+                    'summary': idea.get('video_description', ''),
+                }
+                tagged = assign_visual_tags_to_articles([temp_article])
+                if tagged:
+                    visual_tags = tagged[0].get('visual_tags', [])
+            
+            thumbnail_url = get_tag_image_url(visual_tags)
+            
+            # Extract clean title and description
+            video_data = extract_video_idea_from_description(idea.get('video_description', ''))
+            video_title = video_data.get('title') or idea.get('video_title', '')
+            video_desc = video_data.get('description') or idea.get('video_description', '')
+            
+            feed_item = {
+                'type': 'video_idea',
+                'article_id': article_id,
+                'title': clean_html_and_entities(video_title),
+                'description': clean_html_and_entities(video_desc),
+                'thumbnail_url': thumbnail_url,
+                'visual_tags': visual_tags,
+                'category': 'all',
+            }
+            
+            standalone_ideas.append(feed_item)
     
-    logger.info(f"Merged feed contains {len(merged_feed)} items")
+    if standalone_ideas:
+        logger.info(f"Adding {len(standalone_ideas)} standalone video ideas")
+        merged_feed.extend(standalone_ideas)
+    
+    logger.info(f"Merged feed contains {len(merged_feed)} items ({len([x for x in merged_feed if x.get('type') == 'news'])} news, {len([x for x in merged_feed if x.get('type') == 'video_idea'])} video ideas)")
     return merged_feed
+
+
+def build_display_data(
+    filtered_news: List[Dict[str, Any]],
+    summaries: List[Dict[str, Any]],
+    video_ideas: List[Dict[str, Any]],
+    max_items: int = 30
+) -> List[Dict[str, Any]]:
+    """
+    Build display data optimized for frontend.
+    Merges all data sources by article_id.
+    
+    Args:
+        filtered_news: News items from filtered_news.json
+        summaries: Summaries from summaries.json
+        video_ideas: Video ideas from video_ideas.json
+        max_items: Maximum number of news items
+        
+    Returns:
+        List of display items optimized for frontend
+    """
+    logger.info(f"Building display data from {len(filtered_news)} news, {len(summaries)} summaries, {len(video_ideas)} video ideas")
+    
+    # Create lookups by article_id
+    summaries_lookup = {s.get('article_id'): s for s in summaries}
+    video_ideas_by_article = {}
+    for idea in video_ideas:
+        article_id = idea.get('article_id', '')
+        if article_id:
+            if article_id not in video_ideas_by_article:
+                video_ideas_by_article[article_id] = []
+            video_ideas_by_article[article_id].append(idea)
+    
+    # Merge news items with summaries and video ideas
+    display_items = []
+    
+    for news_item in filtered_news[:max_items]:
+        article_id = news_item.get('article_id', '')
+        
+        # Get summary
+        summary = ''
+        if article_id in summaries_lookup:
+            summary = summaries_lookup[article_id].get('summary', '')
+        
+        # Get video ideas
+        video_ideas_list = []
+        if article_id in video_ideas_by_article:
+            for idea in video_ideas_by_article[article_id]:
+                video_data = extract_video_idea_from_description(idea.get('video_description', ''))
+                video_title = video_data.get('title') or idea.get('video_title', '')
+                video_desc = video_data.get('description') or idea.get('video_description', '')
+                
+                video_ideas_list.append({
+                    'title': clean_html_and_entities(video_title),
+                    'description': clean_html_and_entities(video_desc),
+                })
+        
+        # Assign visual tags
+        news_with_tags = assign_visual_tags_to_articles([news_item])
+        visual_tags = news_with_tags[0].get('visual_tags', []) if news_with_tags else []
+        thumbnail_url = get_tag_image_url(visual_tags)
+        
+        display_item = {
+            'article_id': article_id,
+            'type': 'news',
+            'title': clean_html_and_entities(news_item.get('title', '')),
+            'summary': clean_html_and_entities(summary),
+            'source_url': news_item.get('source_url', ''),
+            'published_date': news_item.get('published_date', ''),
+            'source': news_item.get('source', ''),
+            'author': clean_html_and_entities(news_item.get('author', '')),
+            'thumbnail_url': thumbnail_url,
+            'visual_tags': visual_tags,
+            'category': 'all',
+        }
+        
+        if video_ideas_list:
+            display_item['video_ideas'] = video_ideas_list
+        
+        display_items.append(display_item)
+    
+    logger.info(f"Built {len(display_items)} display items")
+    return display_items
 
 
 def generate_feed_json(merged_data: List[Dict[str, Any]], output_file: str = None) -> None:
@@ -545,9 +485,11 @@ def generate_feed_json(merged_data: List[Dict[str, Any]], output_file: str = Non
     if output_file is None:
         output_file = settings.FEED_FILE
     
+    from datetime import datetime
+    
     feed_data = {
-        'version': '1.0',
-        'generated_at': '',  # Will be set by caller or timestamp
+        'version': '2.0',
+        'generated_at': datetime.utcnow().isoformat(),
         'items': merged_data,
         'total_items': len(merged_data),
     }
@@ -565,7 +507,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='AI News Tracker Data Manager')
     parser.add_argument('--limit', type=int, default=30, help='Maximum number of articles in feed (default: 30)')
     parser.add_argument('command', nargs='?', help='Command to execute (load, save, merge)')
-    parser.add_argument('args', nargs='*', help='Command arguments')
     
     # Parse arguments
     if len(sys.argv) > 1 and sys.argv[1] in ['load', 'save', 'merge']:
@@ -596,46 +537,56 @@ if __name__ == "__main__":
         logger.info(f"Running data manager in pipeline mode (feed limit: {feed_limit})")
         
         try:
-            # Load all pipeline outputs (use filtered_news.json, not raw_news.json)
+            # Load all pipeline outputs
             filtered_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
             if filtered_file.exists():
                 news_items = load_json(str(filtered_file)).get('items', [])
                 logger.info(f"Loaded {len(news_items)} filtered news items from {settings.FILTERED_NEWS_FILE}")
             else:
-                # Fallback to raw_news.json if filtered doesn't exist (backward compatibility)
                 logger.warning(f"{settings.FILTERED_NEWS_FILE} not found, falling back to {settings.RAW_NEWS_FILE}")
                 news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
+            
+            # Load summaries and merge by article_id
+            summaries_file = settings.get_data_file_path("summaries.json")
+            if summaries_file.exists():
+                summaries_data = load_json(str(summaries_file)).get('items', [])
+                summaries_lookup = {s.get('article_id'): s for s in summaries_data}
+                for item in news_items:
+                    article_id = item.get('article_id')
+                    if article_id and article_id in summaries_lookup:
+                        summary_item = summaries_lookup[article_id]
+                        item['summary'] = summary_item.get('summary', '')
+                        if 'title' not in item or not item.get('title'):
+                            item['title'] = summary_item.get('title', '')
+                        if 'source_url' not in item or not item.get('source_url'):
+                            item['source_url'] = summary_item.get('source_url', '')
+                logger.info(f"Merged {len(summaries_lookup)} summaries into news items")
+            else:
+                logger.warning("summaries.json not found, news items will not have summaries")
             
             video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
             
             logger.info(f"Loaded {len(news_items)} news items, {len(video_ideas)} video ideas")
             
-            # Merge with filtering and limit (tag images are pre-generated)
-            # Note: video ideas are added separately and don't count toward news limit
+            # Merge with filtering and limit
             merged_data = merge_feeds(news_items, video_ideas, apply_filtering=True, max_items=feed_limit)
             
-            # Don't limit the feed - video ideas are separate from news items
-            # The feed_limit only applies to news items, video ideas are added on top
             logger.info(f"Final feed contains {len(merged_data)} items ({len([x for x in merged_data if x.get('type') == 'news'])} news, {len([x for x in merged_data if x.get('type') == 'video_idea'])} video ideas)")
             
             # Generate feed.json
             feed_data = {
-                'version': '1.0',
+                'version': '2.0',
                 'generated_at': datetime.utcnow().isoformat(),
                 'items': merged_data,
                 'total_items': len(merged_data),
             }
             save_json(feed_data, settings.FEED_FILE)
             
-            logger.info(f"Successfully generated feed.json with {len(merged_data)} items")
-            print(f"✓ Feed generated: {len(merged_data)} items (limit: {feed_limit})")
+            logger.info(f"Feed saved to {settings.FEED_FILE}")
             
         except FileNotFoundError as e:
             logger.error(f"Required data file not found: {e}")
-            print(f"Error: Required data file not found: {e}")
             sys.exit(1)
         except Exception as e:
-            logger.error(f"Error in data manager: {e}", exc_info=True)
-            print(f"Error: {e}")
+            logger.error(f"Data manager failed: {e}", exc_info=True)
             sys.exit(1)
-

@@ -26,7 +26,7 @@ from flask_cors import CORS
 # from flask_limiter.util import get_remote_address
 from app.config import settings
 from app.scripts.logger import setup_logger
-from app.scripts.data_manager import load_json, save_json, merge_feeds, generate_feed_json
+from app.scripts.data_manager import load_json, save_json, merge_feeds, generate_feed_json, build_display_data
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -130,6 +130,99 @@ def get_news_feed():
         return jsonify({'error': 'Failed to load feed'}), 500
 
 
+@app.route('/api/merge', methods=['POST'])
+def merge_data():
+    """
+    Merge data files (filtered_news.json, summaries.json, video_ideas.json) into feed.json.
+    
+    Optional JSON body:
+        {
+            "limit": 30  // Optional, defaults to 30
+        }
+    
+    Returns:
+        JSON response with success status and item count
+    """
+    try:
+        # Get limit from request body or use default
+        feed_limit = 30
+        if request.is_json:
+            data = request.get_json(silent=True)
+            if data and 'limit' in data:
+                feed_limit = int(data.get('limit', 30))
+        
+        logger.info(f"Merging data files with limit: {feed_limit}")
+        
+        # Load all pipeline outputs
+        filtered_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
+        if not filtered_file.exists():
+            return jsonify({
+                'status': 'error',
+                'message': f'{settings.FILTERED_NEWS_FILE} not found'
+            }), 404
+        
+        news_items = load_json(str(filtered_file)).get('items', [])
+        logger.info(f"Loaded {len(news_items)} filtered news items")
+        
+        # Load summaries and merge by article_id
+        summaries_file = settings.get_data_file_path("summaries.json")
+        if summaries_file.exists():
+            summaries_data = load_json(str(summaries_file)).get('items', [])
+            summaries_lookup = {s.get('article_id'): s for s in summaries_data}
+            for item in news_items:
+                article_id = item.get('article_id')
+                if article_id and article_id in summaries_lookup:
+                    summary_item = summaries_lookup[article_id]
+                    item['summary'] = summary_item.get('summary', '')
+                    if 'title' not in item or not item.get('title'):
+                        item['title'] = summary_item.get('title', '')
+                    if 'source_url' not in item or not item.get('source_url'):
+                        item['source_url'] = summary_item.get('source_url', '')
+            logger.info(f"Merged {len(summaries_lookup)} summaries into news items")
+        else:
+            logger.warning("summaries.json not found, news items will not have summaries")
+        
+        # Load video ideas
+        video_ideas_file = settings.get_data_file_path(settings.VIDEO_IDEAS_FILE)
+        if not video_ideas_file.exists():
+            logger.warning(f"{settings.VIDEO_IDEAS_FILE} not found, merging without video ideas")
+            video_ideas = []
+        else:
+            video_ideas = load_json(str(video_ideas_file)).get('items', [])
+            logger.info(f"Loaded {len(video_ideas)} video ideas")
+        
+        # Merge and generate feed
+        merged_data = merge_feeds(news_items, video_ideas, apply_filtering=True, max_items=feed_limit)
+        generate_feed_json(merged_data)
+        
+        item_count = len(merged_data)
+        news_count = len([x for x in merged_data if x.get('type') == 'news'])
+        video_idea_count = len([x for x in merged_data if x.get('type') == 'video_idea'])
+        
+        logger.info(f"Merge complete: {item_count} items ({news_count} news, {video_idea_count} video ideas)")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Data merged successfully',
+            'total_items': item_count,
+            'news_items': news_count,
+            'video_ideas': video_idea_count
+        }), 200
+        
+    except FileNotFoundError as e:
+        logger.error(f"Required data file not found: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Required data file not found: {str(e)}'
+        }), 404
+    except Exception as e:
+        logger.error(f"Error merging data: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to merge data: {str(e)}'
+        }), 500
+
+
 @app.route('/api/refresh', methods=['GET', 'POST'])
 def refresh_feed():
     """
@@ -157,12 +250,22 @@ def refresh_feed():
         if request.method == 'GET':
             logger.info("Merging feed from data files (GET request)")
             try:
-                # Load all pipeline outputs (use summaries.json, not raw_news.json)
-                news_items = load_json(settings.SUMMARIES_FILE).get('items', [])
-                video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
+                # Load all pipeline outputs using new structure
+                filtered_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
+                if not filtered_file.exists():
+                    return jsonify({
+                        'status': 'error',
+                        'message': f'{settings.FILTERED_NEWS_FILE} not found'
+                    }), 404
                 
-                # Merge and generate feed with filtering and limit (tag images are pre-generated)
-                merged_data = merge_feeds(news_items, video_ideas, apply_filtering=True, max_items=feed_limit)
+                filtered_news = load_json(str(filtered_file)).get('items', [])
+                summaries_file = settings.get_data_file_path("summaries.json")
+                summaries = load_json(str(summaries_file)).get('items', []) if summaries_file.exists() else []
+                video_ideas_file = settings.get_data_file_path(settings.VIDEO_IDEAS_FILE)
+                video_ideas = load_json(str(video_ideas_file)).get('items', []) if video_ideas_file.exists() else []
+                
+                # Use new build_display_data function
+                merged_data = build_display_data(filtered_news, summaries, video_ideas, max_items=feed_limit)
                 generate_feed_json(merged_data)
                 
                 item_count = len(merged_data)
@@ -178,7 +281,7 @@ def refresh_feed():
                 return jsonify({
                     'status': 'error',
                     'message': f'Required data file not found: {str(e)}'
-                }), 500
+                }), 404
             except Exception as e:
                 logger.error(f"Error merging feed from data files: {e}", exc_info=True)
                 return jsonify({'error': f'Failed to merge feed: {str(e)}'}), 500
@@ -192,12 +295,22 @@ def refresh_feed():
         if not data:
             logger.info("Merging feed from data files (POST without body)")
             try:
-                # Load all pipeline outputs (use summaries.json, not raw_news.json)
-                news_items = load_json(settings.SUMMARIES_FILE).get('items', [])
-                video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
+                # Load all pipeline outputs using new structure
+                filtered_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
+                if not filtered_file.exists():
+                    return jsonify({
+                        'status': 'error',
+                        'message': f'{settings.FILTERED_NEWS_FILE} not found'
+                    }), 404
                 
-                # Merge and generate feed (use default limit of 12, tag images are pre-generated)
-                merged_data = merge_feeds(news_items, video_ideas, max_items=12)
+                filtered_news = load_json(str(filtered_file)).get('items', [])
+                summaries_file = settings.get_data_file_path("summaries.json")
+                summaries = load_json(str(summaries_file)).get('items', []) if summaries_file.exists() else []
+                video_ideas_file = settings.get_data_file_path(settings.VIDEO_IDEAS_FILE)
+                video_ideas = load_json(str(video_ideas_file)).get('items', []) if video_ideas_file.exists() else []
+                
+                # Use new build_display_data function (default limit 12)
+                merged_data = build_display_data(filtered_news, summaries, video_ideas, max_items=12)
                 generate_feed_json(merged_data)
                 
                 item_count = len(merged_data)
@@ -213,7 +326,7 @@ def refresh_feed():
                 return jsonify({
                     'status': 'error',
                     'message': f'Required data file not found: {str(e)}'
-                }), 500
+                }), 404
             except Exception as e:
                 logger.error(f"Error merging feed from data files: {e}", exc_info=True)
                 return jsonify({'error': f'Failed to merge feed: {str(e)}'}), 500
@@ -391,16 +504,23 @@ def n8n_webhook():
         # If workflow completed successfully, merge data and update feed
         if status == 'completed' and 'data' in data:
             try:
-                # Load all pipeline outputs (tag images are pre-generated)
-                news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
-                video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
-                
-                # Merge and generate feed with limit (default 12)
-                feed_limit = getattr(settings, 'FEED_LIMIT', 30)
-                merged_data = merge_feeds(news_items, video_ideas, apply_filtering=True, max_items=feed_limit)
-                generate_feed_json(merged_data)
-                
-                logger.info(f"Feed updated from n8n webhook: {len(merged_data)} items")
+                # Load all pipeline outputs using new structure
+                filtered_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
+                if filtered_file.exists():
+                    filtered_news = load_json(str(filtered_file)).get('items', [])
+                    summaries_file = settings.get_data_file_path("summaries.json")
+                    summaries = load_json(str(summaries_file)).get('items', []) if summaries_file.exists() else []
+                    video_ideas_file = settings.get_data_file_path(settings.VIDEO_IDEAS_FILE)
+                    video_ideas = load_json(str(video_ideas_file)).get('items', []) if video_ideas_file.exists() else []
+                    
+                    # Use new build_display_data function
+                    feed_limit = getattr(settings, 'FEED_LIMIT', 30)
+                    merged_data = build_display_data(filtered_news, summaries, video_ideas, max_items=feed_limit)
+                    generate_feed_json(merged_data)
+                    
+                    logger.info(f"Feed updated from n8n webhook: {len(merged_data)} items")
+                else:
+                    logger.warning(f"{settings.FILTERED_NEWS_FILE} not found, skipping feed update")
             except Exception as e:
                 logger.error(f"Error processing webhook data: {e}")
         
@@ -421,7 +541,7 @@ def monitor_pipeline_progress():
     # Pipeline step estimates (in seconds) - updated for faster processing with 1 idea per article
     STEP_ESTIMATES = {
         'scraping': 10,
-        'summarization': 30,
+        'summarization': 60,
         'video_ideas': 10,  # Faster with 1 idea per article
         'merging': 5,
     }

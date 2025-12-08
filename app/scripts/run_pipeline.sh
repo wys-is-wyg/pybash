@@ -288,31 +288,42 @@ trap 'error_exit ${LINENO} $?' ERR
     [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 2 (Pre-filtering): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
-    # Step 3: Summarize articles with Claude
+    # Step 3: Summarize filtered articles
     STEP_START=$(date +%s)
-    log "INFO" "=== STEP 3: Summarizing articles ==="
+    log "INFO" "=== STEP 3: Summarizing filtered articles ==="
     if [ -f "$APP_DIR/scripts/summarizer.py" ]; then
-        log "INFO" "Running summarizer (Hugging Face)..."
+        log "INFO" "Running summarizer (reading from filtered_news.json)..."
         if [ -n "$DOCKER_EXEC" ]; then
-            # Script writes to file directly, just capture stderr for errors
-            $DOCKER_EXEC $PYTHON "/app/app/scripts/summarizer.py" < "$DATA_DIR/raw_news.json" 2>"$DATA_DIR/summarizer_stderr.log" || {
-                log "ERROR" "Summarizer failed"
-                if [ -f "$DATA_DIR/summarizer_stderr.log" ]; then
-                    log "ERROR" "Error output: $(cat "$DATA_DIR/summarizer_stderr.log" | tail -10)"
-                fi
+            # Script reads from filtered_news.json via stdin or file fallback
+            if [ -f "$DATA_DIR/filtered_news.json" ]; then
+                cat "$DATA_DIR/filtered_news.json" | $DOCKER_EXEC_I $PYTHON "/app/app/scripts/summarizer.py" 2>"$DATA_DIR/summarizer_stderr.log" || {
+                    log "ERROR" "Summarizer failed"
+                    if [ -f "$DATA_DIR/summarizer_stderr.log" ]; then
+                        log "ERROR" "Error output: $(cat "$DATA_DIR/summarizer_stderr.log" | tail -10)"
+                    fi
+                    exit 1
+                }
+            else
+                log "ERROR" "filtered_news.json not found"
                 exit 1
-            }
+            fi
         else
-            $PYTHON "$APP_DIR/scripts/summarizer.py" < "$DATA_DIR/raw_news.json" 2>"$DATA_DIR/summarizer_stderr.log" || {
-                log "ERROR" "Summarizer failed"
-                if [ -f "$DATA_DIR/summarizer_stderr.log" ]; then
-                    log "ERROR" "Error output: $(cat "$DATA_DIR/summarizer_stderr.log" | tail -10)"
-                fi
+            # Local execution
+            if [ -f "$DATA_DIR/filtered_news.json" ]; then
+                cat "$DATA_DIR/filtered_news.json" | $PYTHON "$APP_DIR/scripts/summarizer.py" 2>"$DATA_DIR/summarizer_stderr.log" || {
+                    log "ERROR" "Summarizer failed"
+                    if [ -f "$DATA_DIR/summarizer_stderr.log" ]; then
+                        log "ERROR" "Error output: $(cat "$DATA_DIR/summarizer_stderr.log" | tail -10)"
+                    fi
+                    exit 1
+                }
+            else
+                log "ERROR" "filtered_news.json not found"
                 exit 1
-            }
+            fi
         fi
         log "INFO" "Summaries saved to: $DATA_DIR/summaries.json"
-        summary_count=$(grep -c '"title"' "$DATA_DIR/summaries.json" 2>/dev/null || echo 0)
+        summary_count=$(grep -c '"article_id"' "$DATA_DIR/summaries.json" 2>/dev/null || echo 0)
         log "INFO" "Generated $summary_count summaries"
     else
         log "WARN" "Summarizer not found, skipping..."
@@ -352,7 +363,7 @@ trap 'error_exit ${LINENO} $?' ERR
             }
         fi
         log "INFO" "Video ideas saved to: $DATA_DIR/video_ideas.json"
-        idea_count=$(grep -c '"title"' "$DATA_DIR/video_ideas.json" 2>/dev/null || echo 0)
+        idea_count=$(grep -c '"article_id"' "$DATA_DIR/video_ideas.json" 2>/dev/null || echo 0)
         log "INFO" "Generated $idea_count video ideas"
     else
         log "WARN" "Video idea generator not found, skipping..."
@@ -371,27 +382,69 @@ trap 'error_exit ${LINENO} $?' ERR
 
     # Step 6: Merge all data into unified feed (tag images assigned based on visual_tags)
     STEP_START=$(date +%s)
-    log "INFO" "=== STEP 6: Merging data into display.json (limit: $FEED_LIMIT) ==="
-    if [ -f "$APP_DIR/scripts/data_manager.py" ]; then
-        log "INFO" "Running data manager with feed limit: $FEED_LIMIT..."
-        if [ -n "$DOCKER_EXEC" ]; then
-            $DOCKER_EXEC $PYTHON "/app/app/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
-                log "ERROR" "Data manager failed"
-                exit 1
-            }
+    log "INFO" "=== STEP 6: Merging data into feed.json (limit: $FEED_LIMIT) ==="
+    
+    # Determine Flask URL (from .env or default)
+    FLASK_HOST="${FLASK_HOST:-localhost}"
+    FLASK_PORT="${PYTHON_APP_PORT:-5001}"
+    FLASK_URL="http://$FLASK_HOST:$FLASK_PORT"
+    
+    # Try to call API endpoint first (cleaner), fall back to direct script execution
+    log "INFO" "Attempting to merge via API endpoint: $FLASK_URL/api/merge"
+    if curl -sf "$FLASK_URL/health" > /dev/null 2>&1; then
+        # Flask is reachable, use API endpoint
+        merge_response=$(curl -s -X POST "$FLASK_URL/api/merge" \
+            -H "Content-Type: application/json" \
+            -d "{\"limit\": $FEED_LIMIT}" 2>&1)
+        
+        if echo "$merge_response" | grep -q '"status":"success"'; then
+            log "INFO" "Merge completed via API endpoint"
+            item_count=$(echo "$merge_response" | grep -o '"total_items":[0-9]*' | grep -o '[0-9]*' || echo "0")
+            log "INFO" "Final feed contains $item_count items (limit: $FEED_LIMIT)"
         else
-            $PYTHON "$APP_DIR/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
-                log "ERROR" "Data manager failed"
-                exit 1
-            }
-        fi
-        log "INFO" "Merged feed saved to: $DATA_DIR/feed.json"
-        if [ -f "$DATA_DIR/feed.json" ]; then
-            feed_count=$(grep -c '"title"' "$DATA_DIR/feed.json" 2>/dev/null || echo 0)
-            log "INFO" "Final feed contains $feed_count items (limit: $FEED_LIMIT)"
+            log "WARN" "API merge failed, falling back to direct script execution"
+            log "WARN" "API response: $merge_response"
+            # Fall through to direct script execution
+            if [ -f "$APP_DIR/scripts/data_manager.py" ]; then
+                log "INFO" "Running data manager directly with feed limit: $FEED_LIMIT..."
+                if [ -n "$DOCKER_EXEC" ]; then
+                    $DOCKER_EXEC $PYTHON "/app/app/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
+                        log "ERROR" "Data manager failed"
+                        exit 1
+                    }
+                else
+                    $PYTHON "$APP_DIR/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
+                        log "ERROR" "Data manager failed"
+                        exit 1
+                    }
+                fi
+            fi
         fi
     else
-        log "WARN" "Data manager not found, skipping merge..."
+        # Flask not reachable, use direct script execution
+        log "INFO" "Flask API not reachable, running data manager directly..."
+        if [ -f "$APP_DIR/scripts/data_manager.py" ]; then
+            log "INFO" "Running data manager with feed limit: $FEED_LIMIT..."
+            if [ -n "$DOCKER_EXEC" ]; then
+                $DOCKER_EXEC $PYTHON "/app/app/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
+                    log "ERROR" "Data manager failed"
+                    exit 1
+                }
+            else
+                $PYTHON "$APP_DIR/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
+                    log "ERROR" "Data manager failed"
+                    exit 1
+                }
+            fi
+        else
+            log "WARN" "Data manager not found, skipping merge..."
+        fi
+    fi
+    
+    log "INFO" "Merged feed saved to: $DATA_DIR/feed.json"
+    if [ -f "$DATA_DIR/feed.json" ]; then
+        feed_count=$(grep -c '"title"' "$DATA_DIR/feed.json" 2>/dev/null || echo 0)
+        log "INFO" "Final feed contains $feed_count items (limit: $FEED_LIMIT)"
     fi
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
@@ -461,11 +514,12 @@ trap 'error_exit ${LINENO} $?' ERR
     log "INFO" "Total execution time: ${PIPELINE_DURATION}s ($(awk "BEGIN {printf \"%.1f\", ${PIPELINE_DURATION}/60}") minutes)"
     log "INFO" "=========================================="
     log "INFO" "Outputs saved to: $DATA_DIR/"
-    log "INFO" "  - raw_news.json (initial fetch)"
-    log "INFO" "  - summaries.json (Claude summaries)"
-    log "INFO" "  - video_ideas.json (generated ideas)"
+    log "INFO" "  - raw_news.json (initial fetch, preserved)"
+    log "INFO" "  - filtered_news.json (filtered articles with article_id)"
+    log "INFO" "  - summaries.json (summaries with article_id)"
+    log "INFO" "  - video_ideas.json (video ideas with article_id)"
     log "INFO" "  - tag_images/ (pre-generated tag images, see generate_tag_images.sh)"
-    log "INFO" "  - feed.json (final merged feed)"
+    log "INFO" "  - feed.json (final merged feed, version 2.0)"
     log "INFO" "Logs saved to: $LOG_FILE"
     log "INFO" ""
 

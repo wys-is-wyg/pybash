@@ -81,19 +81,7 @@ def get_llm_model():
         logger.error(f"Failed to load LLM model: {e}", exc_info=True)
         return None
 
-# Improved video title templates - action-oriented with hooks
-VIDEO_TITLE_TEMPLATES = [
-    "{topic}: What {change} *REALLY* Means for Builders",
-    "The Hidden {angle} Behind {topic} (Why Builders Should Care)",
-    "Should AI Builders Bet on {topic}? {insight} Suggests {answer}",
-    "{topic} Shake-Up: What {event} *Really* Means for Automation",
-    "The {angle} Battle: How {topic} Shifts the Future of {focus}",
-    "{topic} for Builders: {opportunity} You Can't Ignore",
-    "Why {topic} Changes Everything for {audience} (And What to Do)",
-    "{topic} Deep Dive: {action} Workflows You Can Build Today",
-    "The {angle} Behind {topic}: {prediction} for Automation",
-    "{topic} Explained: {insight} That Changes How We Build",
-]
+# Templates removed - using LLM-generated titles directly
 
 # Automation/builder angles for video ideas
 AUTOMATION_ANGLES = [
@@ -317,18 +305,19 @@ def generate_video_idea_with_llm(item: Dict[str, Any], idea_index: int = 0) -> O
             angle_focus = automation_angle
         
         # Simplified prompt for faster generation (Llama format)
+        # Request ONLY JSON, no explanatory text
         prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
-Generate video ideas for AI builders and indie hackers.<|eot_id|><|start_header_id|>user<|end_header_id|>
+You are a JSON generator. Return ONLY valid JSON, no explanatory text.<|eot_id|><|start_header_id|>user<|end_header_id|>
 
 Article: {title}
 Summary: {summary[:300]}
 
 Focus: {angle_focus}
 
-Generate ONE video idea as JSON:
+Return ONLY this JSON structure (no other text):
 {{
-  "title": "Hook title for AI builders",
+  "title": "Video idea for AI builders",
   "concept_summary": "2-3 sentence video concept",
   "why_matters_builders": "Why this matters for builders",
   "example_workflow": "Example use case",
@@ -360,11 +349,11 @@ Generate ONE video idea as JSON:
             start_time = time.time()
             response = model(
                 prompt,
-                max_tokens=200,  # Further reduced for faster generation (was 500, then 300)
+                max_tokens=300,  # Increased to ensure complete JSON (was 200, too short)
                 temperature=0.4,  # Lower temperature = faster, more deterministic
                 top_p=0.8,  # Lower for faster generation
                 top_k=25,  # Reduced for faster generation
-                stop=["<|eot_id|>", "<|end_of_text|>", "\n\n\n", "}", "}\n", "</s>"],  # More stop tokens for early stopping
+                stop=["<|eot_id|>", "<|end_of_text|>", "\n\n\n", "</s>"],  # Removed "}" stop tokens to allow complete JSON
                 echo=False
             )
             elapsed = time.time() - start_time
@@ -386,29 +375,77 @@ Generate ONE video idea as JSON:
             logger.error("Unexpected response format from LLM")
             response_text = ""
         
-        # Try to extract JSON from response
-        json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
-        if json_match:
-            try:
-                idea_data = json.loads(json_match.group())
-            except json.JSONDecodeError:
-                # Fallback: parse manually
-                idea_data = {}
-                idea_data['title'] = re.search(r'"title":\s*"([^"]+)"', response_text)
-                idea_data['concept_summary'] = re.search(r'"concept_summary":\s*"([^"]+)"', response_text)
-                idea_data['why_matters_builders'] = re.search(r'"why_matters_builders":\s*"([^"]+)"', response_text)
-                idea_data['example_workflow'] = re.search(r'"example_workflow":\s*"([^"]+)"', response_text)
-                idea_data['predicted_impact'] = re.search(r'"predicted_impact":\s*"([^"]+)"', response_text)
-                idea_data = {k: v.group(1) if v else "" for k, v in idea_data.items()}
-        else:
-            # Fallback: use response as description
-            idea_data = {
-                'title': f"{main_topic}: What Builders Need to Know",
-                'concept_summary': response_text[:200],
-                'why_matters_builders': "This development impacts AI builders and workflow creators.",
-                'example_workflow': "Build workflows leveraging this technology.",
-                'predicted_impact': "This will reshape AI opportunities."
-            }
+        # Extract JSON from response (handle code blocks and nested JSON)
+        idea_data = {}
+        
+        # Try to find JSON in code blocks first (```json ... ``` or ``` ... ```)
+        # Use balanced brace matching for nested JSON
+        code_block_start = re.search(r'```(?:json)?\s*\{', response_text, re.DOTALL)
+        if code_block_start:
+            start_pos = code_block_start.end() - 1  # Position of opening brace
+            brace_count = 0
+            for i in range(start_pos, len(response_text)):
+                if response_text[i] == '{':
+                    brace_count += 1
+                elif response_text[i] == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        json_str = response_text[start_pos:i+1]
+                        try:
+                            idea_data = json.loads(json_str)
+                            break
+                        except json.JSONDecodeError:
+                            logger.warning("Failed to parse JSON from code block, trying alternative extraction")
+                            break
+        
+        # If code block parsing failed, try to find JSON object directly
+        if not idea_data:
+            # Find the first complete JSON object (handle nested braces)
+            brace_count = 0
+            start_idx = -1
+            for i, char in enumerate(response_text):
+                if char == '{':
+                    if brace_count == 0:
+                        start_idx = i
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0 and start_idx != -1:
+                        json_str = response_text[start_idx:i+1]
+                        try:
+                            idea_data = json.loads(json_str)
+                            break
+                        except json.JSONDecodeError:
+                            continue
+        
+        # If still no JSON, try regex extraction as fallback (handle escaped quotes)
+        if not idea_data:
+            # Improved regex that handles escaped quotes and multi-line strings
+            title_match = re.search(r'"title":\s*"((?:[^"\\]|\\.)*)"', response_text, re.DOTALL)
+            concept_match = re.search(r'"concept_summary":\s*"((?:[^"\\]|\\.)*)"', response_text, re.DOTALL)
+            why_match = re.search(r'"why_matters_builders":\s*"((?:[^"\\]|\\.)*)"', response_text, re.DOTALL)
+            workflow_match = re.search(r'"example_workflow":\s*"((?:[^"\\]|\\.)*)"', response_text, re.DOTALL)
+            impact_match = re.search(r'"predicted_impact":\s*"((?:[^"\\]|\\.)*)"', response_text, re.DOTALL)
+            
+            if title_match or concept_match:
+                idea_data = {
+                    'title': title_match.group(1) if title_match else "",
+                    'concept_summary': concept_match.group(1) if concept_match else "",
+                    'why_matters_builders': why_match.group(1) if why_match else "",
+                    'example_workflow': workflow_match.group(1) if workflow_match else "",
+                    'predicted_impact': impact_match.group(1) if impact_match else "",
+                }
+        
+        # Final fallback: if no valid JSON found, log error and return None
+        if not idea_data or not idea_data.get('title'):
+            logger.error(f"Failed to extract valid JSON from LLM response. Response: {response_text[:200]}")
+            logger.debug(f"Full response text: {response_text}")
+            return None
+        
+        # Ensure we only use extracted JSON fields, never the raw response text
+        if not idea_data.get('concept_summary'):
+            logger.warning("No concept_summary found in extracted JSON, returning None")
+            return None
         
         # Extract topics for keywords
         target_keywords = topics[:5] if topics else [main_topic]
@@ -442,10 +479,10 @@ Generate ONE video idea as JSON:
         uniqueness_score = 0.8 if is_breakthrough or is_exec_change else 0.6
         engagement_score = (trend_score * 0.4 + seo_score * 0.35 + uniqueness_score * 0.25)
         
-        # Use LLM's actual title and concept_summary (not the built description)
+        # Use LLM's actual title and concept_summary (no templates, no fallbacks)
         video_idea = {
-            'video_title': idea_data.get('title', f"{main_topic}: What Builders Need to Know"),
-            'video_description': idea_data.get('concept_summary', ''),  # Just LLM's concept_summary
+            'video_title': idea_data.get('title', '').strip(),
+            'video_description': idea_data.get('concept_summary', '').strip(),  # Just LLM's concept_summary
             # Keep other fields for internal use, but won't be saved to final output
             'concept_summary': idea_data.get('concept_summary', ''),
             'why_matters_builders': idea_data.get('why_matters_builders', ''),
