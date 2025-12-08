@@ -537,6 +537,7 @@ p {
   display: inline-block;
   width: 100%;
   text-align: center;
+  position: relative;
 }
 
 .video-idea-toggle:hover {
@@ -551,14 +552,30 @@ p {
 /* Video Idea Content - Part of card flow, expands card downward */
 .video-idea-content {
   padding: 1.25rem;
-  margin-top: 0.5rem;
-  display: none; /* Hidden by default */
+  margin-top: 0.25rem;
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 0.3s ease, max-height 0.3s ease, margin-top 0.3s ease,
+    padding 0.3s ease;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top: 1px solid transparent;
+}
+
+.video-idea-content.visible {
+  opacity: 1;
+  max-height: 2000px;
+  margin-top: 0.25rem;
+  padding-top: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-top-color: #ff6b35;
 }
 
 .video-idea-title {
   font-size: 1rem;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: #ff6b35;
   margin-bottom: 0.5rem;
 }
 

@@ -215,7 +215,6 @@ function createFeedCard(item) {
     // Create video idea content div
     videoIdeaDiv = document.createElement("div");
     videoIdeaDiv.className = "video-idea-content";
-    videoIdeaDiv.style.display = "none";
     
     const videoIdeaTitle = document.createElement("h4");
     videoIdeaTitle.className = "video-idea-title";
@@ -227,14 +226,22 @@ function createFeedCard(item) {
     videoIdeaDesc.textContent = item.video_idea.description || "";
     videoIdeaDiv.appendChild(videoIdeaDesc);
     
-    // Toggle handler
+    // Toggle handler with fade animation
     toggleBtn.onclick = function(e) {
       e.stopPropagation();
       e.preventDefault();
       if (videoIdeaDiv) {
-        const isHidden = videoIdeaDiv.style.display === "none" || videoIdeaDiv.style.display === "";
-        videoIdeaDiv.style.display = isHidden ? "block" : "none";
-        toggleBtn.textContent = isHidden ? "Hide Video Idea" : "Show Video Idea";
+        const isHidden = !videoIdeaDiv.classList.contains("visible");
+        
+        if (isHidden) {
+          // Fade in
+          videoIdeaDiv.classList.add("visible");
+          toggleBtn.textContent = "Hide Video Idea";
+        } else {
+          // Fade out
+          videoIdeaDiv.classList.remove("visible");
+          toggleBtn.textContent = "Show Video Idea";
+        }
       }
     };
     
