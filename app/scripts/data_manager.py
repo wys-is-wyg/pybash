@@ -7,6 +7,7 @@ Handles JSON file operations and data merging for the pipeline.
 import json
 import re
 import html
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from app.config import settings
@@ -15,6 +16,23 @@ from app.scripts.filtering import filter_and_deduplicate
 from app.scripts.tag_categorizer import assign_visual_tags_to_articles, AI_TOPICS
 
 logger = setup_logger(__name__)
+
+
+def generate_article_id(source_url: str) -> str:
+    """
+    Generate consistent article ID from source URL using MD5 hash.
+    
+    Args:
+        source_url: The article's source URL
+        
+    Returns:
+        16-character hexadecimal article ID
+    """
+    if not source_url:
+        # Fallback: use timestamp hash if no URL
+        import time
+        source_url = str(time.time())
+    return hashlib.md5(source_url.encode()).hexdigest()[:16]
 
 
 def clean_html_and_entities(text: str) -> str:

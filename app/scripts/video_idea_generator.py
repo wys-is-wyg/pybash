@@ -442,9 +442,11 @@ Generate ONE video idea as JSON:
         uniqueness_score = 0.8 if is_breakthrough or is_exec_change else 0.6
         engagement_score = (trend_score * 0.4 + seo_score * 0.35 + uniqueness_score * 0.25)
         
+        # Use LLM's actual title and concept_summary (not the built description)
         video_idea = {
             'video_title': idea_data.get('title', f"{main_topic}: What Builders Need to Know"),
-            'video_description': video_description,
+            'video_description': idea_data.get('concept_summary', ''),  # Just LLM's concept_summary
+            # Keep other fields for internal use, but won't be saved to final output
             'concept_summary': idea_data.get('concept_summary', ''),
             'why_matters_builders': idea_data.get('why_matters_builders', ''),
             'example_workflow': idea_data.get('example_workflow', ''),
@@ -615,46 +617,21 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 logger.error(f"Video idea generation failed for article {i}: {title[:50]}... - No video ideas generated")
                 continue
             
-            # Format each video idea
+            # Get article_id from item or generate it
+            from app.scripts.data_manager import generate_article_id
+            article_id = item.get('article_id') or generate_article_id(source_url)
+            
+            # Format each video idea (clean format: just article_id, LLM title, LLM description)
             for idea_num, video_idea_data in enumerate(video_ideas_data):
-                video_title = video_idea_data.get('video_title', title)
-                video_idea = {
-                    'title': video_title,  # Keep for backward compatibility
-                    'video_title': video_title,  # Add explicit video_title field
-                    'description': video_idea_data.get('video_description', summary),
-                    'concept_summary': video_idea_data.get('concept_summary', ''),
-                    'why_matters_builders': video_idea_data.get('why_matters_builders', ''),
-                    'example_workflow': video_idea_data.get('example_workflow', ''),
-                    'predicted_impact': video_idea_data.get('predicted_impact', ''),
-                    'source': source,
-                    'source_url': source_url,
-                    'generated_date': datetime.utcnow().isoformat(),
-                    'type': 'video_idea',
-                    # Video idea analysis fields
-                    'trend_analysis': video_idea_data.get('trend_analysis', ''),
-                    'virality_factors': video_idea_data.get('virality_factors', []),
-                    'target_keywords': video_idea_data.get('target_keywords', []),
-                    'content_outline': video_idea_data.get('content_outline', []),
-                    'target_duration_minutes': video_idea_data.get('target_duration_minutes', 10),
-                    'estimated_engagement_score': video_idea_data.get('estimated_engagement_score', 0.5),
-                    'trend_score': video_idea_data.get('trend_score', 0.5),
-                    'seo_score': video_idea_data.get('seo_score', 0.5),
-                    'uniqueness_score': video_idea_data.get('uniqueness_score', 0.5),
-                    'automation_angle': video_idea_data.get('automation_angle', ''),
-                    # Reference to original article
-                    'original_title': title,
-                    'original_summary': summary,
-                }
+                # Extract LLM's actual title and description (just what LLM returns)
+                video_title = video_idea_data.get('video_title', '')
+                video_description = video_idea_data.get('video_description', '')  # LLM's concept_summary
                 
-                # Assign visual tags for image generation (categorize if not already present)
-                if 'visual_tags' in item and item.get('visual_tags'):
-                    video_idea['visual_tags'] = item.get('visual_tags')
-                    video_idea['tag_relevance_score'] = item.get('tag_relevance_score', 0)
-                else:
-                    # Categorize article to get visual tags
-                    visual_tags, match_count = categorize_article(item)
-                    video_idea['visual_tags'] = visual_tags
-                    video_idea['tag_relevance_score'] = match_count
+                video_idea = {
+                    'article_id': article_id,
+                    'video_title': video_title,
+                    'video_description': video_description,
+                }
                 
                 video_ideas.append(video_idea)
                 logger.debug(f"Generated idea {idea_num + 1}/{num_ideas} for article {i}/{len(summaries)}")

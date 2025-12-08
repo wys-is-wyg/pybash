@@ -410,12 +410,28 @@ def main():
         # Summarize articles
         summarized_items = batch_summarize_news(news_items)
         
-        # Save summaries
+        # Extract minimal fields: article_id, title, source_url, summary (needed for video idea generation)
+        from app.scripts.data_manager import generate_article_id
+        summary_items = []
+        for item in summarized_items:
+            source_url = item.get('source_url', '')
+            article_id = item.get('article_id') or generate_article_id(source_url)
+            summary = item.get('summary', '')
+            title = item.get('title', '')
+            
+            summary_items.append({
+                'article_id': article_id,
+                'title': title,  # Needed for video idea generation
+                'source_url': source_url,  # Needed for video idea generation
+                'summary': summary,
+            })
+        
+        # Save summaries (minimal format)
         output_file = settings.SUMMARIES_FILE
         output_data = {
             'summarized_at': '',  # Will be set by data_manager
-            'total_items': len(summarized_items),
-            'items': summarized_items,
+            'total_items': len(summary_items),
+            'items': summary_items,
         }
         save_json(output_data, output_file)
         

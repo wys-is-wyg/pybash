@@ -72,10 +72,12 @@ class Settings:
     
     # Data File Names
     RAW_NEWS_FILE: str = "raw_news.json"
+    FILTERED_NEWS_FILE: str = "filtered_news.json"
     SUMMARIES_FILE: str = "summaries.json"
     VIDEO_IDEAS_FILE: str = "video_ideas.json"
     THUMBNAILS_FILE: str = "thumbnails.json"
     FEED_FILE: str = "feed.json"
+    DISPLAY_FILE: str = "display.json"  # New: merged display data for frontend
     
     # Logging Configuration
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()

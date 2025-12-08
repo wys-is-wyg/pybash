@@ -115,20 +115,39 @@ def main():
         # Pre-filter articles
         filtered_items = pre_filter_articles(news_items)
         
-        # Save filtered news (overwrite raw_news.json with filtered version)
+        # Add article_id to each filtered item and keep only minimal fields
+        from app.scripts.data_manager import generate_article_id
+        
+        minimal_items = []
+        for item in filtered_items:
+            source_url = item.get('source_url', '')
+            article_id = generate_article_id(source_url)
+            
+            # Keep only essential fields
+            minimal_item = {
+                'article_id': article_id,
+                'title': item.get('title', ''),
+                'source_url': source_url,
+                'published_date': item.get('published_date', ''),
+                'source': item.get('source', ''),
+            }
+            
+            # Add author if available
+            if item.get('author'):
+                minimal_item['author'] = item.get('author')
+            
+            minimal_items.append(minimal_item)
+        
+        # Save filtered news to filtered_news.json (don't overwrite raw_news.json)
         filtered_data = {
-            'scraped_at': raw_data.get('scraped_at', ''),
-            'total_items': len(filtered_items),
-            'items': filtered_items,
+            'filtered_at': raw_data.get('scraped_at', ''),
+            'total_items': len(minimal_items),
+            'items': minimal_items,
         }
         
-        save_json(filtered_data, raw_news_file)
-        logger.info(f"Saved {len(filtered_items)} filtered articles to {raw_news_file}")
-        
-        # Also save to a separate file for reference
-        filtered_news_file = settings.DATA_DIR / "filtered_news.json"
+        filtered_news_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
         save_json(filtered_data, str(filtered_news_file))
-        logger.info(f"Also saved to {filtered_news_file} for reference")
+        logger.info(f"Saved {len(minimal_items)} filtered articles to {filtered_news_file}")
         
     except Exception as e:
         logger.error(f"Pre-filtering failed: {e}", exc_info=True)
