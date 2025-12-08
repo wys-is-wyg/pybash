@@ -11,12 +11,18 @@ import requests
 import smtplib
 import threading
 import json
+import hmac
+import re
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import parseaddr
+from email.header import Header
 from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from app.config import settings
 from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json, merge_feeds, generate_feed_json
@@ -24,8 +30,19 @@ from app.scripts.data_manager import load_json, save_json, merge_feeds, generate
 # Initialize Flask app
 app = Flask(__name__)
 
-# Enable CORS for web frontend
+# Request size limit (16MB)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+
+# Enable CORS for web frontend (restrict to specific origins in production)
 CORS(app)
+
+# Initialize rate limiter
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"  # Use in-memory storage (use Redis in production)
+)
 
 # Initialize logger
 logger = setup_logger(__name__)
@@ -113,6 +130,7 @@ def get_news_feed():
 
 
 @app.route('/api/refresh', methods=['GET', 'POST'])
+@limiter.limit("20 per hour")  # Limit feed refresh requests
 def refresh_feed():
     """
     Update feed.json with new data.
@@ -479,6 +497,7 @@ def monitor_pipeline_progress():
 
 
 @app.route('/api/validate-pipeline-password', methods=['POST'])
+@limiter.limit("10 per minute")  # Limit password attempts
 def validate_pipeline_password():
     """Validate password for pipeline access."""
     try:
@@ -491,8 +510,8 @@ def validate_pipeline_password():
                 'message': 'Password is required'
             }), 400
         
-        # Compare with ADMIN_PWD from settings
-        if password == settings.ADMIN_PWD:
+        # Compare with ADMIN_PWD from settings (constant-time comparison to prevent timing attacks)
+        if hmac.compare_digest(password, settings.ADMIN_PWD):
             return jsonify({
                 'valid': True,
                 'message': 'Password validated'
@@ -528,6 +547,7 @@ def get_pipeline_progress():
 
 
 @app.route('/api/trigger-pipeline', methods=['POST'])
+@limiter.limit("3 per hour")  # Limit pipeline triggers to prevent abuse
 def trigger_pipeline():
     """
     Trigger the n8n webhook pipeline with progress tracking.
@@ -649,6 +669,7 @@ def trigger_pipeline():
 
 
 @app.route('/api/contact', methods=['POST'])
+@limiter.limit("5 per hour")  # Limit contact form submissions
 def contact_form():
     """
     Handle contact form submissions and send email.
@@ -681,15 +702,24 @@ def contact_form():
         subject = data['subject'].strip()
         message = data['message'].strip()
         
-        # Basic email validation
-        if '@' not in email or '.' not in email.split('@')[1]:
+        # Validate and sanitize email address
+        parsed_email, _ = parseaddr(email)
+        if '@' not in parsed_email or '.' not in parsed_email.split('@')[1]:
             return jsonify({'error': 'Invalid email address'}), 400
+        
+        # Sanitize subject and name (remove newlines and control chars to prevent header injection)
+        subject = ''.join(c for c in subject if c.isprintable() and c not in '\r\n')[:200]  # Limit length
+        name = ''.join(c for c in name if c.isprintable() and c not in '\r\n')[:100]  # Limit length
+        
+        # Limit message length
+        if len(message) > 5000:
+            return jsonify({'error': 'Message too long (max 5000 characters)'}), 400
         
         # Create email message
         msg = MIMEMultipart()
-        msg['From'] = email
+        msg['From'] = parsed_email  # Use parsed email to prevent injection
         msg['To'] = settings.CONTACT_EMAIL
-        msg['Subject'] = f"Contact Form: {subject}"
+        msg['Subject'] = Header(f"Contact Form: {subject}", 'utf-8')  # Use Header to prevent injection
         
         # Email body
         body = f"""
@@ -747,8 +777,100 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     """Handle 500 errors."""
-    logger.error(f"Internal server error: {error}")
+    logger.error(f"Internal server error: {error}", exc_info=True)
     return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    """Handle 413 errors (request too large)."""
+    return jsonify({'error': 'Request payload too large'}), 413
+
+
+@app.route('/api/cache/stats', methods=['GET'])
+@limiter.limit("10 per minute")
+def get_cache_stats():
+    """Get cache statistics (for debugging/monitoring)."""
+    try:
+        from app.scripts.cache_manager import get_cache_stats
+        stats = get_cache_stats()
+        return jsonify({
+            'status': 'success',
+            'cache_stats': stats
+        }), 200
+    except Exception as e:
+        logger.error(f"Error getting cache stats: {e}")
+        return jsonify({'error': 'Failed to get cache stats'}), 500
+
+
+@app.route('/api/cache/clear', methods=['POST'])
+@limiter.limit("5 per hour")
+def clear_cache_endpoint():
+    """Clear cache (requires admin password)."""
+    try:
+        data = request.get_json() or {}
+        password = data.get('password', '')
+        
+        # Verify admin password
+        if not hmac.compare_digest(password, settings.ADMIN_PWD):
+            return jsonify({'error': 'Unauthorized'}), 401
+        
+        from app.scripts.cache_manager import clear_cache
+        cache_key = data.get('key')  # Optional: clear specific key
+        clear_cache(cache_key)
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Cache cleared{" for key: " + cache_key if cache_key else ""}'
+        }), 200
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}")
+        return jsonify({'error': 'Failed to clear cache'}), 500
+
+
+def preload_models():
+    """Preload models on startup to improve first-request performance."""
+    logger.info("Preloading models in background...")
+    
+    def _preload():
+        try:
+            # Preload LLM model if available
+            from app.scripts.video_idea_generator import get_llm_model
+            llm = get_llm_model()
+            if llm:
+                logger.info("LLM model preloaded successfully")
+        except Exception as e:
+            logger.warning(f"Failed to preload LLM model: {e}")
+        
+        try:
+            # Preload summarizer (only if sumy not available)
+            from app.scripts.summarizer import get_summarizer, SUMY_AVAILABLE
+            if not SUMY_AVAILABLE:
+                summarizer = get_summarizer()
+                if summarizer:
+                    logger.info("Transformers summarizer preloaded successfully")
+        except Exception as e:
+            logger.warning(f"Failed to preload summarizer: {e}")
+    
+    # Run in background thread to not block startup
+    thread = threading.Thread(target=_preload, daemon=True)
+    thread.start()
+
+
+@app.after_request
+def set_security_headers(response):
+    """Add security headers to all responses."""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    # Note: HSTS should only be enabled if using HTTPS
+    # response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
+
+
+# Preload models on startup
+preload_models()
 
 
 if __name__ == '__main__':

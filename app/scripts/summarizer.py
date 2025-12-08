@@ -13,6 +13,7 @@ from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json
 from app.scripts.tag_categorizer import assign_visual_tags_to_articles
 from app.scripts.input_validator import validate_for_summarization
+from app.scripts.cache_manager import cached, get_cached, set_cached
 
 logger = setup_logger(__name__)
 
@@ -58,8 +59,57 @@ except ImportError:
     SUMY_AVAILABLE = False
     logger.warning("sumy not available, will use transformers fallback")
 
-# Initialize transformers summarizer (fallback, lazy loading)
+# Initialize transformers summarizer (fallback, lazy loading) - cached per process
 _summarizer = None
+
+
+@cached("summarizer", ttl=None, max_size=1)  # Cache summarizer (no expiration, single instance)
+def get_summarizer():
+    """
+    Get or initialize the transformers summarization pipeline (fallback only).
+    
+    Uses both module-level global cache and decorator cache for maximum efficiency.
+    
+    Returns:
+        Hugging Face summarization pipeline (only used if sumy is not available)
+    """
+    global _summarizer
+    
+    # Check module-level cache first (fastest)
+    if _summarizer is not None:
+        return _summarizer
+    
+    # Check decorator cache
+    cached_summarizer = get_cached("summarizer")
+    if cached_summarizer is not None:
+        _summarizer = cached_summarizer
+        return cached_summarizer
+    
+    logger.info("Initializing transformers summarization model (fallback)...")
+    logger.info("Model: facebook/bart-large-cnn (~1.6GB download on first run)")
+    try:
+        from transformers import pipeline
+        import time
+        start_time = time.time()
+        
+        summarizer = pipeline(
+            "summarization",
+            model="facebook/bart-large-cnn",
+            device=-1,  # Use CPU (-1) or GPU (0+)
+            model_kwargs={"cache_dir": "/app/app/models"}  # Cache model in app/models directory
+        )
+        
+        load_time = time.time() - start_time
+        logger.info(f"Transformers model loaded successfully in {load_time:.1f} seconds")
+        
+        # Store in both caches
+        _summarizer = summarizer
+        set_cached("summarizer", summarizer, ttl=None)
+        
+        return summarizer
+    except Exception as e:
+        logger.error(f"Failed to load transformers model: {e}", exc_info=True)
+        raise
 
 
 def clean_html_and_entities(text: str) -> str:
@@ -95,39 +145,6 @@ def clean_html_and_entities(text: str) -> str:
     text = text.strip()
     
     return text
-
-
-def get_summarizer():
-    """
-    Get or initialize the transformers summarization pipeline (fallback only).
-    
-    Returns:
-        Hugging Face summarization pipeline (only used if sumy is not available)
-    """
-    global _summarizer
-    if _summarizer is None:
-        logger.info("Initializing transformers summarization model (fallback)...")
-        logger.info("Model: facebook/bart-large-cnn (~1.6GB download on first run)")
-        try:
-            from transformers import pipeline
-            import time
-            start_time = time.time()
-            
-            _summarizer = pipeline(
-                "summarization",
-                model="facebook/bart-large-cnn",
-                device=-1,  # Use CPU (-1) or GPU (0+)
-                model_kwargs={"cache_dir": "/app/app/models"}  # Cache model in app/models directory
-            )
-            
-            load_time = time.time() - start_time
-            logger.info(f"Transformers model loaded successfully in {load_time:.1f} seconds")
-        except Exception as e:
-            logger.error(f"Failed to load transformers model: {e}", exc_info=True)
-            raise
-    else:
-        logger.debug("Using cached transformers model")
-    return _summarizer
 
 
 def summarize_with_sumy(text: str, max_words: int = 150, language: str = "english") -> str:

@@ -16,6 +16,7 @@ from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json
 from app.scripts.tag_categorizer import categorize_article
 from app.scripts.input_validator import validate_for_video_ideas
+from app.scripts.cache_manager import cached, get_cached, set_cached
 
 logger = setup_logger(__name__)
 
@@ -27,40 +28,58 @@ except ImportError:
     LLAMA_AVAILABLE = False
     logger.warning("llama-cpp-python not installed, video idea generation will fail")
 
-# Global model instance (shared with summarizer)
+# Global model instance (shared with summarizer) - cached per process
 _llm_model = None
 
 
+@cached("llm_model", ttl=None, max_size=1)  # Cache LLM model (no expiration, single instance)
 def get_llm_model():
-    """Get or initialize the LLM model (shared instance)."""
+    """
+    Get or initialize the LLM model (shared instance with caching).
+    
+    Uses both module-level global cache and decorator cache for maximum efficiency.
+    """
     global _llm_model
+    
+    # Check module-level cache first (fastest)
+    if _llm_model is not None:
+        return _llm_model
+    
+    # Check decorator cache
+    cached_model = get_cached("llm_model")
+    if cached_model is not None:
+        _llm_model = cached_model
+        return cached_model
     
     if not LLAMA_AVAILABLE:
         return None
     
-    if _llm_model is None:
-        import os
-        model_path = settings.LLM_MODEL_PATH
-        
-        if not os.path.exists(model_path):
-            logger.error(f"Model file not found: {model_path}")
-            return None
-        
-        try:
-            logger.info(f"Loading LLM model for video ideas: {model_path}")
-            _llm_model = Llama(
-                model_path=model_path,
-                n_ctx=settings.LLM_N_CTX,
-                n_threads=settings.LLM_N_THREADS,
-                n_gpu_layers=settings.LLM_N_GPU_LAYERS,
-                verbose=False
-            )
-            logger.info("LLM model loaded successfully for video ideas")
-        except Exception as e:
-            logger.error(f"Failed to load LLM model: {e}", exc_info=True)
-            return None
+    import os
+    model_path = settings.LLM_MODEL_PATH
     
-    return _llm_model
+    if not os.path.exists(model_path):
+        logger.error(f"Model file not found: {model_path}")
+        return None
+    
+    try:
+        logger.info(f"Loading LLM model for video ideas: {model_path}")
+        model = Llama(
+            model_path=model_path,
+            n_ctx=settings.LLM_N_CTX,
+            n_threads=settings.LLM_N_THREADS,
+            n_gpu_layers=settings.LLM_N_GPU_LAYERS,
+            verbose=False
+        )
+        
+        # Store in both caches
+        _llm_model = model
+        set_cached("llm_model", model, ttl=None)
+        
+        logger.info("LLM model loaded successfully for video ideas")
+        return model
+    except Exception as e:
+        logger.error(f"Failed to load LLM model: {e}", exc_info=True)
+        return None
 
 # Improved video title templates - action-oriented with hooks
 VIDEO_TITLE_TEMPLATES = [
