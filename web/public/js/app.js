@@ -1048,26 +1048,21 @@ function setupContactForm() {
   });
 }
 
-// Trigger Pipeline Button Handler
+// Trigger Pipeline Button Handler with Progress Tracking
 function setupTriggerPipelineButton() {
   const triggerBtn = document.getElementById("trigger-pipeline-btn");
   if (!triggerBtn) return;
 
+  let progressInterval = null;
+
   triggerBtn.addEventListener("click", async function () {
-    // Disable button and show loading state with spinner
+    // Disable button and show loading state
     triggerBtn.disabled = true;
     triggerBtn.classList.add("loading");
-    triggerBtn.textContent = "Processing...";
-
-    // Client-side timeout backup (95 seconds - slightly longer than server timeout)
-    const clientTimeout = setTimeout(() => {
-      triggerBtn.textContent = "Redirecting...";
-      setTimeout(() => {
-        window.location.reload(true); // Hard refresh
-      }, 1000);
-    }, 95000); // 95 seconds
+    triggerBtn.textContent = "Starting...";
 
     try {
+      // Trigger pipeline
       const response = await fetch(`${API_BASE_URL}/trigger-pipeline`, {
         method: "POST",
         headers: {
@@ -1075,33 +1070,71 @@ function setupTriggerPipelineButton() {
         },
       });
 
-      // Clear client timeout since we got a response
-      clearTimeout(clientTimeout);
-
       const data = await response.json();
 
-      if (response.ok && data.status === "success") {
-        // Pipeline completed successfully - show redirecting, then refresh
-        triggerBtn.textContent = "Redirecting...";
-        setTimeout(() => {
-          window.location.reload(true); // Hard refresh
-        }, 1000); // 1 second pause
-      } else if (data.status === "timeout") {
-        // Pipeline still running - refresh anyway after delay
-        triggerBtn.textContent = "Redirecting...";
-        setTimeout(() => {
-          window.location.reload(true); // Hard refresh
-        }, 1000); // 1 second pause
-      } else {
-        // Error occurred
-        triggerBtn.textContent = "Error - Click to retry";
-        triggerBtn.disabled = false;
-        triggerBtn.classList.remove("loading");
-        alert(`Pipeline error: ${data.message || "Unknown error"}`);
+      if (!response.ok || data.status !== "success") {
+        throw new Error(data.message || "Failed to start pipeline");
       }
+
+      // Start polling progress
+      progressInterval = setInterval(async () => {
+        try {
+          const progressResponse = await fetch(`${API_BASE_URL}/pipeline-progress`);
+          const progress = await progressResponse.json();
+
+          if (progress.status === "running") {
+            // Update button text with progress
+            const percent = progress.progress_percent || 0;
+            const step = progress.current_step || "";
+            const remaining = progress.estimated_seconds_remaining || 0;
+            
+            let timeText = "";
+            if (remaining > 0) {
+              if (remaining < 60) {
+                timeText = `~${remaining}s left`;
+              } else {
+                const minutes = Math.floor(remaining / 60);
+                const seconds = remaining % 60;
+                timeText = `~${minutes}m ${seconds}s left`;
+              }
+            }
+            
+            triggerBtn.textContent = `${step} (${percent}%) ${timeText}`.trim();
+          } else if (progress.status === "completed") {
+            // Pipeline completed
+            clearInterval(progressInterval);
+            triggerBtn.textContent = "Completed! Refreshing...";
+            setTimeout(() => {
+              window.location.reload(true); // Hard refresh
+            }, 1000);
+          } else if (progress.status === "error") {
+            // Pipeline failed
+            clearInterval(progressInterval);
+            triggerBtn.textContent = "Error - Click to retry";
+            triggerBtn.disabled = false;
+            triggerBtn.classList.remove("loading");
+            alert(`Pipeline error: ${progress.message || "Unknown error"}`);
+          }
+        } catch (error) {
+          console.error("Error polling progress:", error);
+        }
+      }, 2000); // Poll every 2 seconds
+
+      // Maximum timeout (2 minutes)
+      setTimeout(() => {
+        if (progressInterval) {
+          clearInterval(progressInterval);
+        }
+        triggerBtn.textContent = "Taking longer than expected...";
+        setTimeout(() => {
+          window.location.reload(true); // Hard refresh
+        }, 2000);
+      }, 120000); // 2 minutes max
+
     } catch (error) {
-      // Clear client timeout on error
-      clearTimeout(clientTimeout);
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
       console.error("Error triggering pipeline:", error);
       triggerBtn.textContent = "Error - Click to retry";
       triggerBtn.disabled = false;

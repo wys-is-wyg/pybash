@@ -9,6 +9,9 @@ import os
 import time
 import requests
 import smtplib
+import threading
+import json
+from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
@@ -26,6 +29,17 @@ CORS(app)
 
 # Initialize logger
 logger = setup_logger(__name__)
+
+# Pipeline progress tracking
+pipeline_progress = {
+    'status': 'idle',  # idle, running, completed, error
+    'current_step': '',
+    'progress_percent': 0,
+    'start_time': None,
+    'estimated_seconds_remaining': None,
+    'message': ''
+}
+progress_lock = threading.Lock()
 
 
 def cleanup_old_data():
@@ -379,172 +393,176 @@ def n8n_webhook():
         return jsonify({'error': 'Failed to process webhook'}), 500
 
 
+def run_pipeline_in_background():
+    """Run the pipeline script in a background thread and update progress."""
+    global pipeline_progress
+    
+    pipeline_script = Path('/app/app/scripts/run_pipeline.sh')
+    
+    # Pipeline step estimates (in seconds) - updated for faster processing with 1 idea per article
+    STEP_ESTIMATES = {
+        'scraping': 10,
+        'summarization': 30,
+        'video_ideas': 10,  # Faster with 1 idea per article
+        'merging': 5,
+    }
+    TOTAL_ESTIMATE = sum(STEP_ESTIMATES.values())
+    
+    try:
+        with progress_lock:
+            pipeline_progress['status'] = 'running'
+            pipeline_progress['start_time'] = time.time()
+            pipeline_progress['current_step'] = 'Starting pipeline...'
+            pipeline_progress['progress_percent'] = 0
+            pipeline_progress['estimated_seconds_remaining'] = TOTAL_ESTIMATE
+            pipeline_progress['message'] = 'Pipeline started'
+        
+        logger.info("Starting pipeline script directly")
+        
+        # Run pipeline script
+        process = subprocess.Popen(
+            ['bash', str(pipeline_script)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+        
+        # Track progress by parsing output
+        current_step = 'scraping'
+        step_start_time = time.time()
+        steps = ['scraping', 'summarization', 'video_ideas', 'merging']
+        step_index = 0
+        
+        for line in process.stdout:
+            line_lower = line.lower()
+            
+            # Update progress based on log output
+            if 'scraping' in line_lower or 'rss' in line_lower or 'step 1' in line_lower:
+                current_step = 'scraping'
+                step_index = 0
+                step_start_time = time.time()
+                with progress_lock:
+                    pipeline_progress['current_step'] = 'Scraping RSS feeds...'
+                    pipeline_progress['progress_percent'] = 10
+            elif 'summariz' in line_lower or 'step 3' in line_lower:
+                current_step = 'summarization'
+                step_index = 1
+                step_start_time = time.time()
+                with progress_lock:
+                    pipeline_progress['current_step'] = 'Summarizing articles...'
+                    pipeline_progress['progress_percent'] = 40
+            elif 'video idea' in line_lower or 'generating' in line_lower or 'step 4' in line_lower:
+                current_step = 'video_ideas'
+                step_index = 2
+                step_start_time = time.time()
+                with progress_lock:
+                    pipeline_progress['current_step'] = 'Generating video ideas...'
+                    pipeline_progress['progress_percent'] = 70
+            elif 'merging' in line_lower or 'feed' in line_lower or 'step 5' in line_lower:
+                current_step = 'merging'
+                step_index = 3
+                step_start_time = time.time()
+                with progress_lock:
+                    pipeline_progress['current_step'] = 'Merging feed data...'
+                    pipeline_progress['progress_percent'] = 90
+            
+            # Update time estimate
+            elapsed = time.time() - pipeline_progress['start_time']
+            if current_step in STEP_ESTIMATES:
+                step_elapsed = time.time() - step_start_time
+                step_estimate = STEP_ESTIMATES[current_step]
+                step_progress = min(step_elapsed / step_estimate, 1.0)
+                
+                # Calculate remaining time
+                completed_steps_time = sum(
+                    STEP_ESTIMATES[steps[i]] for i in range(step_index)
+                )
+                remaining_steps_time = sum(
+                    STEP_ESTIMATES[steps[i]] for i in range(step_index, len(steps))
+                )
+                estimated_remaining = remaining_steps_time * (1 - step_progress)
+                
+                with progress_lock:
+                    pipeline_progress['estimated_seconds_remaining'] = max(0, int(estimated_remaining))
+        
+        # Wait for process to complete
+        return_code = process.wait()
+        
+        if return_code == 0:
+            with progress_lock:
+                pipeline_progress['status'] = 'completed'
+                pipeline_progress['current_step'] = 'Pipeline completed'
+                pipeline_progress['progress_percent'] = 100
+                pipeline_progress['estimated_seconds_remaining'] = 0
+                pipeline_progress['message'] = 'Pipeline completed successfully'
+            logger.info("Pipeline completed successfully")
+        else:
+            with progress_lock:
+                pipeline_progress['status'] = 'error'
+                pipeline_progress['current_step'] = 'Pipeline failed'
+                pipeline_progress['message'] = f'Pipeline failed with exit code {return_code}'
+            logger.error(f"Pipeline failed with exit code {return_code}")
+            
+    except Exception as e:
+        with progress_lock:
+            pipeline_progress['status'] = 'error'
+            pipeline_progress['current_step'] = 'Pipeline error'
+            pipeline_progress['message'] = f'Error running pipeline: {str(e)}'
+        logger.error(f"Error running pipeline: {e}", exc_info=True)
+
+
+@app.route('/api/pipeline-progress', methods=['GET'])
+def get_pipeline_progress():
+    """Get current pipeline progress."""
+    with progress_lock:
+        progress = pipeline_progress.copy()
+    
+    # Calculate elapsed time if running
+    if progress['status'] == 'running' and progress['start_time']:
+        elapsed = time.time() - progress['start_time']
+        progress['elapsed_seconds'] = int(elapsed)
+    else:
+        progress['elapsed_seconds'] = 0
+    
+    return jsonify(progress), 200
+
+
 @app.route('/api/trigger-pipeline', methods=['POST'])
 def trigger_pipeline():
     """
-    Trigger the n8n webhook pipeline and wait for completion.
+    Trigger the pipeline script directly (faster than n8n).
     
     Returns:
         JSON response with status and message
     """
+    global pipeline_progress
+    
     try:
-        # Get webhook URL from environment
-        webhook_url = os.getenv('N8N_WEBHOOK_URL', '')
+        # Check if pipeline is already running
+        with progress_lock:
+            if pipeline_progress['status'] == 'running':
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Pipeline is already running'
+                }), 400
         
-        # If not set, or if it contains localhost (wrong for Docker), use Docker service name
-        if not webhook_url or 'localhost' in webhook_url or '127.0.0.1' in webhook_url:
-            # Use Docker service name for container-to-container communication
-            n8n_port = settings.N8N_PORT
-            webhook_url = f"http://n8n:{n8n_port}/webhook/run-pipeline"
-            logger.info(f"Using Docker service webhook URL: {webhook_url}")
-        else:
-            logger.info(f"Using configured webhook URL from environment")
+        logger.info("Triggering pipeline script directly")
         
-        # Get initial feed state (if exists)
-        feed_file = settings.get_data_file_path(settings.FEED_FILE)
-        initial_timestamp = None
-        initial_item_count = 0
-        feed_existed = feed_file.exists()
-        if feed_existed:
-            try:
-                feed_data = load_json(settings.FEED_FILE)
-                initial_timestamp = feed_data.get('generated_at')
-                initial_item_count = len(feed_data.get('items', []))
-            except:
-                pass
+        # Start pipeline in background thread
+        thread = threading.Thread(target=run_pipeline_in_background, daemon=True)
+        thread.start()
         
-        # Construct payload
-        import datetime
-        payload = {
-            "trigger_source": "web_ui",
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-            "triggered_by": "web_ui_button"
-        }
-        
-        logger.info(f"Triggering n8n webhook: {webhook_url}")
-        
-        # Send webhook request - n8n may not respond immediately if workflow is long-running
-        # We'll treat any successful send (or timeout) as "webhook accepted" and start polling
-        webhook_triggered = False
-        try:
-            response = requests.post(
-                webhook_url,
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=10  # Short timeout - we just need to send the request
-            )
-            
-            if response.status_code in [200, 201, 202]:
-                logger.info(f"Webhook acknowledged with status {response.status_code}")
-                webhook_triggered = True
-            else:
-                logger.warning(f"Webhook returned unexpected status {response.status_code}: {response.text}")
-                # Still proceed - workflow might have started
-                webhook_triggered = True
-                
-        except requests.exceptions.Timeout:
-            # Timeout is OK - n8n may have accepted the request but not responded yet
-            logger.info("Webhook request timed out (workflow may still be running)")
-            webhook_triggered = True
-        except requests.exceptions.ConnectionError as e:
-            logger.error(f"Failed to connect to n8n webhook: {e}")
-            return jsonify({
-                'status': 'error',
-                'message': f'Failed to connect to n8n: {str(e)}'
-            }), 500
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error sending webhook request: {e}")
-            return jsonify({
-                'status': 'error',
-                'message': f'Failed to trigger webhook: {str(e)}'
-            }), 500
-        
-        if not webhook_triggered:
-            return jsonify({
-                'status': 'error',
-                'message': 'Failed to trigger webhook'
-            }), 500
-        
-        logger.info("Webhook triggered, starting to poll for completion...")
-        
-        # Poll for completion by checking if feed was updated
-        # Average pipeline time is 50s, so 90s timeout is reasonable
-        max_wait_time = 90  # 90 seconds max (average is 50s)
-        poll_interval = 3  # Check every 3 seconds
-        start_time = time.time()
-        
-        while time.time() - start_time < max_wait_time:
-            time.sleep(poll_interval)
-            
-            # Check if feed file exists and was updated
-            if feed_file.exists():
-                try:
-                    feed_data = load_json(settings.FEED_FILE)
-                    current_timestamp = feed_data.get('generated_at')
-                    current_item_count = len(feed_data.get('items', []))
-                    
-                    # Check if feed was just created (didn't exist before)
-                    if not feed_existed and current_item_count > 0:
-                        logger.info(f"Pipeline completed - feed created with {current_item_count} items")
-                        return jsonify({
-                            'status': 'success',
-                            'message': 'Pipeline completed successfully',
-                            'feed_updated': True,
-                            'items_count': current_item_count
-                        }), 200
-                    
-                    # Check if timestamp changed
-                    if current_timestamp and current_timestamp != initial_timestamp:
-                        logger.info(f"Pipeline completed - feed updated (timestamp changed)")
-                        return jsonify({
-                            'status': 'success',
-                            'message': 'Pipeline completed successfully',
-                            'feed_updated': True,
-                            'items_count': current_item_count
-                        }), 200
-                    
-                    # Check if item count increased significantly (feed was refreshed)
-                    if current_item_count > initial_item_count + 5:  # At least 5 new items
-                        logger.info(f"Pipeline completed - feed updated ({initial_item_count} -> {current_item_count} items)")
-                        return jsonify({
-                            'status': 'success',
-                            'message': 'Pipeline completed successfully',
-                            'feed_updated': True,
-                            'items_count': current_item_count
-                        }), 200
-                        
-                except Exception as e:
-                    logger.debug(f"Error checking feed: {e}")
-                    pass
-        
-        # Timeout after 90s - redirect anyway (pipeline may still be running in background)
-        elapsed_time = time.time() - start_time
-        logger.info(f"Polling timeout after {elapsed_time:.1f}s - redirecting (pipeline may still be running)")
-        
-        # Check if feed exists now (even if we didn't detect the update)
-        feed_exists_now = feed_file.exists()
-        if feed_exists_now:
-            try:
-                feed_data = load_json(settings.FEED_FILE)
-                current_item_count = len(feed_data.get('items', []))
-                logger.info(f"Feed exists with {current_item_count} items - redirecting")
-            except:
-                pass
-        
+        # Return immediately with status
         return jsonify({
-            'status': 'timeout',
-            'message': 'Redirecting after 90s timeout. Pipeline may still be running in background.',
-            'feed_updated': feed_exists_now
-        }), 202
+            'status': 'success',
+            'message': 'Pipeline started',
+            'poll_endpoint': '/api/pipeline-progress'
+        }), 200
         
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error triggering webhook: {e}")
-        return jsonify({
-            'status': 'error',
-            'message': f'Failed to trigger webhook: {str(e)}'
-        }), 500
     except Exception as e:
-        logger.error(f"Error in trigger_pipeline: {e}")
+        logger.error(f"Error triggering pipeline: {e}", exc_info=True)
         return jsonify({
             'status': 'error',
             'message': f'Failed to trigger pipeline: {str(e)}'

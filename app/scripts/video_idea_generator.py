@@ -654,11 +654,11 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
             source = item.get('source', '')
             source_url = item.get('source_url', '')
             
-            # Generate 3-5 video ideas per article with improved structure
+            # Generate 1 video idea per article (faster processing)
             # Note: All articles here have already been accepted into the feed, so generate ideas for all
-            num_ideas = random.randint(3, 5)  # Generate 3-5 ideas per article
+            num_ideas = 1  # Generate 1 idea per article for faster processing
             
-            # Generate multiple video ideas with improved prompt structure
+            # Generate video idea with improved prompt structure
             video_ideas_data = generate_video_ideas_for_article(item, num_ideas=num_ideas)
             
             if not video_ideas_data:
