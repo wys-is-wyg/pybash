@@ -64,17 +64,26 @@ def get_summarizer():
     """
     global _summarizer
     if _summarizer is None:
-        logger.info("Initializing summarization model...")
+        logger.info("Initializing summarization model (this may take 1-2 minutes on first run)...")
+        logger.info("Model: facebook/bart-large-cnn (~1.6GB download on first run)")
         try:
+            import time
+            start_time = time.time()
+            
             _summarizer = pipeline(
                 "summarization",
                 model="facebook/bart-large-cnn",
-                device=-1  # Use CPU (-1) or GPU (0+)
+                device=-1,  # Use CPU (-1) or GPU (0+)
+                model_kwargs={"cache_dir": "/app/app/models"}  # Cache model in app/models directory
             )
-            logger.info("Summarization model loaded successfully")
+            
+            load_time = time.time() - start_time
+            logger.info(f"Summarization model loaded successfully in {load_time:.1f} seconds")
         except Exception as e:
-            logger.error(f"Failed to load summarization model: {e}")
+            logger.error(f"Failed to load summarization model: {e}", exc_info=True)
             raise
+    else:
+        logger.debug("Using cached summarization model")
     return _summarizer
 
 
@@ -150,7 +159,18 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
     """
     logger.info(f"Summarizing {len(news_items)} news articles")
     
+    # Pre-load model before batch processing (avoids loading delay during processing)
+    logger.info("Pre-loading summarization model...")
+    try:
+        summarizer = get_summarizer()
+        logger.info("Model pre-loaded successfully, starting batch processing...")
+    except Exception as e:
+        logger.error(f"Failed to pre-load model: {e}", exc_info=True)
+        raise
+    
     summarized_items = []
+    import time
+    batch_start = time.time()
     
     for i, item in enumerate(news_items, 1):
         try:
@@ -170,8 +190,17 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
                     logger.warning(f"Item {i}/{len(news_items)}: No text to summarize")
                     summary = ""
                 else:
+                    item_start = time.time()
                     summary = summarize_article(text_to_summarize)
-                    logger.debug(f"Item {i}/{len(news_items)}: Generated new summary")
+                    item_time = time.time() - item_start
+                    logger.info(f"Item {i}/{len(news_items)}: Generated summary in {item_time:.1f}s ({len(summary.split())} words)")
+                    
+                    # Log progress every 10 items
+                    if i % 10 == 0:
+                        elapsed = time.time() - batch_start
+                        avg_time = elapsed / i
+                        remaining = (len(news_items) - i) * avg_time
+                        logger.info(f"Progress: {i}/{len(news_items)} ({i*100//len(news_items)}%) - Est. remaining: {remaining/60:.1f} min")
             
             # Create new item with summary
             summarized_item = item.copy()
@@ -190,7 +219,11 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
             item_copy['summary_method'] = 'failed'
             summarized_items.append(item_copy)
     
-    logger.info(f"Successfully summarized {len(summarized_items)} articles")
+    total_time = time.time() - batch_start
+    successful = sum(1 for item in summarized_items if item.get('summary_generated', False))
+    logger.info(f"Batch summarization complete: {successful}/{len(news_items)} successful in {total_time/60:.1f} minutes")
+    logger.info(f"Average time per article: {total_time/len(news_items):.1f} seconds")
+    
     return summarized_items
 
 

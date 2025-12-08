@@ -273,11 +273,12 @@ def summarize_articles():
     """
     try:
         logger.info("Triggering article summarization")
+        # Increased timeout to 1200 seconds (20 minutes) to account for model loading on first run
         result = subprocess.run(
             ['python', '/app/app/scripts/summarizer.py'],
             capture_output=True,
             text=True,
-            timeout=600
+            timeout=1200
         )
         
         if result.returncode == 0:
