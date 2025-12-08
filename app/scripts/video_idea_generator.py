@@ -1,8 +1,9 @@
 """
 Video idea generator for AI News Tracker.
 
-Generates video ideas from summarized news articles using Hugging Face models.
-Focuses on trend potential, virality, and SEO research per competition rules.
+Generates high-value, action-oriented video ideas from summarized news articles.
+Focused on automation builders, indie hackers, and AI engineers.
+Uses improved prompt structure with automation/builder angles.
 """
 
 import json
@@ -18,35 +19,56 @@ from app.scripts.input_validator import validate_for_video_ideas
 
 logger = setup_logger(__name__)
 
-# Video title templates for different formats
+# Improved video title templates - action-oriented with hooks
 VIDEO_TITLE_TEMPLATES = [
-    "How {topic} is Changing AI",
-    "The Future of {topic} Explained",
-    "{topic}: What You Need to Know",
-    "Breaking Down {topic}",
-    "Understanding {topic} in 2024",
-    "{topic} - Complete Guide",
-    "Why {topic} Matters for AI",
-    "{topic} Explained Simply",
-    "The Truth About {topic}",
-    "{topic}: A Deep Dive",
-    "{topic} Revolution: What's Next?",
-    "Inside {topic}: The Full Story",
-    "{topic} Uncovered: Expert Analysis",
-    "The {topic} Breakthrough Explained",
-    "{topic}: From Concept to Reality",
+    "{topic}: What {change} *REALLY* Means for Builders",
+    "The Hidden {angle} Behind {topic} (Why Builders Should Care)",
+    "Should AI Builders Bet on {topic}? {insight} Suggests {answer}",
+    "{topic} Shake-Up: What {event} *Really* Means for Automation",
+    "The {angle} Battle: How {topic} Shifts the Future of {focus}",
+    "{topic} for Builders: {opportunity} You Can't Ignore",
+    "Why {topic} Changes Everything for {audience} (And What to Do)",
+    "{topic} Deep Dive: {action} Workflows You Can Build Today",
+    "The {angle} Behind {topic}: {prediction} for Automation",
+    "{topic} Explained: {insight} That Changes How We Build",
 ]
 
-# Virality factors based on content analysis
-VIRALITY_FACTORS = [
-    "Timely and trending topic",
-    "Practical value for viewers",
-    "Industry relevance",
-    "Controversial or debated",
-    "Novel or breakthrough technology",
-    "Real-world applications",
-    "Educational content",
-    "Comparison or analysis",
+# Automation/builder angles for video ideas
+AUTOMATION_ANGLES = [
+    "workflow automation",
+    "on-device inference",
+    "local LLMs",
+    "edge AI",
+    "API integration",
+    "cross-platform tools",
+    "privacy-first AI",
+    "cost optimization",
+    "performance benchmarking",
+    "developer tools",
+    "model deployment",
+    "inference optimization",
+]
+
+# Builder-focused value propositions
+BUILDER_VALUE_PROPS = [
+    "automation builders need to know",
+    "changes how automation builders should",
+    "impacts automation workflows",
+    "opens opportunities for indie hackers",
+    "affects AI engineers building",
+    "matters for people who make AI tools",
+    "shifts the automation landscape",
+]
+
+# Example workflow templates
+WORKFLOW_TEMPLATES = [
+    "Show how to {action} using {tool} to {outcome}",
+    "Demonstrate {workflow} that {benefit}",
+    "Build a {type} workflow that {function}",
+    "Compare {option1} vs {option2} for {use_case}",
+    "Create a {tool} that {action}",
+    "Implement {feature} using {technology}",
+    "Set up {system} to {achieve}",
 ]
 
 
@@ -156,19 +178,50 @@ def extract_key_topics(text: str, max_topics: int = 5) -> List[str]:
     return topics_sorted[:max_topics]
 
 
-def generate_video_idea_with_huggingface(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def extract_automation_angle(title: str, summary: str) -> str:
     """
-    Generate a video idea using template-based approach with keyword extraction.
-    Uses Hugging Face models for text processing and template-based generation.
+    Extract automation/builder angle from article content.
+    
+    Args:
+        title: Article title
+        summary: Article summary
+        
+    Returns:
+        Automation angle string
+    """
+    text_lower = f"{title} {summary}".lower()
+    
+    # Check for specific automation-related terms
+    if any(term in text_lower for term in ['api', 'sdk', 'developer', 'tool', 'platform']):
+        return "API integration"
+    elif any(term in text_lower for term in ['local', 'on-device', 'edge', 'offline']):
+        return "edge AI"
+    elif any(term in text_lower for term in ['privacy', 'secure', 'encrypted']):
+        return "privacy-first AI"
+    elif any(term in text_lower for term in ['cost', 'price', 'cheap', 'affordable']):
+        return "cost optimization"
+    elif any(term in text_lower for term in ['speed', 'performance', 'fast', 'benchmark']):
+        return "performance benchmarking"
+    elif any(term in text_lower for term in ['deploy', 'production', 'infrastructure']):
+        return "model deployment"
+    else:
+        return random.choice(AUTOMATION_ANGLES)
+
+
+def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 3) -> List[Dict[str, Any]]:
+    """
+    Generate multiple high-value video ideas from a single article.
+    Uses improved prompt structure focused on automation builders.
     
     Note: All articles passed to this function have already been accepted into the feed.
     No filtering should occur here - generate ideas for all accepted articles.
     
     Args:
         item: Article dictionary with title, summary, etc.
+        num_ideas: Number of video ideas to generate (3-5)
         
     Returns:
-        Video idea dictionary with trend analysis, SEO keywords, and virality factors
+        List of video idea dictionaries with structured format
     """
     try:
         title = item.get('title', '')
@@ -181,15 +234,174 @@ def generate_video_idea_with_huggingface(item: Dict[str, Any]) -> Optional[Dict[
         is_valid, sanitized_text, reason = validate_for_video_ideas(combined_text)
         if not is_valid:
             logger.warning(f"Input validation failed for video idea generation: {reason}")
-            return None
+            return []
         
-        # Extract main topic from sanitized title and summary
+        # Extract main topic and automation angle
         topics = extract_key_topics(sanitized_text, max_topics=5)
         main_topic = topics[0] if topics else "AI Technology"
+        automation_angle = extract_automation_angle(title, summary)
         
-        # Generate video title using template
-        video_title_template = random.choice(VIDEO_TITLE_TEMPLATES)
-        video_title = video_title_template.format(topic=main_topic)
+        # Analyze article for key insights
+        text_lower = sanitized_text.lower()
+        is_breakthrough = any(word in text_lower for word in ['breakthrough', 'revolutionary', 'game-changer'])
+        is_announcement = any(word in text_lower for word in ['announces', 'unveils', 'launches', 'releases'])
+        is_exec_change = any(word in text_lower for word in ['executive', 'ceo', 'leaves', 'departs', 'resigns'])
+        is_strategy_shift = any(word in text_lower for word in ['strategy', 'pivot', 'shift', 'change', 'new direction'])
+        
+        video_ideas = []
+        
+        # Generate 3-5 unique video ideas with different angles
+        for i in range(num_ideas):
+            # Select different angles for variety
+            if i == 0:
+                # First idea: Focus on immediate implications
+                angle_focus = "immediate implications"
+                change_word = "This Change" if is_announcement else "This Development"
+                insight = "Recent news" if is_announcement else "Latest developments"
+            elif i == 1:
+                # Second idea: Focus on hidden/bigger picture
+                angle_focus = "hidden implications"
+                change_word = "The Strategy Shift" if is_strategy_shift else "The Real Impact"
+                insight = "Executive changes" if is_exec_change else "Industry signals"
+            else:
+                # Third+ ideas: Focus on specific automation angles
+                angle_focus = automation_angle
+                change_word = "This Technology" if is_breakthrough else "This Development"
+                insight = "Technical analysis" if is_breakthrough else "Market analysis"
+            
+            # Generate title with hook
+            title_variants = [
+                f"{main_topic}: What {change_word} *REALLY* Means for Builders",
+                f"The Hidden {angle_focus.title()} Behind {main_topic}",
+                f"Should AI Builders Bet on {main_topic}? {insight.title()} Suggests Maybe",
+                f"{main_topic} Shake-Up: What This *Really* Means for Automation",
+            ]
+            video_title = title_variants[i % len(title_variants)]
+            
+            # Generate concept summary (2-3 sentences)
+            concept_summary = f"{main_topic} represents a significant development in AI technology. "
+            if is_breakthrough:
+                concept_summary += f"This breakthrough could fundamentally change how automation builders approach {automation_angle}. "
+            elif is_announcement:
+                concept_summary += f"The recent announcement signals important shifts in the AI landscape. "
+            else:
+                concept_summary += f"This development has practical implications for the automation community. "
+            
+            concept_summary += f"Understanding the {angle_focus} is crucial for builders making strategic decisions."
+            
+            # Why this matters for automation builders
+            why_matters = f"If you're building automation tools, workflows, or AI-powered applications, {main_topic} directly impacts "
+            if 'api' in automation_angle.lower() or 'integration' in automation_angle.lower():
+                why_matters += f"how you integrate AI services and build connected workflows."
+            elif 'edge' in automation_angle.lower() or 'local' in automation_angle.lower():
+                why_matters += f"where and how you can run AI inference, opening new possibilities for offline automation."
+            elif 'cost' in automation_angle.lower():
+                why_matters += f"the economics of your automation projects and what's financially viable to build."
+            elif 'performance' in automation_angle.lower():
+                why_matters += f"the speed and efficiency of your automation workflows."
+            else:
+                why_matters += f"the tools, platforms, and strategies available to automation builders."
+            
+            # Example workflow or use case
+            workflow_examples = [
+                f"Build a workflow that leverages {main_topic} to automate {automation_angle}",
+                f"Create an automation tool that uses {main_topic} for {angle_focus}",
+                f"Demonstrate how to integrate {main_topic} into existing automation workflows",
+                f"Show a practical example of using {main_topic} to solve a real automation challenge",
+            ]
+            example_workflow = workflow_examples[i % len(workflow_examples)]
+            
+            # Predicted impact (1 sentence)
+            impact_templates = [
+                f"Expect {automation_angle} to become a key focus area in 2025.",
+                f"This development will reshape how automation builders approach {angle_focus}.",
+                f"Automation workflows built on {main_topic} will see increased adoption.",
+                f"Builders who adapt to {main_topic} early will have a competitive advantage.",
+            ]
+            predicted_impact = impact_templates[i % len(impact_templates)]
+            
+            # Combine into full description
+            video_description = f"{concept_summary}\n\nWhy This Matters for Automation Builders: {why_matters}\n\nExample Workflow: {example_workflow}.\n\nPredicted Impact: {predicted_impact}"
+            
+            # Generate trend analysis
+            trend_analysis = f"This topic represents current developments in {main_topic} with significant potential for automation builders. "
+            if any(tag in ['ai startup', 'generative ai', 'llm', 'large language model'] for tag in visual_tags):
+                trend_analysis += "The technology is trending in the AI automation community and has high practical value."
+            else:
+                trend_analysis += "The topic has growing interest and direct applications for automation workflows."
+            
+            # Select virality factors
+            selected_factors = [
+                "Practical value for automation builders",
+                "Action-oriented content",
+                "Real-world workflow applications",
+            ]
+            if is_breakthrough:
+                selected_factors.append("Novel or breakthrough technology")
+            if is_announcement:
+                selected_factors.append("Timely and trending topic")
+            
+            # Generate SEO keywords
+            target_keywords = topics[:5] if topics else [main_topic]
+            target_keywords.extend([automation_angle, "automation", "AI builders", "workflow"])
+            target_keywords = list(dict.fromkeys(target_keywords))[:8]  # Remove duplicates, limit to 8
+            
+            # Generate content outline
+            content_outline = [
+                f"Introduction: Hook with {main_topic} and why builders should care",
+                f"Main content: Deep dive into {angle_focus} and practical implications",
+                f"Example workflow: {example_workflow}",
+                f"Conclusion: {predicted_impact} and actionable next steps",
+            ]
+            
+            # Calculate scores
+            trend_score = 0.6 if is_announcement or is_breakthrough else 0.5
+            seo_score = 0.7 if len(target_keywords) >= 6 else 0.5
+            uniqueness_score = 0.8 if is_breakthrough or is_exec_change else 0.6
+            engagement_score = (trend_score * 0.4 + seo_score * 0.35 + uniqueness_score * 0.25)
+            
+            video_idea = {
+                'video_title': video_title,
+                'video_description': video_description,
+                'concept_summary': concept_summary,
+                'why_matters_builders': why_matters,
+                'example_workflow': example_workflow,
+                'predicted_impact': predicted_impact,
+                'trend_analysis': trend_analysis,
+                'virality_factors': selected_factors,
+                'target_keywords': target_keywords,
+                'content_outline': content_outline,
+                'target_duration_minutes': 10,
+                'estimated_engagement_score': round(engagement_score, 2),
+                'trend_score': round(trend_score, 2),
+                'seo_score': round(seo_score, 2),
+                'uniqueness_score': round(uniqueness_score, 2),
+                'automation_angle': automation_angle,
+            }
+            
+            video_ideas.append(video_idea)
+        
+        logger.debug(f"Generated {len(video_ideas)} video ideas for: {title[:50]}...")
+        return video_ideas
+        
+    except Exception as e:
+        logger.error(f"Failed to generate video ideas: {e}", exc_info=True)
+        return []
+
+
+def generate_video_idea_with_huggingface(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Generate a single video idea (backward compatibility).
+    Now uses improved prompt structure.
+    
+    Args:
+        item: Article dictionary with title, summary, etc.
+        
+    Returns:
+        Video idea dictionary (first idea from generate_video_ideas_for_article)
+    """
+    ideas = generate_video_ideas_for_article(item, num_ideas=1)
+    return ideas[0] if ideas else None
         
         # Generate video description - create a compelling, varied video concept
         # Use diverse hooks and value propositions to avoid repetition
@@ -442,27 +654,31 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
             source = item.get('source', '')
             source_url = item.get('source_url', '')
             
-            # Generate 1 video idea per article (no multi-part ideas)
+            # Generate 3-5 video ideas per article with improved structure
             # Note: All articles here have already been accepted into the feed, so generate ideas for all
-            num_ideas = 1
+            num_ideas = random.randint(3, 5)  # Generate 3-5 ideas per article
             
-            for idea_num in range(num_ideas):
-                # Generate video idea using Hugging Face (template-based with keyword extraction)
-                video_idea_data = generate_video_idea_with_huggingface(item)
-                
-                if not video_idea_data:
-                    logger.error(f"Video idea generation failed for article {i}: {title[:50]}... - No video idea generated")
-                    continue
-                
-                # Format video idea with all generated data (Hugging Face template-based)
+            # Generate multiple video ideas with improved prompt structure
+            video_ideas_data = generate_video_ideas_for_article(item, num_ideas=num_ideas)
+            
+            if not video_ideas_data:
+                logger.error(f"Video idea generation failed for article {i}: {title[:50]}... - No video ideas generated")
+                continue
+            
+            # Format each video idea
+            for idea_num, video_idea_data in enumerate(video_ideas_data):
                 video_idea = {
-                    'title': video_idea_data.get('video_title') or video_idea_data.get('title', title),
-                    'description': video_idea_data.get('video_description') or video_idea_data.get('description', summary),
+                    'title': video_idea_data.get('video_title', title),
+                    'description': video_idea_data.get('video_description', summary),
+                    'concept_summary': video_idea_data.get('concept_summary', ''),
+                    'why_matters_builders': video_idea_data.get('why_matters_builders', ''),
+                    'example_workflow': video_idea_data.get('example_workflow', ''),
+                    'predicted_impact': video_idea_data.get('predicted_impact', ''),
                     'source': source,
                     'source_url': source_url,
                     'generated_date': datetime.utcnow().isoformat(),
                     'type': 'video_idea',
-                    # Video idea analysis fields (generated with Hugging Face template-based approach)
+                    # Video idea analysis fields
                     'trend_analysis': video_idea_data.get('trend_analysis', ''),
                     'virality_factors': video_idea_data.get('virality_factors', []),
                     'target_keywords': video_idea_data.get('target_keywords', []),
@@ -472,6 +688,7 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
                     'trend_score': video_idea_data.get('trend_score', 0.5),
                     'seo_score': video_idea_data.get('seo_score', 0.5),
                     'uniqueness_score': video_idea_data.get('uniqueness_score', 0.5),
+                    'automation_angle': video_idea_data.get('automation_angle', ''),
                     # Reference to original article
                     'original_title': title,
                     'original_summary': summary,
@@ -488,7 +705,7 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
                     video_idea['tag_relevance_score'] = match_count
                 
                 video_ideas.append(video_idea)
-                logger.debug(f"Generated idea {idea_num + 1} for article {i}/{len(summaries)}")
+                logger.debug(f"Generated idea {idea_num + 1}/{num_ideas} for article {i}/{len(summaries)}")
             
         except Exception as e:
             logger.error(f"Failed to generate video idea for item {i}/{len(summaries)}: {e}")
