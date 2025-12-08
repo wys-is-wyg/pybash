@@ -93,7 +93,12 @@ def pre_filter_articles(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any]
     if rejection_reasons:
         logger.info(f"Rejection reasons: {rejection_reasons}")
     
-    return filtered_items
+    # Limit to top 30 articles by relevance score (deduplicate and rank)
+    logger.info(f"Limiting to top 30 articles by relevance score...")
+    top_items = filter_and_deduplicate(filtered_items, max_items=30)
+    logger.info(f"Selected top {len(top_items)} articles for summarization")
+    
+    return top_items
 
 
 def main():

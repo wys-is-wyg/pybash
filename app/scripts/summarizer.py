@@ -1,13 +1,13 @@
 """
 Article summarization module for AI News Tracker.
 
-Summarizes news articles using transformer-based models.
+Summarizes news articles using fast extractive summarization (sumy library).
+Falls back to transformers if sumy is not available.
 """
 
 import re
 import html
-from typing import List, Dict, Any
-from transformers import pipeline
+from typing import List, Dict, Any, Optional
 from app.config import settings
 from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json
@@ -16,7 +16,49 @@ from app.scripts.input_validator import validate_for_summarization
 
 logger = setup_logger(__name__)
 
-# Initialize summarization pipeline (lazy loading)
+# Try to import sumy for fast extractive summarization
+try:
+    from sumy.parsers.plaintext import PlaintextParser
+    from sumy.nlp.tokenizers import Tokenizer
+    from sumy.summarizers.text_rank import TextRankSummarizer
+    from sumy.nlp.stemmers import Stemmer
+    from sumy.utils import get_stop_words
+    
+    # Download required NLTK data for sumy
+    try:
+        import nltk
+        import os
+        
+        # Set NLTK data directory to app/data/nltk_data (persistent across container restarts)
+        nltk_data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'nltk_data')
+        os.makedirs(nltk_data_dir, exist_ok=True)
+        nltk.data.path.insert(0, nltk_data_dir)
+        
+        # Download punkt_tab tokenizer if not already present
+        try:
+            nltk.data.find('tokenizers/punkt_tab')
+        except LookupError:
+            logger.info("Downloading NLTK punkt_tab tokenizer (required for sumy)...")
+            nltk.download('punkt_tab', quiet=True, download_dir=nltk_data_dir)
+            logger.info("NLTK punkt_tab downloaded successfully")
+        
+        # Download stopwords if not already present
+        try:
+            nltk.data.find('corpora/stopwords')
+        except LookupError:
+            logger.info("Downloading NLTK stopwords...")
+            nltk.download('stopwords', quiet=True, download_dir=nltk_data_dir)
+            logger.info("NLTK stopwords downloaded successfully")
+            
+    except Exception as e:
+        logger.warning(f"Failed to download NLTK data: {e}, sumy may not work correctly")
+    
+    SUMY_AVAILABLE = True
+except ImportError:
+    SUMY_AVAILABLE = False
+    logger.warning("sumy not available, will use transformers fallback")
+
+# Initialize transformers summarizer (fallback, lazy loading)
 _summarizer = None
 
 
@@ -57,16 +99,17 @@ def clean_html_and_entities(text: str) -> str:
 
 def get_summarizer():
     """
-    Get or initialize the summarization pipeline.
+    Get or initialize the transformers summarization pipeline (fallback only).
     
     Returns:
-        Hugging Face summarization pipeline
+        Hugging Face summarization pipeline (only used if sumy is not available)
     """
     global _summarizer
     if _summarizer is None:
-        logger.info("Initializing summarization model (this may take 1-2 minutes on first run)...")
+        logger.info("Initializing transformers summarization model (fallback)...")
         logger.info("Model: facebook/bart-large-cnn (~1.6GB download on first run)")
         try:
+            from transformers import pipeline
             import time
             start_time = time.time()
             
@@ -78,13 +121,58 @@ def get_summarizer():
             )
             
             load_time = time.time() - start_time
-            logger.info(f"Summarization model loaded successfully in {load_time:.1f} seconds")
+            logger.info(f"Transformers model loaded successfully in {load_time:.1f} seconds")
         except Exception as e:
-            logger.error(f"Failed to load summarization model: {e}", exc_info=True)
+            logger.error(f"Failed to load transformers model: {e}", exc_info=True)
             raise
     else:
-        logger.debug("Using cached summarization model")
+        logger.debug("Using cached transformers model")
     return _summarizer
+
+
+def summarize_with_sumy(text: str, max_words: int = 150, language: str = "english") -> str:
+    """
+    Fast extractive summarization using sumy TextRank algorithm.
+    
+    Args:
+        text: Article text to summarize
+        max_words: Maximum words in summary
+        language: Language code (default: "english")
+        
+    Returns:
+        Summarized text (extracted sentences)
+    """
+    if not SUMY_AVAILABLE:
+        return None
+    
+    try:
+        # Parse text
+        parser = PlaintextParser.from_string(text, Tokenizer(language))
+        stemmer = Stemmer(language)
+        
+        # Create summarizer
+        summarizer = TextRankSummarizer(stemmer)
+        summarizer.stop_words = get_stop_words(language)
+        
+        # Calculate number of sentences to extract (rough estimate: 15 words per sentence)
+        num_sentences = max(1, max_words // 15)
+        
+        # Summarize
+        summary_sentences = summarizer(parser.document, num_sentences)
+        
+        # Join sentences
+        summary = " ".join(str(sentence) for sentence in summary_sentences)
+        
+        # Trim to max_words if needed
+        words = summary.split()
+        if len(words) > max_words:
+            summary = " ".join(words[:max_words])
+        
+        return summary
+        
+    except Exception as e:
+        logger.warning(f"sumy summarization failed: {e}, falling back to transformers")
+        return None
 
 
 def summarize_article(text: str, max_words: int = None) -> str:
@@ -116,6 +204,23 @@ def summarize_article(text: str, max_words: int = None) -> str:
     text = sanitized_text
     
     try:
+        import time
+        
+        # Try fast sumy summarization first
+        if SUMY_AVAILABLE:
+            logger.debug(f"Using sumy for fast extractive summarization ({len(text)} chars)")
+            start_time = time.time()
+            summary = summarize_with_sumy(text, max_words=max_words)
+            if summary:
+                elapsed = time.time() - start_time
+                logger.info(f"sumy summarization completed in {elapsed:.2f} seconds")
+                summary = clean_html_and_entities(summary)
+                return summary
+            else:
+                logger.warning("sumy failed, falling back to transformers")
+        
+        # Fallback to transformers (slow)
+        logger.debug(f"Using transformers summarization ({len(text)} chars)")
         summarizer = get_summarizer()
         
         # Calculate max_length and min_length based on word count
@@ -123,14 +228,17 @@ def summarize_article(text: str, max_words: int = None) -> str:
         max_length = int(max_words * 1.3)
         min_length = int(settings.SUMMARY_MIN_WORDS * 1.3)
         
-        logger.debug(f"Summarizing text ({len(text)} chars) to ~{max_words} words")
+        logger.info(f"Calling transformers with max_length={max_length}, min_length={min_length}")
         
+        start_time = time.time()
         result = summarizer(
             text,
             max_length=max_length,
             min_length=min_length,
             do_sample=False
         )
+        elapsed = time.time() - start_time
+        logger.info(f"Transformers call completed in {elapsed:.1f} seconds")
         
         summary = result[0]['summary_text'] if result else ""
         logger.debug(f"Generated summary ({len(summary)} chars)")
@@ -159,14 +267,17 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
     """
     logger.info(f"Summarizing {len(news_items)} news articles")
     
-    # Pre-load model before batch processing (avoids loading delay during processing)
-    logger.info("Pre-loading summarization model...")
-    try:
-        summarizer = get_summarizer()
-        logger.info("Model pre-loaded successfully, starting batch processing...")
-    except Exception as e:
-        logger.error(f"Failed to pre-load model: {e}", exc_info=True)
-        raise
+    # Pre-load transformers model only if sumy is not available
+    if not SUMY_AVAILABLE:
+        logger.info("Pre-loading transformers model (sumy not available)...")
+        try:
+            summarizer = get_summarizer()
+            logger.info("Transformers model pre-loaded successfully, starting batch processing...")
+        except Exception as e:
+            logger.error(f"Failed to pre-load transformers model: {e}", exc_info=True)
+            raise
+    else:
+        logger.info("Using fast sumy extractive summarization (no model loading needed)")
     
     summarized_items = []
     import time
@@ -252,18 +363,24 @@ def main():
                 logger.error(f"Failed to parse JSON from stdin: {e}")
                 logger.info("Falling back to file input")
         
-        # If stdin didn't work, load from file
+        # If stdin didn't work, load from filtered_news.json (pre-filtered top 30)
         if news_items is None:
-            input_file = settings.RAW_NEWS_FILE
-            logger.info(f"Loading news items from {input_file}")
+            # Try filtered_news.json first (guaranteed to be filtered to top 30)
+            filtered_file = settings.DATA_DIR / "filtered_news.json"
+            input_file = str(filtered_file)
+            logger.info(f"Loading news items from {input_file} (pre-filtered)")
             
             try:
                 data = load_json(input_file)
                 news_items = data.get('items', [])
-                logger.info(f"Loaded {len(news_items)} news items from file")
+                logger.info(f"Loaded {len(news_items)} news items from filtered file")
             except FileNotFoundError:
-                logger.error(f"Input file not found: {input_file}")
-                return 1
+                # Fallback to raw_news.json if filtered_news.json doesn't exist
+                logger.warning(f"Filtered file not found, falling back to {settings.RAW_NEWS_FILE}")
+                input_file = settings.RAW_NEWS_FILE
+                data = load_json(input_file)
+                news_items = data.get('items', [])
+                logger.info(f"Loaded {len(news_items)} news items from raw file")
         
         if not news_items:
             logger.warning("No news items to summarize")

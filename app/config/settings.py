@@ -125,6 +125,9 @@ class Settings:
     SMTP_USE_TLS: bool = os.getenv("SMTP_USE_TLS", "false").lower() == "true"
     CONTACT_EMAIL: str = os.getenv("CONTACT_EMAIL", "kiwifruitpeter@gmail.com")
     
+    # Admin Password for Pipeline Access
+    ADMIN_PWD: str = os.getenv("ADMIN_PWD", "")
+    
     @classmethod
     def get_data_file_path(cls, filename: str) -> Path:
         """Get full path to a data file."""

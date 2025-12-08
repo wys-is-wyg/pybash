@@ -313,11 +313,13 @@ def generate_ideas():
     """
     try:
         logger.info("Triggering video idea generation")
+        # Increased timeout: 30 articles × 2 ideas × ~30s per idea = ~1800s worst case
+        # Using 2400s (40 min) to allow for overhead and slower generations
         result = subprocess.run(
             ['python', '/app/app/scripts/video_idea_generator.py'],
             capture_output=True,
             text=True,
-            timeout=300
+            timeout=2400  # 40 minutes (was 300s/5min)
         )
         
         if result.returncode == 0:
@@ -474,6 +476,39 @@ def monitor_pipeline_progress():
             pipeline_progress['current_step'] = 'Pipeline taking longer than expected'
             pipeline_progress['message'] = 'Pipeline may still be running'
     logger.warning("Pipeline progress monitoring timed out")
+
+
+@app.route('/api/validate-pipeline-password', methods=['POST'])
+def validate_pipeline_password():
+    """Validate password for pipeline access."""
+    try:
+        data = request.get_json()
+        password = data.get('password', '')
+        
+        if not password:
+            return jsonify({
+                'valid': False,
+                'message': 'Password is required'
+            }), 400
+        
+        # Compare with ADMIN_PWD from settings
+        if password == settings.ADMIN_PWD:
+            return jsonify({
+                'valid': True,
+                'message': 'Password validated'
+            }), 200
+        else:
+            return jsonify({
+                'valid': False,
+                'message': 'Invalid password'
+            }), 401
+            
+    except Exception as e:
+        logger.error(f"Error validating password: {e}")
+        return jsonify({
+            'valid': False,
+            'message': 'Error validating password'
+        }), 500
 
 
 @app.route('/api/pipeline-progress', methods=['GET'])

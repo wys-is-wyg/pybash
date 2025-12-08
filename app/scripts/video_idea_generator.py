@@ -297,56 +297,68 @@ def generate_video_idea_with_llm(item: Dict[str, Any], idea_index: int = 0) -> O
         else:
             angle_focus = automation_angle
         
-        # Improved prompt for LLM (Llama format)
+        # Simplified prompt for faster generation (Llama format)
         prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
-You are an expert AI industry analyst and technical content strategist for an AI community (builders, indie hackers, freelancers, and AI engineers).<|eot_id|><|start_header_id|>user<|end_header_id|>
+Generate video ideas for AI builders and indie hackers.<|eot_id|><|start_header_id|>user<|end_header_id|>
 
-Your task is to take this curated news item and generate a video idea that is:
+Article: {title}
+Summary: {summary[:300]}
 
-1. **Audience-Relevant**: Focus on practical implications for AI builders and indie hackers. Highlight how this tech can be exploited, what workflows it enables, and how it changes AI opportunities.
+Focus: {angle_focus}
 
-2. **Action-Heavy**: Tell viewers what they can do next (tools to try, workflows to build, threats/opportunities, market shifts).
-
-3. **Signal > Noise**: Avoid generic summaries. Produce concrete, angle-driven, story-worthy video ideas.
-
-4. **Unique Angle**: Include:
-   - A strong hook
-   - A clear audience value proposition
-   - A builder/angle (why this matters to people who make AI tools and workflows)
-   - At least one example application
-   - A takeaway or prediction
-
-**Article:**
-Title: {title}
-Summary: {summary}
-
-**Focus Angle:** {angle_focus}
-
-**Output Format (JSON):**
+Generate ONE video idea as JSON:
 {{
-  "title": "Strong hook title",
-  "concept_summary": "2-3 sentences describing the video concept",
-  "why_matters_builders": "Why this matters for AI builders",
-  "example_workflow": "Example workflow or use case",
+  "title": "Hook title for AI builders",
+  "concept_summary": "2-3 sentence video concept",
+  "why_matters_builders": "Why this matters for builders",
+  "example_workflow": "Example use case",
   "predicted_impact": "One sentence prediction"
-}}
-
-Generate ONE high-value video idea focused on AI builders with a {angle_focus} angle.<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
 """
         
-        # Generate with LLM
+        # Generate with LLM (optimized for speed)
         logger.debug(f"Generating video idea {idea_index + 1} with LLM...")
-        response = model(
-            prompt,
-            max_tokens=500,
-            temperature=0.7,
-            top_p=0.9,
-            top_k=40,
-            stop=["<|eot_id|>", "<|end_of_text|>", "\n\n\n"],
-            echo=False
-        )
+        import signal
+        import time
+        
+        # Set timeout for LLM generation
+        timeout_seconds = settings.LLM_GENERATION_TIMEOUT
+        
+        def timeout_handler(signum, frame):
+            raise TimeoutError("LLM generation timed out")
+        
+        # Set up timeout (Unix only)
+        try:
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(timeout_seconds)
+        except (AttributeError, OSError):
+            # Windows doesn't support SIGALRM, use threading timeout instead
+            pass
+        
+        try:
+            start_time = time.time()
+            response = model(
+                prompt,
+                max_tokens=200,  # Further reduced for faster generation (was 500, then 300)
+                temperature=0.4,  # Lower temperature = faster, more deterministic
+                top_p=0.8,  # Lower for faster generation
+                top_k=25,  # Reduced for faster generation
+                stop=["<|eot_id|>", "<|end_of_text|>", "\n\n\n", "}", "}\n", "</s>"],  # More stop tokens for early stopping
+                echo=False
+            )
+            elapsed = time.time() - start_time
+            logger.debug(f"LLM generation completed in {elapsed:.1f}s")
+        except TimeoutError:
+            logger.warning(f"LLM generation timed out after {timeout_seconds}s")
+            return None
+        finally:
+            # Cancel timeout
+            try:
+                signal.alarm(0)
+            except (AttributeError, OSError):
+                pass
         
         # Parse response
         if 'choices' in response and len(response['choices']) > 0:
@@ -443,7 +455,7 @@ Generate ONE high-value video idea focused on AI builders with a {angle_focus} a
         return None
 
 
-def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 3) -> List[Dict[str, Any]]:
+def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 2) -> List[Dict[str, Any]]:
     """
     Generate multiple high-value video ideas from a single article.
     Uses improved prompt structure focused on AI builders.
@@ -491,13 +503,19 @@ def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 3) -
             logger.warning("LLM model not available, cannot generate video ideas")
             return []
         
-        # Generate 3-5 unique video ideas with different angles using LLM
+        # Generate unique video ideas with different angles using LLM
+        import time
         for i in range(num_ideas):
+            logger.info(f"Generating idea {i+1}/{num_ideas} for: {title[:50]}...")
             llm_idea = generate_video_idea_with_llm(item, idea_index=i)
             if llm_idea:
                 video_ideas.append(llm_idea)
             else:
                 logger.warning(f"Failed to generate idea {i+1}/{num_ideas} with LLM, skipping")
+            
+            # Small delay between generations to avoid CPU overload
+            if i < num_ideas - 1:  # Don't delay after last idea
+                time.sleep(0.5)
         
         logger.debug(f"Generated {len(video_ideas)} video ideas for: {title[:50]}...")
         return video_ideas
@@ -569,7 +587,7 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
             
             # Generate 3-5 video ideas per article with improved structure
             # Note: All articles here have already been accepted into the feed, so generate ideas for all
-            num_ideas = random.randint(3, 5)  # Generate 3-5 ideas per article
+            num_ideas = 2
             
             # Generate multiple video ideas with improved prompt structure
             video_ideas_data = generate_video_ideas_for_article(item, num_ideas=num_ideas)
@@ -669,6 +687,14 @@ def main():
         if not summaries:
             logger.warning("No summaries to process")
             return 0
+        
+        # Safety check: Limit to top 30 summaries if more than expected
+        EXPECTED_MAX_SUMMARIES = 30
+        if len(summaries) > EXPECTED_MAX_SUMMARIES:
+            logger.warning(f"Found {len(summaries)} summaries, but expected max {EXPECTED_MAX_SUMMARIES}. Limiting to top {EXPECTED_MAX_SUMMARIES}.")
+            # Keep top 30 (they should already be sorted by relevance from pre-filter)
+            summaries = summaries[:EXPECTED_MAX_SUMMARIES]
+            logger.info(f"Limited to {len(summaries)} summaries for processing")
         
         # Generate video ideas
         video_ideas = generate_video_ideas(summaries)

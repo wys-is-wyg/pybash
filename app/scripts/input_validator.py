@@ -24,13 +24,14 @@ class InputValidator:
     """
 
     # Suspicious patterns that indicate injection attempts
+    # Note: SQL keywords removed - they're legitimate in AI news articles
     INJECTION_PATTERNS = [
         r"\\x[0-9a-fA-F]{2}",  # Hex escape sequences
         r"\\u[0-9a-fA-F]{4}",  # Unicode escape sequences
         r"<script",  # Script tags
         r"javascript:",  # JavaScript protocol
         r"on\w+\s*=",  # Event handlers (onclick, onload, etc.)
-        r"SELECT\s+|INSERT\s+|UPDATE\s+|DELETE\s+",  # SQL keywords
+        # SQL keywords removed - legitimate in AI news (e.g., "SELECT statement", "INSERT query")
         r"\$\{.*?\}",  # Template injection ${...}
         r"\{\{.*?\}\}",  # Template literals {{...}}
         r"__proto__",  # Prototype pollution
@@ -173,6 +174,9 @@ class InputValidator:
 def validate_for_summarization(text: str) -> Tuple[bool, str, Optional[str]]:
     """
     Convenience function to validate text before summarization.
+    
+    Uses lenient mode - sanitizes but doesn't reject articles mentioning SQL keywords
+    or other technical terms that are legitimate in AI news articles.
 
     Args:
         text: Text to validate
@@ -180,7 +184,9 @@ def validate_for_summarization(text: str) -> Tuple[bool, str, Optional[str]]:
     Returns:
         Tuple of (is_valid, sanitized_text, reason_if_invalid)
     """
-    return InputValidator.validate_and_sanitize(text, strict_mode=True)
+    # Use lenient mode for summarization - we're just summarizing text, not executing code
+    # SQL keywords and technical terms are legitimate in AI news articles
+    return InputValidator.validate_and_sanitize(text, strict_mode=False)
 
 
 def validate_for_video_ideas(text: str) -> Tuple[bool, str, Optional[str]]:

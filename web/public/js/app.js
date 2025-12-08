@@ -521,7 +521,12 @@ async function loadVideoIdeas() {
     // Setup search and sort
     setupVideoIdeasFilters(videoIdeas);
   } catch (error) {
-    container.innerHTML = `<div class="error-message">Error loading video ideas: ${error.message}</div>`;
+    // Use textContent to prevent XSS - don't use innerHTML with user-controlled data
+    const errorDiv = document.createElement("div");
+    errorDiv.className = "error-message";
+    errorDiv.textContent = `Error loading video ideas: ${error.message}`;
+    container.innerHTML = ""; // Clear container first
+    container.appendChild(errorDiv);
   }
 }
 
@@ -1055,18 +1060,126 @@ function setupContactForm() {
   });
 }
 
+// Password Modal Functions
+function showPasswordModal() {
+  const modal = document.getElementById("password-modal");
+  const passwordInput = document.getElementById("password-input");
+  const passwordError = document.getElementById("password-error");
+  
+  if (!modal) return;
+  
+  modal.classList.add("show");
+  passwordInput.value = "";
+  passwordInput.focus();
+  passwordError.style.display = "none";
+  
+  // Close modal handlers
+  const closeBtn = document.getElementById("password-modal-close");
+  const cancelBtn = document.getElementById("password-cancel-btn");
+  
+  const closeModal = () => {
+    modal.classList.remove("show");
+  };
+  
+  if (closeBtn) closeBtn.onclick = closeModal;
+  if (cancelBtn) cancelBtn.onclick = closeModal;
+  
+  // Close on background click
+  modal.onclick = (e) => {
+    if (e.target === modal) closeModal();
+  };
+  
+  // Submit on Enter key
+  passwordInput.onkeypress = (e) => {
+    if (e.key === "Enter") {
+      document.getElementById("password-submit-btn").click();
+    }
+  };
+}
+
+async function validatePasswordAndTriggerPipeline(password) {
+  const triggerBtn = document.getElementById("trigger-pipeline-btn");
+  const modal = document.getElementById("password-modal");
+  const passwordError = document.getElementById("password-error");
+  
+  try {
+    // Validate password with backend
+    const response = await fetch(`${API_BASE_URL}/validate-pipeline-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.valid) {
+      passwordError.textContent = data.message || "Invalid password";
+      passwordError.style.display = "block";
+      document.getElementById("password-input").value = "";
+      document.getElementById("password-input").focus();
+      return false;
+    }
+
+    // Password valid - close modal and trigger pipeline
+    modal.classList.remove("show");
+    return true;
+  } catch (error) {
+    passwordError.textContent = "Error validating password. Please try again.";
+    passwordError.style.display = "block";
+    return false;
+  }
+}
+
 // Trigger Pipeline Button Handler with Progress Tracking
 function setupTriggerPipelineButton() {
   const triggerBtn = document.getElementById("trigger-pipeline-btn");
   if (!triggerBtn) return;
 
-  let progressInterval = null;
+  // Set up password submit handler once
+  const submitBtn = document.getElementById("password-submit-btn");
+  if (submitBtn) {
+    submitBtn.onclick = async () => {
+      const passwordInput = document.getElementById("password-input");
+      const password = passwordInput.value.trim();
+      
+      if (!password) {
+        document.getElementById("password-error").textContent = "Please enter a password";
+        document.getElementById("password-error").style.display = "block";
+        return;
+      }
+      
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Validating...";
+      
+      const isValid = await validatePasswordAndTriggerPipeline(password);
+      
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit";
+      
+      if (isValid) {
+        // Close modal and trigger pipeline
+        document.getElementById("password-modal").classList.remove("show");
+        await triggerPipelineExecution(triggerBtn);
+      }
+    };
+  }
 
   triggerBtn.addEventListener("click", async function () {
+    // Show password modal first
+    passwordValidated = false;
+    showPasswordModal();
+  });
+
+  // Separate function to trigger pipeline execution
+  async function triggerPipelineExecution(triggerBtn) {
     // Disable button and show loading state
     triggerBtn.disabled = true;
     triggerBtn.classList.add("loading");
     triggerBtn.textContent = "Starting...";
+
+    let localProgressInterval = null;
 
     try {
       // Trigger pipeline
@@ -1084,7 +1197,7 @@ function setupTriggerPipelineButton() {
       }
 
       // Start polling progress
-      progressInterval = setInterval(async () => {
+      localProgressInterval = setInterval(async () => {
         try {
           const progressResponse = await fetch(`${API_BASE_URL}/pipeline-progress`);
           const progress = await progressResponse.json();
@@ -1109,14 +1222,14 @@ function setupTriggerPipelineButton() {
             triggerBtn.textContent = `${step} (${percent}%) ${timeText}`.trim();
           } else if (progress.status === "completed") {
             // Pipeline completed
-            clearInterval(progressInterval);
+            clearInterval(localProgressInterval);
             triggerBtn.textContent = "Completed! Refreshing...";
             setTimeout(() => {
               window.location.reload(true); // Hard refresh
             }, 1000);
           } else if (progress.status === "error") {
             // Pipeline failed
-            clearInterval(progressInterval);
+            clearInterval(localProgressInterval);
             triggerBtn.textContent = "Error - Click to retry";
             triggerBtn.disabled = false;
             triggerBtn.classList.remove("loading");
@@ -1129,8 +1242,8 @@ function setupTriggerPipelineButton() {
 
       // Maximum timeout (2 minutes)
       setTimeout(() => {
-        if (progressInterval) {
-          clearInterval(progressInterval);
+        if (localProgressInterval) {
+          clearInterval(localProgressInterval);
         }
         triggerBtn.textContent = "Taking longer than expected...";
         setTimeout(() => {
@@ -1139,8 +1252,8 @@ function setupTriggerPipelineButton() {
       }, 120000); // 2 minutes max
 
     } catch (error) {
-      if (progressInterval) {
-        clearInterval(progressInterval);
+      if (localProgressInterval) {
+        clearInterval(localProgressInterval);
       }
       console.error("Error triggering pipeline:", error);
       triggerBtn.textContent = "Error - Click to retry";
@@ -1148,7 +1261,7 @@ function setupTriggerPipelineButton() {
       triggerBtn.classList.remove("loading");
       alert(`Failed to trigger pipeline: ${error.message}`);
     }
-  });
+  }
 }
 
 // Initialize when DOM is ready

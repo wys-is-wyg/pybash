@@ -59,6 +59,47 @@
       </div>
     </header>
 
+    <!-- Password Modal -->
+    <div id="password-modal" class="password-modal">
+      <div class="password-modal-content">
+        <div class="password-modal-header">
+          <h2>🔒 Pipeline Access</h2>
+          <button class="password-modal-close" id="password-modal-close">
+            &times;
+          </button>
+        </div>
+        <div class="password-modal-body">
+          <p>Please enter the admin password to run the pipeline:</p>
+          <input
+            type="password"
+            id="password-input"
+            class="password-input"
+            placeholder="Enter password"
+            autocomplete="off"
+          />
+          <div
+            id="password-error"
+            class="password-error"
+            style="display: none"
+          ></div>
+        </div>
+        <div class="password-modal-footer">
+          <button
+            id="password-cancel-btn"
+            class="password-btn password-btn-cancel"
+          >
+            Cancel
+          </button>
+          <button
+            id="password-submit-btn"
+            class="password-btn password-btn-submit"
+          >
+            Submit
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Main Content -->
     <main class="main-content">
       <!-- Feed Section (Default) -->
