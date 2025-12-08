@@ -78,6 +78,7 @@ APP_DIR="$PROJECT_ROOT/app"
 DATA_DIR="$APP_DIR/data"
 LOGS_DIR="$APP_DIR/logs"
 LOG_FILE="$LOGS_DIR/pipeline_$(date +%Y%m%d_%H%M%S).log"
+EXECUTION_LOG="$DATA_DIR/pipeline_execution.log"
 ENV_FILE="$PROJECT_ROOT/.env"
 
 # Python executable - use Docker container if available, otherwise local python3
@@ -199,10 +200,22 @@ trap 'error_exit ${LINENO} $?' ERR
     log "INFO" "Python: $PYTHON"
     log "INFO" ""
 
+    # Initialize execution log
+    echo "=== Pipeline Execution Log ===" > "$EXECUTION_LOG"
+    echo "Start Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> "$EXECUTION_LOG"
+    echo "" >> "$EXECUTION_LOG"
+    
+    PIPELINE_START=$(date +%s)
+
     # Step 0: Cleanup old data and images
+    STEP_START=$(date +%s)
     cleanup_old_data
+    STEP_END=$(date +%s)
+    STEP_DURATION=$((STEP_END - STEP_START))
+    echo "Step 0 (Cleanup): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
 
     # Step 1: Fetch news from all feeds (RSS scraper, Reddit, Twitter/X)
+    STEP_START=$(date +%s)
     log "INFO" "=== STEP 1: Fetching news from feeds ==="
     if [ -f "$APP_DIR/scripts/rss_scraper.py" ]; then
         log "INFO" "Running RSS scraper..."
@@ -230,9 +243,13 @@ trap 'error_exit ${LINENO} $?' ERR
     else
         log "WARN" "RSS scraper not found, skipping..."
     fi
+    STEP_END=$(date +%s)
+    STEP_DURATION=$((STEP_END - STEP_START))
+    echo "Step 1 (RSS Scraping): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 2: Pre-filter articles for AI relevance (before summarization)
+    STEP_START=$(date +%s)
     log "INFO" "=== STEP 2: Pre-filtering articles for AI relevance ==="
     if [ -f "$APP_DIR/scripts/pre_filter.py" ]; then
         log "INFO" "Running pre-filter..."
@@ -258,9 +275,13 @@ trap 'error_exit ${LINENO} $?' ERR
     else
         log "WARN" "Pre-filter not found, skipping... (all articles will be processed)"
     fi
+    STEP_END=$(date +%s)
+    STEP_DURATION=$((STEP_END - STEP_START))
+    echo "Step 2 (Pre-filtering): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 3: Summarize articles with Claude
+    STEP_START=$(date +%s)
     log "INFO" "=== STEP 3: Summarizing articles ==="
     if [ -f "$APP_DIR/scripts/summarizer.py" ]; then
         log "INFO" "Running summarizer (Hugging Face)..."
@@ -288,9 +309,13 @@ trap 'error_exit ${LINENO} $?' ERR
     else
         log "WARN" "Summarizer not found, skipping..."
     fi
+    STEP_END=$(date +%s)
+    STEP_DURATION=$((STEP_END - STEP_START))
+    echo "Step 3 (Summarization): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 4: Generate video ideas from summaries
+    STEP_START=$(date +%s)
     log "INFO" "=== STEP 4: Generating video ideas ==="
     if [ -f "$APP_DIR/scripts/video_idea_generator.py" ]; then
         log "INFO" "Running video idea generator..."
@@ -328,12 +353,17 @@ trap 'error_exit ${LINENO} $?' ERR
 
     # Step 5: Tag images are pre-generated separately (see generate_tag_images.sh)
     # Skip thumbnail generation in pipeline - images are assigned from tag_images based on visual_tags
+    STEP_START=$(date +%s)
     log "INFO" "=== STEP 5: Skipping thumbnail generation (using pre-generated tag images) ==="
     log "INFO" "Tag images should be generated separately using: bash app/scripts/generate_tag_images.sh"
+    STEP_END=$(date +%s)
+    STEP_DURATION=$((STEP_END - STEP_START))
+    echo "Step 5 (Tag Images - skipped): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
-    # Step 5: Merge all data into unified feed (tag images assigned based on visual_tags)
-    log "INFO" "=== STEP 5: Merging data into feed.json (limit: $FEED_LIMIT) ==="
+    # Step 6: Merge all data into unified feed (tag images assigned based on visual_tags)
+    STEP_START=$(date +%s)
+    log "INFO" "=== STEP 6: Merging data into feed.json (limit: $FEED_LIMIT) ==="
     if [ -f "$APP_DIR/scripts/data_manager.py" ]; then
         log "INFO" "Running data manager with feed limit: $FEED_LIMIT..."
         if [ -n "$DOCKER_EXEC" ]; then
@@ -355,10 +385,14 @@ trap 'error_exit ${LINENO} $?' ERR
     else
         log "WARN" "Data manager not found, skipping merge..."
     fi
+    STEP_END=$(date +%s)
+    STEP_DURATION=$((STEP_END - STEP_START))
+    echo "Step 6 (Merging): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
-    # Step 6: Update Flask API with new feed
-    log "INFO" "=== STEP 6: Updating Flask API ==="
+    # Step 7: Update Flask API with new feed
+    STEP_START=$(date +%s)
+    log "INFO" "=== STEP 7: Updating Flask API ==="
     
     # Determine Flask URL (from .env or default)
     FLASK_HOST="${FLASK_HOST:-localhost}"
@@ -394,11 +428,27 @@ trap 'error_exit ${LINENO} $?' ERR
     else
         log "WARN" "feed.json not found, skipping API update"
     fi
+    STEP_END=$(date +%s)
+    STEP_DURATION=$((STEP_END - STEP_START))
+    echo "Step 7 (Flask API Update): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
+
+    # Calculate total pipeline duration
+    PIPELINE_END=$(date +%s)
+    PIPELINE_DURATION=$((PIPELINE_END - PIPELINE_START))
+    
+    # Write final summary to execution log
+    echo "" >> "$EXECUTION_LOG"
+    echo "=== Pipeline Summary ===" >> "$EXECUTION_LOG"
+    echo "End Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> "$EXECUTION_LOG"
+    echo "Total Duration: ${PIPELINE_DURATION}s ($(awk "BEGIN {printf \"%.1f\", ${PIPELINE_DURATION}/60}") minutes)" >> "$EXECUTION_LOG"
+    echo "" >> "$EXECUTION_LOG"
 
     # Summary
     log "INFO" "=========================================="
     log "INFO" "Pipeline completed successfully!"
+    log "INFO" "Total execution time: ${PIPELINE_DURATION}s ($(awk "BEGIN {printf \"%.1f\", ${PIPELINE_DURATION}/60}") minutes)"
+    log "INFO" "Execution log saved to: $EXECUTION_LOG"
     log "INFO" "=========================================="
     log "INFO" "Outputs saved to: $DATA_DIR/"
     log "INFO" "  - raw_news.json (initial fetch)"
