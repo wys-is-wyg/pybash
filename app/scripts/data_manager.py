@@ -437,14 +437,24 @@ def build_display_data(
         video_ideas_list = []
         if article_id in video_ideas_by_article:
             for idea in video_ideas_by_article[article_id]:
-                video_data = extract_video_idea_from_description(idea.get('video_description', ''))
-                video_title = video_data.get('title') or idea.get('video_title', '')
-                video_desc = video_data.get('description') or idea.get('video_description', '')
+                # New format: video_ideas.json has video_title and video_description fields directly
+                # Old format: might have JSON embedded in description, use extract_video_idea_from_description
+                video_title = idea.get('video_title', '')
+                video_desc = idea.get('video_description', '')
                 
-                video_ideas_list.append({
-                    'title': clean_html_and_entities(video_title),
-                    'description': clean_html_and_entities(video_desc),
-                })
+                # If title is empty, try extracting from description (old format)
+                if not video_title and video_desc:
+                    video_data = extract_video_idea_from_description(video_desc)
+                    video_title = video_data.get('title', '')
+                    if video_data.get('description'):
+                        video_desc = video_data.get('description')
+                
+                # Only add if we have at least a title
+                if video_title:
+                    video_ideas_list.append({
+                        'title': clean_html_and_entities(video_title),
+                        'description': clean_html_and_entities(video_desc),
+                    })
         
         # Assign visual tags
         news_with_tags = assign_visual_tags_to_articles([news_item])
@@ -464,6 +474,14 @@ def build_display_data(
             'visual_tags': visual_tags,
             'category': 'all',
         }
+        
+        # Include scores from filtered_news.json if available
+        if 'trend_score' in news_item:
+            display_item['trend_score'] = news_item['trend_score']
+        if 'seo_score' in news_item:
+            display_item['seo_score'] = news_item['seo_score']
+        if 'uniqueness_score' in news_item:
+            display_item['uniqueness_score'] = news_item['uniqueness_score']
         
         if video_ideas_list:
             display_item['video_ideas'] = video_ideas_list

@@ -112,19 +112,29 @@ def health_check():
 @app.route('/api/news', methods=['GET'])
 def get_news_feed():
     """
-    Get current news feed.
+    Get current news feed from display.json.
     
     Returns:
-        JSON response with feed data or empty array if feed.json doesn't exist
+        JSON response with display data (array of items) or empty array if display.json doesn't exist
     """
     try:
-        feed_data = load_json(settings.FEED_FILE)
-        items = feed_data.get('items', [])
-        logger.info(f"Returning {len(items)} feed items")
+        # Try display.json first (new structure)
+        display_data = load_json(settings.DISPLAY_FILE)
+        # display.json contains items array directly (from build_display_data)
+        items = display_data.get('items', display_data if isinstance(display_data, list) else [])
+        logger.info(f"Returning {len(items)} display items from {settings.DISPLAY_FILE}")
         return jsonify(items), 200
     except FileNotFoundError:
-        logger.warning(f"Feed file not found: {settings.FEED_FILE}")
-        return jsonify([]), 200
+        # Fallback to feed.json for backward compatibility during migration
+        try:
+            feed_data = load_json(settings.FEED_FILE)
+            items = feed_data.get('items', [])
+            logger.warning(f"Display file not found, using fallback {settings.FEED_FILE}")
+            logger.info(f"Returning {len(items)} feed items")
+            return jsonify(items), 200
+        except FileNotFoundError:
+            logger.warning(f"Neither {settings.DISPLAY_FILE} nor {settings.FEED_FILE} found")
+            return jsonify([]), 200
     except Exception as e:
         logger.error(f"Error loading feed: {e}")
         return jsonify({'error': 'Failed to load feed'}), 500
@@ -266,7 +276,19 @@ def refresh_feed():
                 
                 # Use new build_display_data function
                 merged_data = build_display_data(filtered_news, summaries, video_ideas, max_items=feed_limit)
+                
+                # Save to both feed.json (for backward compatibility) and display.json (new structure)
                 generate_feed_json(merged_data)
+                display_file = settings.get_data_file_path(settings.DISPLAY_FILE)
+                from datetime import datetime
+                display_data = {
+                    'version': '2.0',
+                    'generated_at': datetime.utcnow().isoformat(),
+                    'items': merged_data,
+                    'total_items': len(merged_data)
+                }
+                save_json(display_data, str(display_file))
+                logger.info(f"Saved display data to {settings.DISPLAY_FILE}")
                 
                 item_count = len(merged_data)
                 logger.info(f"Feed refreshed with {item_count} items from data files")
@@ -311,7 +333,19 @@ def refresh_feed():
                 
                 # Use new build_display_data function (default limit 12)
                 merged_data = build_display_data(filtered_news, summaries, video_ideas, max_items=12)
+                
+                # Save to both feed.json (for backward compatibility) and display.json (new structure)
                 generate_feed_json(merged_data)
+                display_file = settings.get_data_file_path(settings.DISPLAY_FILE)
+                from datetime import datetime
+                display_data = {
+                    'version': '2.0',
+                    'generated_at': datetime.utcnow().isoformat(),
+                    'items': merged_data,
+                    'total_items': len(merged_data)
+                }
+                save_json(display_data, str(display_file))
+                logger.info(f"Saved display data to {settings.DISPLAY_FILE}")
                 
                 item_count = len(merged_data)
                 logger.info(f"Feed refreshed with {item_count} items from data files")
@@ -516,7 +550,19 @@ def n8n_webhook():
                     # Use new build_display_data function
                     feed_limit = getattr(settings, 'FEED_LIMIT', 30)
                     merged_data = build_display_data(filtered_news, summaries, video_ideas, max_items=feed_limit)
+                    
+                    # Save to both feed.json (for backward compatibility) and display.json (new structure)
                     generate_feed_json(merged_data)
+                    display_file = settings.get_data_file_path(settings.DISPLAY_FILE)
+                    from datetime import datetime
+                    display_data = {
+                        'version': '2.0',
+                        'generated_at': datetime.utcnow().isoformat(),
+                        'items': merged_data,
+                        'total_items': len(merged_data)
+                    }
+                    save_json(display_data, str(display_file))
+                    logger.info(f"Saved display data to {settings.DISPLAY_FILE}")
                     
                     logger.info(f"Feed updated from n8n webhook: {len(merged_data)} items")
                 else:
@@ -541,7 +587,7 @@ def monitor_pipeline_progress():
     # Pipeline step estimates (in seconds) - updated for faster processing with 1 idea per article
     STEP_ESTIMATES = {
         'scraping': 10,
-        'summarization': 60,
+        'summarization': 30,
         'video_ideas': 10,  # Faster with 1 idea per article
         'merging': 5,
     }

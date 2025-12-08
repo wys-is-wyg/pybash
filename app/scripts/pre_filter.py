@@ -10,7 +10,12 @@ from typing import List, Dict, Any
 from app.config import settings
 from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json
-from app.scripts.filtering import filter_and_deduplicate
+from app.scripts.filtering import (
+    filter_and_deduplicate,
+    calculate_relevance_score,
+    calculate_seo_keyword_score,
+    calculate_interest_score
+)
 from app.scripts.tag_categorizer import TITLE_NEGATIVE_KEYWORDS, NEGATIVE_KEYWORDS, categorize_article
 
 logger = setup_logger(__name__)
@@ -123,13 +128,29 @@ def main():
         # Pre-filter articles
         filtered_items = pre_filter_articles(news_items, max_items=args.limit)
         
-        # Add article_id to each filtered item and keep only minimal fields
+        # Add article_id to each filtered item, calculate scores, and keep minimal fields
         from app.scripts.data_manager import generate_article_id
         
         minimal_items = []
         for item in filtered_items:
             source_url = item.get('source_url', '')
             article_id = generate_article_id(source_url)
+            
+            # Prepare item for score calculation (score functions expect 'tags', we have 'visual_tags')
+            score_item = item.copy()
+            if 'visual_tags' in score_item and 'tags' not in score_item:
+                score_item['tags'] = score_item.get('visual_tags', [])
+            
+            # Calculate scores (using available data: title, summary if available, tags)
+            # Note: Summary might be empty at this stage, but scores can still be calculated
+            relevance_score = calculate_relevance_score(score_item)
+            seo_score = calculate_seo_keyword_score(score_item)
+            interest_score = calculate_interest_score(score_item)
+            
+            # Map scores to frontend expectations:
+            # - trend_score = relevance_score (how relevant/trending the topic is)
+            # - seo_score = seo_score (SEO/keyword value)
+            # - uniqueness_score = interest_score (how unique/interesting)
             
             # Keep only essential fields
             minimal_item = {
@@ -138,6 +159,9 @@ def main():
                 'source_url': source_url,
                 'published_date': item.get('published_date', ''),
                 'source': item.get('source', ''),
+                'trend_score': relevance_score,
+                'seo_score': seo_score,
+                'uniqueness_score': interest_score,
             }
             
             # Add author if available

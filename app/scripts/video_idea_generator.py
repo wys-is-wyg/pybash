@@ -23,6 +23,7 @@ logger = setup_logger(__name__)
 # Try to import llama-cpp-python
 try:
     from llama_cpp import Llama
+    from llama_cpp.llama_grammar import LlamaGrammar
     LLAMA_AVAILABLE = True
 except ImportError:
     LLAMA_AVAILABLE = False
@@ -258,20 +259,42 @@ def extract_automation_angle(title: str, summary: str) -> str:
         return random.choice(AUTOMATION_ANGLES)
 
 
-def generate_video_idea_with_llm(item: Dict[str, Any], idea_index: int = 0) -> Optional[Dict[str, Any]]:
+# Define JSON schema for video ideas array (for llama grammar)
+VIDEO_IDEA_ARRAY_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "concept_summary": {"type": "string"},
+            "why_matters_builders": {"type": "string"},
+            "example_workflow": {"type": "string"},
+            "predicted_impact": {"type": "string"}
+        },
+        "required": ["title", "concept_summary"]
+    }
+}
+
+
+def generate_batch_video_ideas_with_llm(
+    item: Dict[str, Any],
+    num_ideas: int = 2,
+    angle_variations: List[str] = None
+) -> List[Dict[str, Any]]:
     """
-    Generate video idea using llama-cpp-python with improved prompt.
+    Generate multiple video ideas in a single LLM call using grammar-enforced JSON array.
     
     Args:
         item: Article dictionary with title, summary, etc.
-        idea_index: Index of idea being generated (0-based) for variety
+        num_ideas: Number of video ideas to generate
+        angle_variations: List of different angles/focuses to consider for variety
         
     Returns:
-        Video idea dictionary or None if generation fails
+        List of video idea dictionaries
     """
     model = get_llm_model()
     if model is None:
-        return None
+        return []
     
     try:
         title = item.get('title', '')
@@ -283,235 +306,127 @@ def generate_video_idea_with_llm(item: Dict[str, Any], idea_index: int = 0) -> O
         is_valid, sanitized_text, reason = validate_for_video_ideas(combined_text)
         if not is_valid:
             logger.warning(f"Input validation failed: {reason}")
-            return None
+            return []
         
         # Extract topics and AI angle for context
         topics = extract_key_topics(sanitized_text, max_topics=5)
         main_topic = topics[0] if topics else "AI Technology"
         automation_angle = extract_automation_angle(title, summary)
         
-        # Determine angle focus based on idea index
-        text_lower = sanitized_text.lower()
-        is_breakthrough = any(word in text_lower for word in ['breakthrough', 'revolutionary', 'game-changer'])
-        is_announcement = any(word in text_lower for word in ['announces', 'unveils', 'launches', 'releases'])
-        is_exec_change = any(word in text_lower for word in ['executive', 'ceo', 'leaves', 'departs', 'resigns'])
-        is_strategy_shift = any(word in text_lower for word in ['strategy', 'pivot', 'shift', 'change', 'new direction'])
+        # Use provided angle variations or generate default ones
+        if angle_variations is None:
+            text_lower = sanitized_text.lower()
+            is_breakthrough = any(word in text_lower for word in ['breakthrough', 'revolutionary', 'game-changer'])
+            is_announcement = any(word in text_lower for word in ['announces', 'unveils', 'launches', 'releases'])
+            
+            angle_variations = []
+            if num_ideas >= 1:
+                angle_variations.append("immediate practical implications for AI builders")
+            if num_ideas >= 2:
+                angle_variations.append("hidden opportunities and workflow automation potential")
+            if num_ideas >= 3:
+                angle_variations.append(f"{automation_angle} applications")
+            if num_ideas >= 4:
+                angle_variations.append("long-term strategic impact for indie hackers")
         
-        if idea_index == 0:
-            angle_focus = "immediate implications"
-        elif idea_index == 1:
-            angle_focus = "hidden implications"
-        else:
-            angle_focus = automation_angle
+        # Create grammar from schema
+        try:
+            grammar = LlamaGrammar.from_json_schema(json.dumps(VIDEO_IDEA_ARRAY_SCHEMA))
+        except Exception as e:
+            logger.error(f"Grammar creation failed: {e}")
+            return []
         
-        # Simplified prompt for faster generation (Llama format)
-        # Request ONLY JSON, no explanatory text
+        # Build prompt requesting multiple ideas with different angles
+        angles_text = "\n".join([f"- {angle}" for angle in angle_variations[:num_ideas]])
+        topics_str = ", ".join(topics[:3]) if topics else "AI technology"
+        
         prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
-You are a JSON generator. Return ONLY valid JSON, no explanatory text.<|eot_id|><|start_header_id|>user<|end_header_id|>
+You are a JSON generator. Return ONLY a valid JSON array, no explanatory text.<|eot_id|><|start_header_id|>user<|end_header_id|>
 
 Article: {title}
-Summary: {summary[:300]}
+Summary: {summary[:400]}
+Topics: {topics_str}
+Automation Angle: {automation_angle}
 
-Focus: {angle_focus}
+Generate {num_ideas} different video ideas as a JSON array. Consider these angles:
+{angles_text}
 
-Return ONLY this JSON structure (no other text):
-{{
-  "title": "Video idea for AI builders",
-  "concept_summary": "2-3 sentence video concept",
-  "why_matters_builders": "Why this matters for builders",
-  "example_workflow": "Example use case",
-  "predicted_impact": "One sentence prediction"
-}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+Each idea should have:
+- title: Hook title for AI builders
+- concept_summary: 2-3 sentence video concept
+- why_matters_builders: Why this matters for builders
+- example_workflow: Example use case
+- predicted_impact: One sentence prediction
+
+Return ONLY the JSON array, no other text.<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
 """
         
-        # Generate with LLM (optimized for speed)
-        logger.debug(f"Generating video idea {idea_index + 1} with LLM...")
+        # Generate with LLM using grammar
+        logger.debug(f"Generating {num_ideas} video ideas in batch with LLM...")
         import signal
         import time
         
-        # Set timeout for LLM generation
         timeout_seconds = settings.LLM_GENERATION_TIMEOUT
         
         def timeout_handler(signum, frame):
             raise TimeoutError("LLM generation timed out")
         
-        # Set up timeout (Unix only)
         try:
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(timeout_seconds)
         except (AttributeError, OSError):
-            # Windows doesn't support SIGALRM, use threading timeout instead
             pass
         
         try:
             start_time = time.time()
             response = model(
                 prompt,
-                max_tokens=300,  # Increased to ensure complete JSON (was 200, too short)
-                temperature=0.4,  # Lower temperature = faster, more deterministic
-                top_p=0.8,  # Lower for faster generation
-                top_k=25,  # Reduced for faster generation
-                stop=["<|eot_id|>", "<|end_of_text|>", "\n\n\n", "</s>"],  # Removed "}" stop tokens to allow complete JSON
+                max_tokens=800,  # Increased for multiple ideas
+                grammar=grammar,  # Enforce JSON array format
+                temperature=0.6,  # Slightly higher for variety
+                top_p=0.9,
+                top_k=40,
+                stop=["<|eot_id|>", "<|end_of_text|>"],
                 echo=False
             )
             elapsed = time.time() - start_time
-            logger.debug(f"LLM generation completed in {elapsed:.1f}s")
+            logger.debug(f"LLM batch generation completed in {elapsed:.1f}s")
         except TimeoutError:
             logger.warning(f"LLM generation timed out after {timeout_seconds}s")
-            return None
+            return []
         finally:
-            # Cancel timeout
             try:
                 signal.alarm(0)
             except (AttributeError, OSError):
                 pass
         
-        # Parse response
+        # Parse response (grammar ensures it's valid JSON array)
         if 'choices' in response and len(response['choices']) > 0:
             response_text = response['choices'][0]['text'].strip()
+            try:
+                ideas = json.loads(response_text)
+                if isinstance(ideas, list):
+                    logger.debug(f"Successfully parsed {len(ideas)} ideas from LLM response")
+                    return ideas
+                else:
+                    logger.warning("LLM returned non-array, wrapping in list")
+                    return [ideas] if isinstance(ideas, dict) else []
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON from LLM response: {e}")
+                logger.debug(f"Response text: {response_text[:200]}")
+                return []
         else:
             logger.error("Unexpected response format from LLM")
-            response_text = ""
-        
-        # Extract JSON from response (handle code blocks and nested JSON)
-        idea_data = {}
-        
-        # Try to find JSON in code blocks first (```json ... ``` or ``` ... ```)
-        # Use balanced brace matching for nested JSON
-        code_block_start = re.search(r'```(?:json)?\s*\{', response_text, re.DOTALL)
-        if code_block_start:
-            start_pos = code_block_start.end() - 1  # Position of opening brace
-            brace_count = 0
-            for i in range(start_pos, len(response_text)):
-                if response_text[i] == '{':
-                    brace_count += 1
-                elif response_text[i] == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        json_str = response_text[start_pos:i+1]
-                        try:
-                            idea_data = json.loads(json_str)
-                            break
-                        except json.JSONDecodeError:
-                            logger.warning("Failed to parse JSON from code block, trying alternative extraction")
-                            break
-        
-        # If code block parsing failed, try to find JSON object directly
-        if not idea_data:
-            # Find the first complete JSON object (handle nested braces)
-            brace_count = 0
-            start_idx = -1
-            for i, char in enumerate(response_text):
-                if char == '{':
-                    if brace_count == 0:
-                        start_idx = i
-                    brace_count += 1
-                elif char == '}':
-                    brace_count -= 1
-                    if brace_count == 0 and start_idx != -1:
-                        json_str = response_text[start_idx:i+1]
-                        try:
-                            idea_data = json.loads(json_str)
-                            break
-                        except json.JSONDecodeError:
-                            continue
-        
-        # If still no JSON, try regex extraction as fallback (handle escaped quotes)
-        if not idea_data:
-            # Improved regex that handles escaped quotes and multi-line strings
-            title_match = re.search(r'"title":\s*"((?:[^"\\]|\\.)*)"', response_text, re.DOTALL)
-            concept_match = re.search(r'"concept_summary":\s*"((?:[^"\\]|\\.)*)"', response_text, re.DOTALL)
-            why_match = re.search(r'"why_matters_builders":\s*"((?:[^"\\]|\\.)*)"', response_text, re.DOTALL)
-            workflow_match = re.search(r'"example_workflow":\s*"((?:[^"\\]|\\.)*)"', response_text, re.DOTALL)
-            impact_match = re.search(r'"predicted_impact":\s*"((?:[^"\\]|\\.)*)"', response_text, re.DOTALL)
+            return []
             
-            if title_match or concept_match:
-                idea_data = {
-                    'title': title_match.group(1) if title_match else "",
-                    'concept_summary': concept_match.group(1) if concept_match else "",
-                    'why_matters_builders': why_match.group(1) if why_match else "",
-                    'example_workflow': workflow_match.group(1) if workflow_match else "",
-                    'predicted_impact': impact_match.group(1) if impact_match else "",
-                }
-        
-        # Final fallback: if no valid JSON found, log error and return None
-        if not idea_data or not idea_data.get('title'):
-            logger.error(f"Failed to extract valid JSON from LLM response. Response: {response_text[:200]}")
-            logger.debug(f"Full response text: {response_text}")
-            return None
-        
-        # Ensure we only use extracted JSON fields, never the raw response text
-        if not idea_data.get('concept_summary'):
-            logger.warning("No concept_summary found in extracted JSON, returning None")
-            return None
-        
-        # Extract topics for keywords
-        target_keywords = topics[:5] if topics else [main_topic]
-        target_keywords.extend([automation_angle, "automation", "AI builders", "workflow"])
-        target_keywords = list(dict.fromkeys(target_keywords))[:8]
-        
-        # Build description from components
-        video_description = f"{idea_data.get('concept_summary', '')}\n\nWhy This Matters for AI Builders: {idea_data.get('why_matters_builders', '')}\n\nExample Workflow: {idea_data.get('example_workflow', '')}\n\nPredicted Impact: {idea_data.get('predicted_impact', '')}"
-        
-        # Generate trend analysis
-        trend_analysis = f"This topic represents current developments in {main_topic} with significant potential for AI builders. "
-        if any(tag in ['ai startup', 'generative ai', 'llm', 'large language model'] for tag in visual_tags):
-            trend_analysis += "The technology is trending in the AI  community and has high practical value."
-        else:
-            trend_analysis += "The topic has growing interest and direct applications for AI workflows."
-        
-        # Select virality factors
-        selected_factors = [
-            "Practical value for AI builders",
-            "Action-oriented content",
-            "Real-world workflow applications",
-        ]
-        if is_breakthrough:
-            selected_factors.append("Novel or breakthrough technology")
-        if is_announcement:
-            selected_factors.append("Timely and trending topic")
-        
-        # Calculate scores
-        trend_score = 0.6 if is_announcement or is_breakthrough else 0.5
-        seo_score = 0.7 if len(target_keywords) >= 6 else 0.5
-        uniqueness_score = 0.8 if is_breakthrough or is_exec_change else 0.6
-        engagement_score = (trend_score * 0.4 + seo_score * 0.35 + uniqueness_score * 0.25)
-        
-        # Use LLM's actual title and concept_summary (no templates, no fallbacks)
-        video_idea = {
-            'video_title': idea_data.get('title', '').strip(),
-            'video_description': idea_data.get('concept_summary', '').strip(),  # Just LLM's concept_summary
-            # Keep other fields for internal use, but won't be saved to final output
-            'concept_summary': idea_data.get('concept_summary', ''),
-            'why_matters_builders': idea_data.get('why_matters_builders', ''),
-            'example_workflow': idea_data.get('example_workflow', ''),
-            'predicted_impact': idea_data.get('predicted_impact', ''),
-            'trend_analysis': trend_analysis,
-            'virality_factors': selected_factors,
-            'target_keywords': target_keywords,
-            'content_outline': [
-                f"Introduction: Hook with {main_topic} and why builders should care",
-                f"Main content: Deep dive into {angle_focus} and practical implications",
-                f"Example workflow: {idea_data.get('example_workflow', 'Workflow demonstration')}",
-                f"Conclusion: {idea_data.get('predicted_impact', 'Actionable next steps')} and actionable next steps",
-            ],
-            'target_duration_minutes': 10,
-            'estimated_engagement_score': round(engagement_score, 2),
-            'trend_score': round(trend_score, 2),
-            'seo_score': round(seo_score, 2),
-            'uniqueness_score': round(uniqueness_score, 2),
-            'automation_angle': automation_angle,
-        }
-        
-        logger.debug(f"Generated video idea {idea_index + 1} with LLM: {video_idea['video_title'][:50]}...")
-        return video_idea
-        
     except Exception as e:
-        logger.error(f"Failed to generate video idea with LLM: {e}", exc_info=True)
-        return None
+        logger.error(f"Error during batch LLM generation: {e}", exc_info=True)
+        return []
 
+
+# Old single-idea function removed - using batch generation instead
 
 def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 2) -> List[Dict[str, Any]]:
     """
@@ -553,30 +468,29 @@ def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 2) -
         is_exec_change = any(word in text_lower for word in ['executive', 'ceo', 'leaves', 'departs', 'resigns'])
         is_strategy_shift = any(word in text_lower for word in ['strategy', 'pivot', 'shift', 'change', 'new direction'])
         
-        video_ideas = []
+        # Generate all ideas in a single batch LLM call
+        logger.info(f"Generating {num_ideas} video ideas for: {title[:50]}...")
+        raw_ideas = generate_batch_video_ideas_with_llm(item, num_ideas=num_ideas)
         
-        # Use LLM for all ideas if available
-        model = get_llm_model()
-        if model is None:
-            logger.warning("LLM model not available, cannot generate video ideas")
+        if not raw_ideas:
+            logger.warning(f"No video ideas generated for: {title[:50]}...")
             return []
         
-        # Generate unique video ideas with different angles using LLM
-        import time
-        for i in range(num_ideas):
-            logger.info(f"Generating idea {i+1}/{num_ideas} for: {title[:50]}...")
-            llm_idea = generate_video_idea_with_llm(item, idea_index=i)
-            if llm_idea:
-                video_ideas.append(llm_idea)
-            else:
-                logger.warning(f"Failed to generate idea {i+1}/{num_ideas} with LLM, skipping")
-            
-            # Small delay between generations to avoid CPU overload
-            if i < num_ideas - 1:  # Don't delay after last idea
-                time.sleep(0.5)
+        # Process and format the ideas - minimal output only
+        processed_ideas = []
         
-        logger.debug(f"Generated {len(video_ideas)} video ideas for: {title[:50]}...")
-        return video_ideas
+        for idea_data in raw_ideas:
+            if not isinstance(idea_data, dict) or not idea_data.get('title'):
+                continue
+            
+            # Minimal output: just title and description from LLM (no redundant fields)
+            processed_ideas.append({
+                'video_title': idea_data.get('title', '').strip(),
+                'video_description': idea_data.get('concept_summary', '').strip(),  # Just LLM's concept_summary
+            })
+        
+        logger.debug(f"Generated {len(processed_ideas)} video ideas for: {title[:50]}...")
+        return processed_ideas
         
     except Exception as e:
         logger.error(f"Failed to generate video ideas: {e}", exc_info=True)
@@ -649,7 +563,7 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
             
             # Generate multiple video ideas with improved prompt structure
             video_ideas_data = generate_video_ideas_for_article(item, num_ideas=num_ideas)
-            
+                
             if not video_ideas_data:
                 logger.error(f"Video idea generation failed for article {i}: {title[:50]}... - No video ideas generated")
                 continue
