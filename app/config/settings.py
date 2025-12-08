@@ -115,6 +115,7 @@ class Settings:
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.3"))  # Lower = more deterministic
     LLM_TOP_P: float = float(os.getenv("LLM_TOP_P", "0.9"))
     LLM_TOP_K: int = int(os.getenv("LLM_TOP_K", "40"))
+    LLM_GENERATION_TIMEOUT: int = int(os.getenv("LLM_GENERATION_TIMEOUT", "30"))  # Timeout per generation (seconds)
     
     # Email Configuration
     SMTP_HOST: str = os.getenv("SMTP_HOST", "mailhog")

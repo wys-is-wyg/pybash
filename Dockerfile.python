@@ -3,18 +3,21 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
-# Install system dependencies for llama-cpp-python
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install llama-cpp-python (CPU-only by default, no GPU required)
-# This works perfectly for VPS deployments without GPU
+# Install CPU-only PyTorch first (much faster and smaller than full torch)
+# This is needed for transformers
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
+
+# Install llama-cpp-python (for video idea generation)
 RUN pip install --no-cache-dir llama-cpp-python
 
-# Install remaining Python dependencies
+# Install remaining Python dependencies (including transformers)
 COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

@@ -11,3 +11,5 @@ requests-mock
 anthropic
 leonardo-ai-sdk
 llama-cpp-python
+transformers
+torch
