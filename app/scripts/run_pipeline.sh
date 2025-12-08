@@ -47,7 +47,7 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --test)
             TEST_MODE=true
-            FEED_LIMIT=30
+            FEED_LIMIT=5  # Test mode: limit to 5 articles
             # Test mode defaults to 0 images (can be overridden with --image-limit)
             IMAGE_LIMIT=0
             shift
@@ -107,13 +107,15 @@ mkdir -p "$DATA_DIR" "$LOGS_DIR"
 cleanup_old_data() {
     log "INFO" "=== CLEANUP: Removing old feed data and images ==="
     
-    # Remove JSON data files
+    # Remove JSON data files (recreate all files each run)
     local data_files=(
         "$DATA_DIR/raw_news.json"
+        "$DATA_DIR/filtered_news.json"
         "$DATA_DIR/summaries.json"
         "$DATA_DIR/video_ideas.json"
         "$DATA_DIR/thumbnails.json"
         "$DATA_DIR/feed.json"
+        "$DATA_DIR/display.json"
     )
     
     local removed_count=0
@@ -250,11 +252,11 @@ trap 'error_exit ${LINENO} $?' ERR
 
     # Step 2: Pre-filter articles for AI relevance (before summarization)
     STEP_START=$(date +%s)
-    log "INFO" "=== STEP 2: Pre-filtering articles for AI relevance ==="
+    log "INFO" "=== STEP 2: Pre-filtering articles for AI relevance (limit: $FEED_LIMIT) ==="
     if [ -f "$APP_DIR/scripts/pre_filter.py" ]; then
-        log "INFO" "Running pre-filter..."
+        log "INFO" "Running pre-filter with limit: $FEED_LIMIT..."
         if [ -n "$DOCKER_EXEC" ]; then
-            $DOCKER_EXEC $PYTHON "/app/app/scripts/pre_filter.py" 2>"$DATA_DIR/pre_filter_stderr.log" || {
+            $DOCKER_EXEC $PYTHON "/app/app/scripts/pre_filter.py" --limit "$FEED_LIMIT" 2>"$DATA_DIR/pre_filter_stderr.log" || {
                 log "ERROR" "Pre-filter failed"
                 if [ -f "$DATA_DIR/pre_filter_stderr.log" ]; then
                     log "ERROR" "Error output: $(cat "$DATA_DIR/pre_filter_stderr.log" | tail -10)"
@@ -262,7 +264,7 @@ trap 'error_exit ${LINENO} $?' ERR
                 exit 1
             }
         else
-            $PYTHON "$APP_DIR/scripts/pre_filter.py" 2>"$DATA_DIR/pre_filter_stderr.log" || {
+            $PYTHON "$APP_DIR/scripts/pre_filter.py" --limit "$FEED_LIMIT" 2>"$DATA_DIR/pre_filter_stderr.log" || {
                 log "ERROR" "Pre-filter failed"
                 if [ -f "$DATA_DIR/pre_filter_stderr.log" ]; then
                     log "ERROR" "Error output: $(cat "$DATA_DIR/pre_filter_stderr.log" | tail -10)"
@@ -270,8 +272,8 @@ trap 'error_exit ${LINENO} $?' ERR
                 exit 1
             }
         fi
-        filtered_count=$(grep -c '"title"' "$DATA_DIR/raw_news.json" 2>/dev/null || echo 0)
-        log "INFO" "Pre-filtered to $filtered_count AI-relevant articles"
+        filtered_count=$(grep -c '"article_id"' "$DATA_DIR/filtered_news.json" 2>/dev/null || echo 0)
+        log "INFO" "Pre-filtered to $filtered_count AI-relevant articles (saved to filtered_news.json)"
     else
         log "WARN" "Pre-filter not found, skipping... (all articles will be processed)"
     fi
@@ -363,7 +365,7 @@ trap 'error_exit ${LINENO} $?' ERR
 
     # Step 6: Merge all data into unified feed (tag images assigned based on visual_tags)
     STEP_START=$(date +%s)
-    log "INFO" "=== STEP 6: Merging data into feed.json (limit: $FEED_LIMIT) ==="
+    log "INFO" "=== STEP 6: Merging data into display.json (limit: $FEED_LIMIT) ==="
     if [ -f "$APP_DIR/scripts/data_manager.py" ]; then
         log "INFO" "Running data manager with feed limit: $FEED_LIMIT..."
         if [ -n "$DOCKER_EXEC" ]; then

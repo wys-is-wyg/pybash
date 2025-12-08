@@ -16,7 +16,7 @@ from app.scripts.tag_categorizer import TITLE_NEGATIVE_KEYWORDS, NEGATIVE_KEYWOR
 logger = setup_logger(__name__)
 
 
-def pre_filter_articles(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def pre_filter_articles(news_items: List[Dict[str, Any]], max_items: int = 30) -> List[Dict[str, Any]]:
     """
     Pre-filter articles before summarization.
     
@@ -93,9 +93,9 @@ def pre_filter_articles(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any]
     if rejection_reasons:
         logger.info(f"Rejection reasons: {rejection_reasons}")
     
-    # Limit to top 30 articles by relevance score (deduplicate and rank)
-    logger.info(f"Limiting to top 30 articles by relevance score...")
-    top_items = filter_and_deduplicate(filtered_items, max_items=30)
+    # Limit to top N articles by relevance score (deduplicate and rank)
+    logger.info(f"Limiting to top {max_items} articles by relevance score...")
+    top_items = filter_and_deduplicate(filtered_items, max_items=max_items)
     logger.info(f"Selected top {len(top_items)} articles for summarization")
     
     return top_items
@@ -103,6 +103,14 @@ def pre_filter_articles(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any]
 
 def main():
     """Main execution function for command-line invocation."""
+    import sys
+    import argparse
+    
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Pre-filter news articles for AI relevance')
+    parser.add_argument('--limit', type=int, default=30, help='Maximum number of articles to keep (default: 30)')
+    args = parser.parse_args()
+    
     try:
         # Load raw news
         raw_news_file = settings.RAW_NEWS_FILE
@@ -113,7 +121,7 @@ def main():
         logger.info(f"Loaded {len(news_items)} raw news items")
         
         # Pre-filter articles
-        filtered_items = pre_filter_articles(news_items)
+        filtered_items = pre_filter_articles(news_items, max_items=args.limit)
         
         # Add article_id to each filtered item and keep only minimal fields
         from app.scripts.data_manager import generate_article_id

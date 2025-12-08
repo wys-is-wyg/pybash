@@ -596,8 +596,16 @@ if __name__ == "__main__":
         logger.info(f"Running data manager in pipeline mode (feed limit: {feed_limit})")
         
         try:
-            # Load all pipeline outputs
-            news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
+            # Load all pipeline outputs (use filtered_news.json, not raw_news.json)
+            filtered_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
+            if filtered_file.exists():
+                news_items = load_json(str(filtered_file)).get('items', [])
+                logger.info(f"Loaded {len(news_items)} filtered news items from {settings.FILTERED_NEWS_FILE}")
+            else:
+                # Fallback to raw_news.json if filtered doesn't exist (backward compatibility)
+                logger.warning(f"{settings.FILTERED_NEWS_FILE} not found, falling back to {settings.RAW_NEWS_FILE}")
+                news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
+            
             video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
             
             logger.info(f"Loaded {len(news_items)} news items, {len(video_ideas)} video ideas")
