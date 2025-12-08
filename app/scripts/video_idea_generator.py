@@ -19,19 +19,48 @@ from app.scripts.input_validator import validate_for_video_ideas
 
 logger = setup_logger(__name__)
 
-# Try to import Google Generative AI, fallback to template-based if not available
+# Try to import llama-cpp-python
 try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-    if settings.GOOGLE_AI_API_KEY:
-        genai.configure(api_key=settings.GOOGLE_AI_API_KEY)
-        logger.info("Google AI Studio (Gemini) configured")
-    else:
-        GEMINI_AVAILABLE = False
-        logger.warning("GOOGLE_AI_API_KEY not set, falling back to template-based generation")
+    from llama_cpp import Llama
+    LLAMA_AVAILABLE = True
 except ImportError:
-    GEMINI_AVAILABLE = False
-    logger.warning("google-generativeai not installed, falling back to template-based generation")
+    LLAMA_AVAILABLE = False
+    logger.warning("llama-cpp-python not installed, video idea generation will fail")
+
+# Global model instance (shared with summarizer)
+_llm_model = None
+
+
+def get_llm_model():
+    """Get or initialize the LLM model (shared instance)."""
+    global _llm_model
+    
+    if not LLAMA_AVAILABLE:
+        return None
+    
+    if _llm_model is None:
+        import os
+        model_path = settings.LLM_MODEL_PATH
+        
+        if not os.path.exists(model_path):
+            logger.error(f"Model file not found: {model_path}")
+            return None
+        
+        try:
+            logger.info(f"Loading LLM model for video ideas: {model_path}")
+            _llm_model = Llama(
+                model_path=model_path,
+                n_ctx=settings.LLM_N_CTX,
+                n_threads=settings.LLM_N_THREADS,
+                n_gpu_layers=settings.LLM_N_GPU_LAYERS,
+                verbose=False
+            )
+            logger.info("LLM model loaded successfully for video ideas")
+        except Exception as e:
+            logger.error(f"Failed to load LLM model: {e}", exc_info=True)
+            return None
+    
+    return _llm_model
 
 # Improved video title templates - action-oriented with hooks
 VIDEO_TITLE_TEMPLATES = [
@@ -222,9 +251,9 @@ def extract_automation_angle(title: str, summary: str) -> str:
         return random.choice(AUTOMATION_ANGLES)
 
 
-def generate_video_idea_with_gemini(item: Dict[str, Any], idea_index: int = 0) -> Optional[Dict[str, Any]]:
+def generate_video_idea_with_llm(item: Dict[str, Any], idea_index: int = 0) -> Optional[Dict[str, Any]]:
     """
-    Generate video idea using Google AI Studio (Gemini) with improved prompt.
+    Generate video idea using llama-cpp-python with improved prompt.
     
     Args:
         item: Article dictionary with title, summary, etc.
@@ -233,7 +262,8 @@ def generate_video_idea_with_gemini(item: Dict[str, Any], idea_index: int = 0) -
     Returns:
         Video idea dictionary or None if generation fails
     """
-    if not GEMINI_AVAILABLE or not settings.GOOGLE_AI_API_KEY:
+    model = get_llm_model()
+    if model is None:
         return None
     
     try:
@@ -267,8 +297,10 @@ def generate_video_idea_with_gemini(item: Dict[str, Any], idea_index: int = 0) -
         else:
             angle_focus = automation_angle
         
-        # Improved prompt for Gemini
-        prompt = f"""You are an expert AI industry analyst and technical content strategist for an AI community (builders, indie hackers, freelancers, and AI engineers).
+        # Improved prompt for LLM (Llama format)
+        prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+You are an expert AI industry analyst and technical content strategist for an AI community (builders, indie hackers, freelancers, and AI engineers).<|eot_id|><|start_header_id|>user<|end_header_id|>
 
 Your task is to take this curated news item and generate a video idea that is:
 
@@ -300,22 +332,28 @@ Summary: {summary}
   "predicted_impact": "One sentence prediction"
 }}
 
-Generate ONE high-value video idea focused on AI builders with a {angle_focus} angle."""
+Generate ONE high-value video idea focused on AI builders with a {angle_focus} angle.<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+"""
         
-        # Generate with Gemini
-        model = genai.GenerativeModel(settings.GOOGLE_AI_MODEL)
-        response = model.generate_content(
+        # Generate with LLM
+        logger.debug(f"Generating video idea {idea_index + 1} with LLM...")
+        response = model(
             prompt,
-            generation_config={
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "top_k": 40,
-                "max_output_tokens": 500,
-            }
+            max_tokens=500,
+            temperature=0.7,
+            top_p=0.9,
+            top_k=40,
+            stop=["<|eot_id|>", "<|end_of_text|>", "\n\n\n"],
+            echo=False
         )
         
         # Parse response
-        response_text = response.text.strip()
+        if 'choices' in response and len(response['choices']) > 0:
+            response_text = response['choices'][0]['text'].strip()
+        else:
+            logger.error("Unexpected response format from LLM")
+            response_text = ""
         
         # Try to extract JSON from response
         json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
@@ -397,11 +435,11 @@ Generate ONE high-value video idea focused on AI builders with a {angle_focus} a
             'automation_angle': automation_angle,
         }
         
-        logger.debug(f"Generated video idea {idea_index + 1} with Gemini: {video_idea['video_title'][:50]}...")
+        logger.debug(f"Generated video idea {idea_index + 1} with LLM: {video_idea['video_title'][:50]}...")
         return video_idea
         
     except Exception as e:
-        logger.error(f"Failed to generate video idea with Gemini: {e}", exc_info=True)
+        logger.error(f"Failed to generate video idea with LLM: {e}", exc_info=True)
         return None
 
 
@@ -447,24 +485,19 @@ def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 3) -
         
         video_ideas = []
         
-        # Use Gemini for all ideas if available
-        use_gemini = GEMINI_AVAILABLE and settings.GOOGLE_AI_API_KEY
-        
-        if not use_gemini:
-            logger.warning("Gemini not available, cannot generate video ideas")
+        # Use LLM for all ideas if available
+        model = get_llm_model()
+        if model is None:
+            logger.warning("LLM model not available, cannot generate video ideas")
             return []
         
-        # Generate 3-5 unique video ideas with different angles using Gemini
+        # Generate 3-5 unique video ideas with different angles using LLM
         for i in range(num_ideas):
-            gemini_idea = generate_video_idea_with_gemini(item, idea_index=i)
-            if gemini_idea:
-                video_ideas.append(gemini_idea)
-                # Add small delay to avoid rate limiting (Gemini free tier: 15 req/min)
-                if i < num_ideas - 1:
-                    import time
-                    time.sleep(4)  # ~15 requests per minute max
+            llm_idea = generate_video_idea_with_llm(item, idea_index=i)
+            if llm_idea:
+                video_ideas.append(llm_idea)
             else:
-                logger.warning(f"Failed to generate idea {i+1}/{num_ideas} with Gemini, skipping")
+                logger.warning(f"Failed to generate idea {i+1}/{num_ideas} with LLM, skipping")
         
         logger.debug(f"Generated {len(video_ideas)} video ideas for: {title[:50]}...")
         return video_ideas

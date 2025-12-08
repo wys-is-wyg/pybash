@@ -10,4 +10,4 @@ pytest-cov
 requests-mock
 anthropic
 leonardo-ai-sdk
-google-generativeai
+llama-cpp-python

@@ -106,9 +106,15 @@ class Settings:
     N8N_AUTH_PASSWORD: str = os.getenv("N8N_AUTH_PASSWORD", "")
     N8N_BASE_URL: str = f"http://n8n:{N8N_PORT}"
     
-    # Google AI Studio (Gemini) Configuration
-    GOOGLE_AI_API_KEY: str = os.getenv("GOOGLE_AI_API_KEY", "")
-    GOOGLE_AI_MODEL: str = os.getenv("GOOGLE_AI_MODEL", "gemini-1.5-flash")  # Fast model for video ideas
+    # Local LLM Configuration (llama-cpp-python)
+    # Optimized for CPU-only VPS (no GPU required)
+    LLM_MODEL_PATH: str = os.getenv("LLM_MODEL_PATH", "/app/app/models/Llama-3.2-3B-Instruct-Q4_K_M.gguf")
+    LLM_N_CTX: int = int(os.getenv("LLM_N_CTX", "2048"))  # Context window (2048 = good balance for CPU)
+    LLM_N_THREADS: int = int(os.getenv("LLM_N_THREADS", "2"))  # CPU threads (2-4 typical for VPS)
+    LLM_N_GPU_LAYERS: int = int(os.getenv("LLM_N_GPU_LAYERS", "0"))  # GPU layers (0 = CPU only, no GPU needed)
+    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.3"))  # Lower = more deterministic
+    LLM_TOP_P: float = float(os.getenv("LLM_TOP_P", "0.9"))
+    LLM_TOP_K: int = int(os.getenv("LLM_TOP_K", "40"))
     
     # Email Configuration
     SMTP_HOST: str = os.getenv("SMTP_HOST", "mailhog")

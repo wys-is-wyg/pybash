@@ -2,10 +2,25 @@ FROM python:3.11-slim
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
-# Install CPU-only PyTorch first (much faster and smaller than full torch)
-RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
+
+# Install system dependencies for llama-cpp-python
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install llama-cpp-python (CPU-only by default, no GPU required)
+# This works perfectly for VPS deployments without GPU
+RUN pip install --no-cache-dir llama-cpp-python
+
+# Install remaining Python dependencies
 COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Create models directory
+RUN mkdir -p /app/app/models
+
 COPY app/ ./app/
 COPY .env .
 RUN chmod +x /app/app/run.sh

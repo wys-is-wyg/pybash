@@ -18,6 +18,10 @@ data/*.json
 app/logs/*.log
 logs/*.log
 
+# LLM Model files (too large for GitHub, download on VPS)
+app/models/*.gguf
+app/models/*.bin
+
 # Figma exports (if not needed in repo)
 figma3/
 

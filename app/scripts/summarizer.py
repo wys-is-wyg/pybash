@@ -1,13 +1,13 @@
 """
 Article summarization module for AI News Tracker.
 
-Summarizes news articles using Google AI Studio (Gemini).
+Summarizes news articles using llama-cpp-python (local LLM inference).
 """
 
 import re
 import html
 import json
-import time
+import os
 from typing import List, Dict, Any, Optional
 from app.config import settings
 from app.scripts.logger import setup_logger
@@ -17,19 +17,60 @@ from app.scripts.input_validator import validate_for_summarization
 
 logger = setup_logger(__name__)
 
-# Try to import Google Generative AI
+# Try to import llama-cpp-python
 try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-    if settings.GOOGLE_AI_API_KEY:
-        genai.configure(api_key=settings.GOOGLE_AI_API_KEY)
-        logger.info("Google AI Studio (Gemini) configured for summarization")
-    else:
-        GEMINI_AVAILABLE = False
-        logger.warning("GOOGLE_AI_API_KEY not set, summarization will fail")
+    from llama_cpp import Llama
+    LLAMA_AVAILABLE = True
 except ImportError:
-    GEMINI_AVAILABLE = False
-    logger.error("google-generativeai not installed, summarization will fail")
+    LLAMA_AVAILABLE = False
+    logger.error("llama-cpp-python not installed, summarization will fail")
+
+# Global model instance (lazy loading)
+_llm_model = None
+
+
+def get_llm_model() -> Optional['Llama']:
+    """
+    Get or initialize the LLM model.
+    Uses lazy loading to avoid loading model until needed.
+    
+    Returns:
+        Llama model instance or None if unavailable
+    """
+    global _llm_model
+    
+    if not LLAMA_AVAILABLE:
+        logger.error("llama-cpp-python not available")
+        return None
+    
+    if _llm_model is None:
+        model_path = settings.LLM_MODEL_PATH
+        
+        if not os.path.exists(model_path):
+            logger.error(f"Model file not found: {model_path}")
+            logger.error("Please download a GGUF model file and place it in app/models/")
+            logger.error("Recommended: Llama 3.2 3B Instruct (Q4_K_M quantization)")
+            logger.error("Download from: https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF")
+            return None
+        
+        try:
+            logger.info(f"Loading LLM model from: {model_path}")
+            logger.info(f"Context window: {settings.LLM_N_CTX}, Threads: {settings.LLM_N_THREADS}")
+            
+            _llm_model = Llama(
+                model_path=model_path,
+                n_ctx=settings.LLM_N_CTX,
+                n_threads=settings.LLM_N_THREADS,
+                n_gpu_layers=settings.LLM_N_GPU_LAYERS,
+                verbose=False
+            )
+            
+            logger.info("LLM model loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load LLM model: {e}", exc_info=True)
+            return None
+    
+    return _llm_model
 
 
 def clean_html_and_entities(text: str) -> str:
@@ -67,9 +108,9 @@ def clean_html_and_entities(text: str) -> str:
     return text
 
 
-def summarize_article_with_gemini(text: str, max_words: int = None) -> str:
+def summarize_article_with_llm(text: str, max_words: int = None) -> str:
     """
-    Summarize a single article using Gemini API.
+    Summarize a single article using llama-cpp-python.
     
     Args:
         text: Article text to summarize
@@ -78,10 +119,6 @@ def summarize_article_with_gemini(text: str, max_words: int = None) -> str:
     Returns:
         Summarized text
     """
-    if not GEMINI_AVAILABLE or not settings.GOOGLE_AI_API_KEY:
-        logger.error("Gemini not available for summarization")
-        return ""
-    
     if max_words is None:
         max_words = settings.SUMMARY_MAX_WORDS
     
@@ -98,51 +135,53 @@ def summarize_article_with_gemini(text: str, max_words: int = None) -> str:
     # Use sanitized text
     text = sanitized_text
     
+    # Get model
+    model = get_llm_model()
+    if model is None:
+        logger.error("LLM model not available for summarization")
+        return ""
+    
     try:
-        # Truncate text if too long (Gemini has token limits)
-        # Rough estimate: 1 token ≈ 4 characters, max ~1M tokens for gemini-1.5-flash
-        # But we'll limit to ~50K characters to be safe and faster
-        max_chars = 50000
-        if len(text) > max_chars:
-            logger.warning(f"Text too long ({len(text)} chars), truncating to {max_chars} chars")
-            text = text[:max_chars] + "..."
+        # Truncate text if too long (respect context window)
+        # Reserve space for prompt and response
+        max_input_chars = (settings.LLM_N_CTX * 3) - (max_words * 6)  # Rough estimate
+        if len(text) > max_input_chars:
+            logger.warning(f"Text too long ({len(text)} chars), truncating to {max_input_chars} chars")
+            text = text[:max_input_chars] + "..."
         
-        # Create prompt for Gemini
-        prompt = f"""Summarize the following article in {max_words} words or less. Focus on the key points and main information. Write a clear, concise summary.
+        # Create prompt for summarization
+        prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+You are a helpful AI assistant that summarizes articles concisely and accurately.<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+Summarize the following article in {max_words} words or less. Focus on the key points and main information. Write a clear, concise summary.
 
 Article:
 {text}
 
-Summary:"""
+Summary:<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+"""
         
-        # Generate summary with Gemini
-        logger.debug(f"Calling Gemini API with model: {settings.GOOGLE_AI_MODEL}")
-        logger.debug(f"Prompt length: {len(prompt)} characters")
+        logger.debug(f"Generating summary with LLM (input: {len(text)} chars, max_words: {max_words})")
         
-        try:
-            model = genai.GenerativeModel(settings.GOOGLE_AI_MODEL)
-            response = model.generate_content(
-                prompt,
-                generation_config={
-                    "temperature": 0.3,  # Lower temperature for more factual summaries
-                    "top_p": 0.8,
-                    "top_k": 40,
-                    "max_output_tokens": max_words * 2,  # Allow some buffer
-                }
-            )
-            
-            # Check if response has text
-            if not response.text:
-                logger.error("Gemini API returned empty response")
-                raise ValueError("Empty response from Gemini API")
-            
-            summary = response.text.strip()
-            logger.debug(f"Received response from Gemini ({len(summary)} characters)")
-            
-        except Exception as api_error:
-            logger.error(f"Gemini API call failed: {api_error}", exc_info=True)
-            # Re-raise to be caught by outer exception handler
-            raise
+        # Generate summary
+        response = model(
+            prompt,
+            max_tokens=max_words * 2,  # Allow some buffer
+            temperature=settings.LLM_TEMPERATURE,
+            top_p=settings.LLM_TOP_P,
+            top_k=settings.LLM_TOP_K,
+            stop=["<|eot_id|>", "<|end_of_text|>", "\n\n\n"],
+            echo=False
+        )
+        
+        # Extract text from response
+        if 'choices' in response and len(response['choices']) > 0:
+            summary = response['choices'][0]['text'].strip()
+        else:
+            logger.error("Unexpected response format from LLM")
+            summary = ""
         
         # Clean HTML tags and entities from summary
         summary = clean_html_and_entities(summary)
@@ -157,7 +196,7 @@ Summary:"""
         return summary
         
     except Exception as e:
-        logger.error(f"Failed to summarize article with Gemini: {e}", exc_info=True)
+        logger.error(f"Failed to summarize article with LLM: {e}", exc_info=True)
         # Fallback: return first N words
         words = text.split()[:max_words]
         return " ".join(words)
@@ -166,7 +205,7 @@ Summary:"""
 def summarize_article(text: str, max_words: int = None) -> str:
     """
     Summarize a single article (wrapper for compatibility).
-    Uses Gemini API.
+    Uses llama-cpp-python.
     
     Args:
         text: Article text to summarize
@@ -175,12 +214,12 @@ def summarize_article(text: str, max_words: int = None) -> str:
     Returns:
         Summarized text
     """
-    return summarize_article_with_gemini(text, max_words)
+    return summarize_article_with_llm(text, max_words)
 
 
 def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Summarize multiple news articles in batch using Gemini API.
+    Summarize multiple news articles in batch using llama-cpp-python.
     
     Args:
         news_items: List of news item dictionaries with 'title' and 'summary' fields
@@ -188,21 +227,23 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
     Returns:
         List of news items with added 'summary' field (if not present or enhanced)
     """
-    logger.info(f"Summarizing {len(news_items)} news articles with Gemini")
+    logger.info(f"Summarizing {len(news_items)} news articles with llama-cpp-python")
     
-    # Check Gemini availability with detailed logging
-    if not GEMINI_AVAILABLE:
-        logger.error("Gemini library not available - google-generativeai not installed")
-        logger.error("Please install: pip install google-generativeai")
-        raise RuntimeError("Gemini library not available")
+    # Check LLM availability early
+    if not LLAMA_AVAILABLE:
+        logger.error("CRITICAL: llama-cpp-python library not available")
+        logger.error("Please install: pip install llama-cpp-python")
+        logger.error("Then rebuild Docker container: docker-compose build --no-cache python-app")
+        raise RuntimeError("llama-cpp-python library not available")
     
-    if not settings.GOOGLE_AI_API_KEY:
-        logger.error("GOOGLE_AI_API_KEY not set in environment variables")
-        logger.error("Please set GOOGLE_AI_API_KEY in .env file")
-        raise RuntimeError("GOOGLE_AI_API_KEY not configured")
+    model = get_llm_model()
+    if model is None:
+        logger.error("CRITICAL: LLM model not available")
+        logger.error(f"Model path: {settings.LLM_MODEL_PATH}")
+        logger.error("Please download a GGUF model and place it in app/models/")
+        raise RuntimeError("LLM model not available")
     
-    logger.info(f"Using Gemini model: {settings.GOOGLE_AI_MODEL}")
-    logger.info(f"API key configured: {settings.GOOGLE_AI_API_KEY[:10]}...")
+    logger.info(f"Using model: {settings.LLM_MODEL_PATH}")
     
     summarized_items = []
     successful = 0
@@ -228,8 +269,8 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
                     logger.warning(f"Item {i}/{len(news_items)}: No text to summarize")
                     summary = ""
                 else:
-                    logger.info(f"Item {i}/{len(news_items)}: Calling Gemini API for summarization...")
-                    summary = summarize_article_with_gemini(text_to_summarize)
+                    logger.info(f"Item {i}/{len(news_items)}: Calling LLM for summarization...")
+                    summary = summarize_article_with_llm(text_to_summarize)
                     
                     if summary:
                         logger.info(f"Item {i}/{len(news_items)}: Successfully generated summary ({len(summary.split())} words)")
@@ -237,17 +278,12 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
                     else:
                         logger.warning(f"Item {i}/{len(news_items)}: Summary generation returned empty string")
                         failed += 1
-                    
-                    # Add small delay to avoid rate limiting (Gemini free tier: 15 req/min)
-                    if i < len(news_items):
-                        logger.debug(f"Waiting 4 seconds before next request (rate limiting)...")
-                        time.sleep(4)  # ~15 requests per minute max
             
             # Create new item with summary
             summarized_item = item.copy()
             summarized_item['summary'] = summary
             summarized_item['summary_generated'] = bool(summary)
-            summarized_item['summary_method'] = 'gemini' if summary else 'failed'
+            summarized_item['summary_method'] = 'llama-cpp-python' if summary else 'failed'
             
             summarized_items.append(summarized_item)
             
@@ -275,23 +311,27 @@ def main():
     
     try:
         logger.info("=" * 60)
-        logger.info("Starting summarization process with Gemini")
+        logger.info("Starting summarization process with llama-cpp-python")
         logger.info("=" * 60)
         
-        # Check Gemini availability early
-        if not GEMINI_AVAILABLE:
-            logger.error("CRITICAL: Gemini library not available")
-            logger.error("Please install: pip install google-generativeai")
+        # Check LLM availability early
+        if not LLAMA_AVAILABLE:
+            logger.error("CRITICAL: llama-cpp-python library not available")
+            logger.error("Please install: pip install llama-cpp-python")
             logger.error("Then rebuild Docker container: docker-compose build --no-cache python-app")
             return 1
         
-        if not settings.GOOGLE_AI_API_KEY:
-            logger.error("CRITICAL: GOOGLE_AI_API_KEY not set")
-            logger.error("Please add GOOGLE_AI_API_KEY to .env file")
+        model = get_llm_model()
+        if model is None:
+            logger.error("CRITICAL: LLM model not available")
+            logger.error(f"Model path: {settings.LLM_MODEL_PATH}")
+            logger.error("Please download a GGUF model and place it in app/models/")
+            logger.error("Recommended: Llama 3.2 3B Instruct (Q4_K_M quantization)")
+            logger.error("Download from: https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF")
             return 1
         
-        logger.info(f"Gemini model: {settings.GOOGLE_AI_MODEL}")
-        logger.info(f"API key: {settings.GOOGLE_AI_API_KEY[:10]}...{settings.GOOGLE_AI_API_KEY[-4:]}")
+        logger.info(f"Model: {settings.LLM_MODEL_PATH}")
+        logger.info(f"Context: {settings.LLM_N_CTX}, Threads: {settings.LLM_N_THREADS}")
         
         # Load raw news from file or stdin
         news_items = None
