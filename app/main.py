@@ -584,11 +584,13 @@ def monitor_pipeline_progress():
     """Monitor pipeline progress by checking data files and estimating based on typical stages."""
     global pipeline_progress
     
-    # Pipeline step estimates (in seconds) - updated for faster processing with 1 idea per article
+    # Pipeline step estimates (in seconds) - realistic estimates based on actual performance
+    # Video ideas: ~15 minutes (900s) for ~30 articles × 2 ideas × ~15s per idea
+    # Total process: ~18 minutes
     STEP_ESTIMATES = {
         'scraping': 10,
         'summarization': 30,
-        'video_ideas': 10,  # Faster with 1 idea per article
+        'video_ideas': 900,  # ~15 minutes (83% of total time)
         'merging': 5,
     }
     TOTAL_ESTIMATE = sum(STEP_ESTIMATES.values())
@@ -599,15 +601,29 @@ def monitor_pipeline_progress():
     video_ideas_file = settings.get_data_file_path(settings.VIDEO_IDEAS_FILE)
     
     start_time = pipeline_progress['start_time']
-    max_wait_time = 120  # 2 minutes max
+    max_wait_time = 1800  # 30 minutes max (matching frontend timeout)
+    
+    # Track expected article count for better progress estimation
+    expected_article_count = None
     
     while time.time() - start_time < max_wait_time:
         elapsed = time.time() - start_time
         
         # Determine current step based on file existence
         if raw_news_file.exists():
+            # Get expected article count from summaries if available
+            if summaries_file.exists() and expected_article_count is None:
+                try:
+                    summaries_data = load_json(str(summaries_file))
+                    summaries_list = summaries_data.get('items', [])
+                    if isinstance(summaries_list, list):
+                        expected_article_count = len(summaries_list)
+                except Exception:
+                    pass
+            
             if summaries_file.exists():
                 if video_ideas_file.exists():
+                    # Video ideas file exists - generation is complete, moving to merging
                     if feed_file.exists():
                         # Pipeline completed
                         with progress_lock:
@@ -620,20 +636,43 @@ def monitor_pipeline_progress():
                         return
                     else:
                         # Merging stage
-                        step_progress = min(elapsed / TOTAL_ESTIMATE, 0.95)
-                        remaining = TOTAL_ESTIMATE * (1 - step_progress)
+                        remaining = STEP_ESTIMATES['merging']
                         with progress_lock:
                             pipeline_progress['current_step'] = 'Merging feed data...'
-                            pipeline_progress['progress_percent'] = int(90 + (step_progress * 10))
+                            pipeline_progress['progress_percent'] = 95
                             pipeline_progress['estimated_seconds_remaining'] = max(0, int(remaining))
                 else:
-                    # Video ideas stage
-                    step_progress = min((elapsed - 40) / STEP_ESTIMATES['video_ideas'], 1.0)
-                    remaining = STEP_ESTIMATES['video_ideas'] * (1 - step_progress) + STEP_ESTIMATES['merging']
-                    with progress_lock:
-                        pipeline_progress['current_step'] = 'Generating video ideas...'
-                        pipeline_progress['progress_percent'] = int(60 + (step_progress * 30))
-                        pipeline_progress['estimated_seconds_remaining'] = max(0, int(remaining))
+                    # Video ideas stage - file doesn't exist yet, use time-based estimation
+                    # Get expected article count from summaries for better estimation
+                    if expected_article_count is None:
+                        try:
+                            summaries_data = load_json(str(summaries_file))
+                            summaries_list = summaries_data.get('items', [])
+                            if isinstance(summaries_list, list):
+                                expected_article_count = len(summaries_list)
+                        except Exception:
+                            pass
+                    
+                    video_elapsed = max(0, elapsed - 40)  # Time since video ideas started (after scraping + summarization)
+                    
+                    # Better estimation: ~30 seconds per article (for 2 ideas per article, ~15s per idea)
+                    if expected_article_count and expected_article_count > 0:
+                        estimated_total_time = expected_article_count * 30  # 30s per article
+                        step_progress = min(video_elapsed / estimated_total_time, 0.95)  # Cap at 95% until file exists
+                        estimated_article = min(int((video_elapsed / 40) + 1), expected_article_count)
+                        remaining = max(0, estimated_total_time - video_elapsed) + STEP_ESTIMATES['merging']
+                        with progress_lock:
+                            pipeline_progress['current_step'] = f'Generating video ideas... (article {estimated_article}/{expected_article_count})'
+                            pipeline_progress['progress_percent'] = int(60 + (step_progress * 30))
+                            pipeline_progress['estimated_seconds_remaining'] = max(0, int(remaining))
+                    else:
+                        # Fallback to fixed estimate if we can't get article count
+                        step_progress = min(video_elapsed / STEP_ESTIMATES['video_ideas'], 0.95)
+                        remaining = STEP_ESTIMATES['video_ideas'] * (1 - step_progress) + STEP_ESTIMATES['merging']
+                        with progress_lock:
+                            pipeline_progress['current_step'] = 'Generating video ideas...'
+                            pipeline_progress['progress_percent'] = int(60 + (step_progress * 30))
+                            pipeline_progress['estimated_seconds_remaining'] = max(0, int(remaining))
             else:
                 # Summarization stage
                 step_progress = min((elapsed - 10) / STEP_ESTIMATES['summarization'], 1.0)

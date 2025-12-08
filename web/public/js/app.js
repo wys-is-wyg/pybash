@@ -1307,7 +1307,7 @@ function setupTriggerPipelineButton() {
         }
       }, 2000); // Poll every 2 seconds
 
-      // Maximum timeout (2 minutes)
+      // Maximum timeout (30 minutes)
       setTimeout(() => {
         if (localProgressInterval) {
           clearInterval(localProgressInterval);
@@ -1316,7 +1316,7 @@ function setupTriggerPipelineButton() {
         setTimeout(() => {
           window.location.reload(true); // Hard refresh
         }, 2000);
-      }, 120000); // 2 minutes max
+      }, 1800000); // 30 minutes max
     } catch (error) {
       if (localProgressInterval) {
         clearInterval(localProgressInterval);
