@@ -2,7 +2,7 @@
 Video idea generator for AI News Tracker.
 
 Generates high-value, action-oriented video ideas from summarized news articles.
-Focused on automation builders, indie hackers, and AI engineers.
+Focused on AI builders, indie hackers, and AI engineers.
 Uses improved prompt structure with automation/builder angles.
 """
 
@@ -18,6 +18,20 @@ from app.scripts.tag_categorizer import categorize_article
 from app.scripts.input_validator import validate_for_video_ideas
 
 logger = setup_logger(__name__)
+
+# Try to import Google Generative AI, fallback to template-based if not available
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+    if settings.GOOGLE_AI_API_KEY:
+        genai.configure(api_key=settings.GOOGLE_AI_API_KEY)
+        logger.info("Google AI Studio (Gemini) configured")
+    else:
+        GEMINI_AVAILABLE = False
+        logger.warning("GOOGLE_AI_API_KEY not set, falling back to template-based generation")
+except ImportError:
+    GEMINI_AVAILABLE = False
+    logger.warning("google-generativeai not installed, falling back to template-based generation")
 
 # Improved video title templates - action-oriented with hooks
 VIDEO_TITLE_TEMPLATES = [
@@ -51,13 +65,13 @@ AUTOMATION_ANGLES = [
 
 # Builder-focused value propositions
 BUILDER_VALUE_PROPS = [
-    "automation builders need to know",
-    "changes how automation builders should",
-    "impacts automation workflows",
+    "AI builders need to know",
+    "changes how AI builders should",
+    "impacts AI workflows",
     "opens opportunities for indie hackers",
     "affects AI engineers building",
     "matters for people who make AI tools",
-    "shifts the automation landscape",
+    "shifts the AI landscape",
 ]
 
 # Example workflow templates
@@ -187,7 +201,7 @@ def extract_automation_angle(title: str, summary: str) -> str:
         summary: Article summary
         
     Returns:
-        Automation angle string
+        AI angle string
     """
     text_lower = f"{title} {summary}".lower()
     
@@ -208,88 +222,262 @@ def extract_automation_angle(title: str, summary: str) -> str:
         return random.choice(AUTOMATION_ANGLES)
 
 
-def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 1) -> List[Dict[str, Any]]:
+def generate_video_idea_with_gemini(item: Dict[str, Any], idea_index: int = 0) -> Optional[Dict[str, Any]]:
     """
-    Generate a single simplified video idea from an article.
-    Simplified for faster processing.
+    Generate video idea using Google AI Studio (Gemini) with improved prompt.
     
     Args:
         item: Article dictionary with title, summary, etc.
-        num_ideas: Number of video ideas to generate (always 1 for speed)
+        idea_index: Index of idea being generated (0-based) for variety
         
     Returns:
-        List with single video idea dictionary
+        Video idea dictionary or None if generation fails
     """
+    if not GEMINI_AVAILABLE or not settings.GOOGLE_AI_API_KEY:
+        return None
+    
     try:
         title = item.get('title', '')
         summary = item.get('summary', '')
         visual_tags = item.get('visual_tags', [])
         
-        # Validate title and summary
+        # Validate input
         combined_text = f"{title} {summary}"
         is_valid, sanitized_text, reason = validate_for_video_ideas(combined_text)
         if not is_valid:
             logger.warning(f"Input validation failed: {reason}")
-            return []
+            return None
         
-        # Extract main topic (simplified - just use first few words of title)
-        topics = extract_key_topics(sanitized_text, max_topics=3)
-        main_topic = topics[0] if topics else title.split()[0] if title else "AI Technology"
+        # Extract topics and AI angle for context
+        topics = extract_key_topics(sanitized_text, max_topics=5)
+        main_topic = topics[0] if topics else "AI Technology"
+        automation_angle = extract_automation_angle(title, summary)
         
-        # Simple title generation
-        title_templates = [
-            f"{main_topic}: What Builders Need to Know",
-            f"{main_topic} - Automation Builder's Guide",
-            f"How {main_topic} Changes Automation",
-        ]
-        video_title = title_templates[hash(title) % len(title_templates)]
+        # Determine angle focus based on idea index
+        text_lower = sanitized_text.lower()
+        is_breakthrough = any(word in text_lower for word in ['breakthrough', 'revolutionary', 'game-changer'])
+        is_announcement = any(word in text_lower for word in ['announces', 'unveils', 'launches', 'releases'])
+        is_exec_change = any(word in text_lower for word in ['executive', 'ceo', 'leaves', 'departs', 'resigns'])
+        is_strategy_shift = any(word in text_lower for word in ['strategy', 'pivot', 'shift', 'change', 'new direction'])
         
-        # Simple description - focused on video idea, not article summary
-        video_description = f"{main_topic} represents an important development for automation builders. This video idea explores practical implications for building AI-powered workflows and automation tools, helping viewers understand how to leverage this technology in their projects."
+        if idea_index == 0:
+            angle_focus = "immediate implications"
+        elif idea_index == 1:
+            angle_focus = "hidden implications"
+        else:
+            angle_focus = automation_angle
         
-        # Simple trend analysis
-        trend_analysis = f"Current development in {main_topic} with relevance for automation builders."
+        # Improved prompt for Gemini
+        prompt = f"""You are an expert AI industry analyst and technical content strategist for an AI community (builders, indie hackers, freelancers, and AI engineers).
+
+Your task is to take this curated news item and generate a video idea that is:
+
+1. **Audience-Relevant**: Focus on practical implications for AI builders and indie hackers. Highlight how this tech can be exploited, what workflows it enables, and how it changes AI opportunities.
+
+2. **Action-Heavy**: Tell viewers what they can do next (tools to try, workflows to build, threats/opportunities, market shifts).
+
+3. **Signal > Noise**: Avoid generic summaries. Produce concrete, angle-driven, story-worthy video ideas.
+
+4. **Unique Angle**: Include:
+   - A strong hook
+   - A clear audience value proposition
+   - A builder/angle (why this matters to people who make AI tools and workflows)
+   - At least one example application
+   - A takeaway or prediction
+
+**Article:**
+Title: {title}
+Summary: {summary}
+
+**Focus Angle:** {angle_focus}
+
+**Output Format (JSON):**
+{{
+  "title": "Strong hook title",
+  "concept_summary": "2-3 sentences describing the video concept",
+  "why_matters_builders": "Why this matters for AI builders",
+  "example_workflow": "Example workflow or use case",
+  "predicted_impact": "One sentence prediction"
+}}
+
+Generate ONE high-value video idea focused on AI builders with a {angle_focus} angle."""
         
-        # Simple keywords
+        # Generate with Gemini
+        model = genai.GenerativeModel(settings.GOOGLE_AI_MODEL)
+        response = model.generate_content(
+            prompt,
+            generation_config={
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "top_k": 40,
+                "max_output_tokens": 500,
+            }
+        )
+        
+        # Parse response
+        response_text = response.text.strip()
+        
+        # Try to extract JSON from response
+        json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
+        if json_match:
+            try:
+                idea_data = json.loads(json_match.group())
+            except json.JSONDecodeError:
+                # Fallback: parse manually
+                idea_data = {}
+                idea_data['title'] = re.search(r'"title":\s*"([^"]+)"', response_text)
+                idea_data['concept_summary'] = re.search(r'"concept_summary":\s*"([^"]+)"', response_text)
+                idea_data['why_matters_builders'] = re.search(r'"why_matters_builders":\s*"([^"]+)"', response_text)
+                idea_data['example_workflow'] = re.search(r'"example_workflow":\s*"([^"]+)"', response_text)
+                idea_data['predicted_impact'] = re.search(r'"predicted_impact":\s*"([^"]+)"', response_text)
+                idea_data = {k: v.group(1) if v else "" for k, v in idea_data.items()}
+        else:
+            # Fallback: use response as description
+            idea_data = {
+                'title': f"{main_topic}: What Builders Need to Know",
+                'concept_summary': response_text[:200],
+                'why_matters_builders': "This development impacts AI builders and workflow creators.",
+                'example_workflow': "Build workflows leveraging this technology.",
+                'predicted_impact': "This will reshape AI opportunities."
+            }
+        
+        # Extract topics for keywords
         target_keywords = topics[:5] if topics else [main_topic]
-        target_keywords.extend(["automation", "AI builders"])
-        target_keywords = list(dict.fromkeys(target_keywords))[:6]
+        target_keywords.extend([automation_angle, "automation", "AI builders", "workflow"])
+        target_keywords = list(dict.fromkeys(target_keywords))[:8]
         
-        # Simple scores
-        trend_score = 0.6
-        seo_score = 0.6
-        uniqueness_score = 0.6
-        engagement_score = 0.6
+        # Build description from components
+        video_description = f"{idea_data.get('concept_summary', '')}\n\nWhy This Matters for AI Builders: {idea_data.get('why_matters_builders', '')}\n\nExample Workflow: {idea_data.get('example_workflow', '')}\n\nPredicted Impact: {idea_data.get('predicted_impact', '')}"
+        
+        # Generate trend analysis
+        trend_analysis = f"This topic represents current developments in {main_topic} with significant potential for AI builders. "
+        if any(tag in ['ai startup', 'generative ai', 'llm', 'large language model'] for tag in visual_tags):
+            trend_analysis += "The technology is trending in the AI  community and has high practical value."
+        else:
+            trend_analysis += "The topic has growing interest and direct applications for AI workflows."
+        
+        # Select virality factors
+        selected_factors = [
+            "Practical value for AI builders",
+            "Action-oriented content",
+            "Real-world workflow applications",
+        ]
+        if is_breakthrough:
+            selected_factors.append("Novel or breakthrough technology")
+        if is_announcement:
+            selected_factors.append("Timely and trending topic")
+        
+        # Calculate scores
+        trend_score = 0.6 if is_announcement or is_breakthrough else 0.5
+        seo_score = 0.7 if len(target_keywords) >= 6 else 0.5
+        uniqueness_score = 0.8 if is_breakthrough or is_exec_change else 0.6
+        engagement_score = (trend_score * 0.4 + seo_score * 0.35 + uniqueness_score * 0.25)
         
         video_idea = {
-            'video_title': video_title,
+            'video_title': idea_data.get('title', f"{main_topic}: What Builders Need to Know"),
             'video_description': video_description,
+            'concept_summary': idea_data.get('concept_summary', ''),
+            'why_matters_builders': idea_data.get('why_matters_builders', ''),
+            'example_workflow': idea_data.get('example_workflow', ''),
+            'predicted_impact': idea_data.get('predicted_impact', ''),
             'trend_analysis': trend_analysis,
-            'virality_factors': ["Practical value for automation builders"],
+            'virality_factors': selected_factors,
             'target_keywords': target_keywords,
             'content_outline': [
-                f"Introduction: {main_topic} overview",
-                f"Main content: Practical implications",
-                "Conclusion: Actionable takeaways"
+                f"Introduction: Hook with {main_topic} and why builders should care",
+                f"Main content: Deep dive into {angle_focus} and practical implications",
+                f"Example workflow: {idea_data.get('example_workflow', 'Workflow demonstration')}",
+                f"Conclusion: {idea_data.get('predicted_impact', 'Actionable next steps')} and actionable next steps",
             ],
             'target_duration_minutes': 10,
             'estimated_engagement_score': round(engagement_score, 2),
             'trend_score': round(trend_score, 2),
             'seo_score': round(seo_score, 2),
             'uniqueness_score': round(uniqueness_score, 2),
+            'automation_angle': automation_angle,
         }
         
-        return [video_idea]
+        logger.debug(f"Generated video idea {idea_index + 1} with Gemini: {video_idea['video_title'][:50]}...")
+        return video_idea
         
     except Exception as e:
-        logger.error(f"Failed to generate video idea: {e}", exc_info=True)
+        logger.error(f"Failed to generate video idea with Gemini: {e}", exc_info=True)
+        return None
+
+
+def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 3) -> List[Dict[str, Any]]:
+    """
+    Generate multiple high-value video ideas from a single article.
+    Uses improved prompt structure focused on AI builders.
+    
+    Note: All articles passed to this function have already been accepted into the feed.
+    No filtering should occur here - generate ideas for all accepted articles.
+    
+    Args:
+        item: Article dictionary with title, summary, etc.
+        num_ideas: Number of video ideas to generate (3-5)
+        
+    Returns:
+        List of video idea dictionaries with structured format
+    """
+    try:
+        title = item.get('title', '')
+        summary = item.get('summary', '')
+        source = item.get('source', '')
+        visual_tags = item.get('visual_tags', [])
+        
+        # Validate title and summary before processing
+        combined_text = f"{title} {summary}"
+        is_valid, sanitized_text, reason = validate_for_video_ideas(combined_text)
+        if not is_valid:
+            logger.warning(f"Input validation failed for video idea generation: {reason}")
+            return []
+        
+        # Extract main topic and AI angle
+        topics = extract_key_topics(sanitized_text, max_topics=5)
+        main_topic = topics[0] if topics else "AI Technology"
+        automation_angle = extract_automation_angle(title, summary)
+        
+        # Analyze article for key insights
+        text_lower = sanitized_text.lower()
+        is_breakthrough = any(word in text_lower for word in ['breakthrough', 'revolutionary', 'game-changer'])
+        is_announcement = any(word in text_lower for word in ['announces', 'unveils', 'launches', 'releases'])
+        is_exec_change = any(word in text_lower for word in ['executive', 'ceo', 'leaves', 'departs', 'resigns'])
+        is_strategy_shift = any(word in text_lower for word in ['strategy', 'pivot', 'shift', 'change', 'new direction'])
+        
+        video_ideas = []
+        
+        # Use Gemini for all ideas if available
+        use_gemini = GEMINI_AVAILABLE and settings.GOOGLE_AI_API_KEY
+        
+        if not use_gemini:
+            logger.warning("Gemini not available, cannot generate video ideas")
+            return []
+        
+        # Generate 3-5 unique video ideas with different angles using Gemini
+        for i in range(num_ideas):
+            gemini_idea = generate_video_idea_with_gemini(item, idea_index=i)
+            if gemini_idea:
+                video_ideas.append(gemini_idea)
+                # Add small delay to avoid rate limiting (Gemini free tier: 15 req/min)
+                if i < num_ideas - 1:
+                    import time
+                    time.sleep(4)  # ~15 requests per minute max
+            else:
+                logger.warning(f"Failed to generate idea {i+1}/{num_ideas} with Gemini, skipping")
+        
+        logger.debug(f"Generated {len(video_ideas)} video ideas for: {title[:50]}...")
+        return video_ideas
+        
+    except Exception as e:
+        logger.error(f"Failed to generate video ideas: {e}", exc_info=True)
         return []
 
 
 def generate_video_idea_with_huggingface(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Generate a single video idea (backward compatibility).
-    Now uses simplified prompt structure.
+    Now uses improved prompt structure.
     
     Args:
         item: Article dictionary with title, summary, etc.
@@ -346,11 +534,11 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
             source = item.get('source', '')
             source_url = item.get('source_url', '')
             
-            # Generate 1 video idea per article (faster processing)
+            # Generate 3-5 video ideas per article with improved structure
             # Note: All articles here have already been accepted into the feed, so generate ideas for all
-            num_ideas = 1  # Generate 1 idea per article for faster processing
+            num_ideas = random.randint(3, 5)  # Generate 3-5 ideas per article
             
-            # Generate video idea with improved prompt structure
+            # Generate multiple video ideas with improved prompt structure
             video_ideas_data = generate_video_ideas_for_article(item, num_ideas=num_ideas)
             
             if not video_ideas_data:
@@ -474,4 +662,3 @@ if __name__ == "__main__":
     import sys
     exit_code = main()
     sys.exit(exit_code)
-

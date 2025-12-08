@@ -2,7 +2,6 @@ flask
 flask-cors
 requests
 feedparser
-transformers
 python-dotenv
 gunicorn
 aiohttp
@@ -11,3 +10,4 @@ pytest-cov
 requests-mock
 anthropic
 leonardo-ai-sdk
+google-generativeai

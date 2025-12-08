@@ -106,6 +106,10 @@ class Settings:
     N8N_AUTH_PASSWORD: str = os.getenv("N8N_AUTH_PASSWORD", "")
     N8N_BASE_URL: str = f"http://n8n:{N8N_PORT}"
     
+    # Google AI Studio (Gemini) Configuration
+    GOOGLE_AI_API_KEY: str = os.getenv("GOOGLE_AI_API_KEY", "")
+    GOOGLE_AI_MODEL: str = os.getenv("GOOGLE_AI_MODEL", "gemini-1.5-flash")  # Fast model for video ideas
+    
     # Email Configuration
     SMTP_HOST: str = os.getenv("SMTP_HOST", "mailhog")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "1025"))

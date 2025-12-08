@@ -1,7 +1,7 @@
 """
-Input validation and sanitization for Hugging Face models.
+Input validation and sanitization for AI models.
 
-Prevents prompt injection and ensures safe input before passing to transformers.
+Prevents prompt injection and ensures safe input before passing to AI models.
 """
 
 import re
