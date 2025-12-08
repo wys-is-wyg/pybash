@@ -202,10 +202,16 @@ trap 'error_exit ${LINENO} $?' ERR
     log "INFO" "Python: $PYTHON"
     log "INFO" ""
 
-    # Initialize execution log
-    echo "=== Pipeline Execution Log ===" > "$EXECUTION_LOG"
-    echo "Start Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> "$EXECUTION_LOG"
-    echo "" >> "$EXECUTION_LOG"
+    # Initialize execution log (handle permission errors gracefully)
+    if touch "$EXECUTION_LOG" 2>/dev/null; then
+        echo "=== Pipeline Execution Log ===" > "$EXECUTION_LOG"
+        echo "Start Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> "$EXECUTION_LOG"
+        echo "" >> "$EXECUTION_LOG"
+        EXECUTION_LOG_WRITABLE=true
+    else
+        log "WARN" "Cannot write to execution log at $EXECUTION_LOG (permission denied), continuing without log..."
+        EXECUTION_LOG_WRITABLE=false
+    fi
     
     PIPELINE_START=$(date +%s)
 
@@ -214,7 +220,7 @@ trap 'error_exit ${LINENO} $?' ERR
     cleanup_old_data
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    echo "Step 0 (Cleanup): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
+    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 0 (Cleanup): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
 
     # Step 1: Fetch news from all feeds (RSS scraper, Reddit, Twitter/X)
     STEP_START=$(date +%s)
@@ -247,7 +253,7 @@ trap 'error_exit ${LINENO} $?' ERR
     fi
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    echo "Step 1 (RSS Scraping): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
+    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 1 (RSS Scraping): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 2: Pre-filter articles for AI relevance (before summarization)
@@ -279,7 +285,7 @@ trap 'error_exit ${LINENO} $?' ERR
     fi
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    echo "Step 2 (Pre-filtering): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
+    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 2 (Pre-filtering): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 3: Summarize articles with Claude
@@ -313,7 +319,7 @@ trap 'error_exit ${LINENO} $?' ERR
     fi
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    echo "Step 3 (Summarization): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
+    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 3 (Summarization): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 4: Generate video ideas from summaries
@@ -360,7 +366,7 @@ trap 'error_exit ${LINENO} $?' ERR
     log "INFO" "Tag images should be generated separately using: bash app/scripts/generate_tag_images.sh"
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    echo "Step 5 (Tag Images - skipped): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
+    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 5 (Tag Images - skipped): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 6: Merge all data into unified feed (tag images assigned based on visual_tags)
@@ -389,7 +395,7 @@ trap 'error_exit ${LINENO} $?' ERR
     fi
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    echo "Step 6 (Merging): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
+    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 6 (Merging): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 7: Update Flask API with new feed
@@ -432,7 +438,7 @@ trap 'error_exit ${LINENO} $?' ERR
     fi
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    echo "Step 7 (Flask API Update): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
+    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 7 (Flask API Update): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Calculate total pipeline duration
@@ -440,17 +446,19 @@ trap 'error_exit ${LINENO} $?' ERR
     PIPELINE_DURATION=$((PIPELINE_END - PIPELINE_START))
     
     # Write final summary to execution log
-    echo "" >> "$EXECUTION_LOG"
-    echo "=== Pipeline Summary ===" >> "$EXECUTION_LOG"
-    echo "End Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> "$EXECUTION_LOG"
-    echo "Total Duration: ${PIPELINE_DURATION}s ($(awk "BEGIN {printf \"%.1f\", ${PIPELINE_DURATION}/60}") minutes)" >> "$EXECUTION_LOG"
-    echo "" >> "$EXECUTION_LOG"
+    if [ "$EXECUTION_LOG_WRITABLE" = true ]; then
+        echo "" >> "$EXECUTION_LOG"
+        echo "=== Pipeline Summary ===" >> "$EXECUTION_LOG"
+        echo "End Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> "$EXECUTION_LOG"
+        echo "Total Duration: ${PIPELINE_DURATION}s ($(awk "BEGIN {printf \"%.1f\", ${PIPELINE_DURATION}/60}") minutes)" >> "$EXECUTION_LOG"
+        echo "" >> "$EXECUTION_LOG"
+        log "INFO" "Execution log saved to: $EXECUTION_LOG"
+    fi
 
     # Summary
     log "INFO" "=========================================="
     log "INFO" "Pipeline completed successfully!"
     log "INFO" "Total execution time: ${PIPELINE_DURATION}s ($(awk "BEGIN {printf \"%.1f\", ${PIPELINE_DURATION}/60}") minutes)"
-    log "INFO" "Execution log saved to: $EXECUTION_LOG"
     log "INFO" "=========================================="
     log "INFO" "Outputs saved to: $DATA_DIR/"
     log "INFO" "  - raw_news.json (initial fetch)"
