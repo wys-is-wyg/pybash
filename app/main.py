@@ -393,11 +393,9 @@ def n8n_webhook():
         return jsonify({'error': 'Failed to process webhook'}), 500
 
 
-def run_pipeline_in_background():
-    """Run the pipeline script in a background thread and update progress."""
+def monitor_pipeline_progress():
+    """Monitor pipeline progress by checking data files and estimating based on typical stages."""
     global pipeline_progress
-    
-    pipeline_script = Path('/app/app/scripts/run_pipeline.sh')
     
     # Pipeline step estimates (in seconds) - updated for faster processing with 1 idea per article
     STEP_ESTIMATES = {
@@ -408,109 +406,73 @@ def run_pipeline_in_background():
     }
     TOTAL_ESTIMATE = sum(STEP_ESTIMATES.values())
     
-    try:
-        with progress_lock:
-            pipeline_progress['status'] = 'running'
-            pipeline_progress['start_time'] = time.time()
-            pipeline_progress['current_step'] = 'Starting pipeline...'
-            pipeline_progress['progress_percent'] = 0
-            pipeline_progress['estimated_seconds_remaining'] = TOTAL_ESTIMATE
-            pipeline_progress['message'] = 'Pipeline started'
+    feed_file = settings.get_data_file_path(settings.FEED_FILE)
+    raw_news_file = settings.get_data_file_path(settings.RAW_NEWS_FILE)
+    summaries_file = settings.get_data_file_path(settings.SUMMARIES_FILE)
+    video_ideas_file = settings.get_data_file_path(settings.VIDEO_IDEAS_FILE)
+    
+    start_time = pipeline_progress['start_time']
+    max_wait_time = 120  # 2 minutes max
+    
+    while time.time() - start_time < max_wait_time:
+        elapsed = time.time() - start_time
         
-        logger.info("Starting pipeline script directly")
-        
-        # Run pipeline script
-        process = subprocess.Popen(
-            ['bash', str(pipeline_script)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True
-        )
-        
-        # Track progress by parsing output
-        current_step = 'scraping'
-        step_start_time = time.time()
-        steps = ['scraping', 'summarization', 'video_ideas', 'merging']
-        step_index = 0
-        
-        for line in process.stdout:
-            line_lower = line.lower()
-            
-            # Update progress based on log output
-            if 'scraping' in line_lower or 'rss' in line_lower or 'step 1' in line_lower:
-                current_step = 'scraping'
-                step_index = 0
-                step_start_time = time.time()
-                with progress_lock:
-                    pipeline_progress['current_step'] = 'Scraping RSS feeds...'
-                    pipeline_progress['progress_percent'] = 10
-            elif 'summariz' in line_lower or 'step 3' in line_lower:
-                current_step = 'summarization'
-                step_index = 1
-                step_start_time = time.time()
+        # Determine current step based on file existence
+        if raw_news_file.exists():
+            if summaries_file.exists():
+                if video_ideas_file.exists():
+                    if feed_file.exists():
+                        # Pipeline completed
+                        with progress_lock:
+                            pipeline_progress['status'] = 'completed'
+                            pipeline_progress['current_step'] = 'Pipeline completed'
+                            pipeline_progress['progress_percent'] = 100
+                            pipeline_progress['estimated_seconds_remaining'] = 0
+                            pipeline_progress['message'] = 'Pipeline completed successfully'
+                        logger.info("Pipeline completed successfully")
+                        return
+                    else:
+                        # Merging stage
+                        step_progress = min(elapsed / TOTAL_ESTIMATE, 0.95)
+                        remaining = TOTAL_ESTIMATE * (1 - step_progress)
+                        with progress_lock:
+                            pipeline_progress['current_step'] = 'Merging feed data...'
+                            pipeline_progress['progress_percent'] = int(90 + (step_progress * 10))
+                            pipeline_progress['estimated_seconds_remaining'] = max(0, int(remaining))
+                else:
+                    # Video ideas stage
+                    step_progress = min((elapsed - 40) / STEP_ESTIMATES['video_ideas'], 1.0)
+                    remaining = STEP_ESTIMATES['video_ideas'] * (1 - step_progress) + STEP_ESTIMATES['merging']
+                    with progress_lock:
+                        pipeline_progress['current_step'] = 'Generating video ideas...'
+                        pipeline_progress['progress_percent'] = int(60 + (step_progress * 30))
+                        pipeline_progress['estimated_seconds_remaining'] = max(0, int(remaining))
+            else:
+                # Summarization stage
+                step_progress = min((elapsed - 10) / STEP_ESTIMATES['summarization'], 1.0)
+                remaining = STEP_ESTIMATES['summarization'] * (1 - step_progress) + STEP_ESTIMATES['video_ideas'] + STEP_ESTIMATES['merging']
                 with progress_lock:
                     pipeline_progress['current_step'] = 'Summarizing articles...'
-                    pipeline_progress['progress_percent'] = 40
-            elif 'video idea' in line_lower or 'generating' in line_lower or 'step 4' in line_lower:
-                current_step = 'video_ideas'
-                step_index = 2
-                step_start_time = time.time()
-                with progress_lock:
-                    pipeline_progress['current_step'] = 'Generating video ideas...'
-                    pipeline_progress['progress_percent'] = 70
-            elif 'merging' in line_lower or 'feed' in line_lower or 'step 5' in line_lower:
-                current_step = 'merging'
-                step_index = 3
-                step_start_time = time.time()
-                with progress_lock:
-                    pipeline_progress['current_step'] = 'Merging feed data...'
-                    pipeline_progress['progress_percent'] = 90
-            
-            # Update time estimate
-            elapsed = time.time() - pipeline_progress['start_time']
-            if current_step in STEP_ESTIMATES:
-                step_elapsed = time.time() - step_start_time
-                step_estimate = STEP_ESTIMATES[current_step]
-                step_progress = min(step_elapsed / step_estimate, 1.0)
-                
-                # Calculate remaining time
-                completed_steps_time = sum(
-                    STEP_ESTIMATES[steps[i]] for i in range(step_index)
-                )
-                remaining_steps_time = sum(
-                    STEP_ESTIMATES[steps[i]] for i in range(step_index, len(steps))
-                )
-                estimated_remaining = remaining_steps_time * (1 - step_progress)
-                
-                with progress_lock:
-                    pipeline_progress['estimated_seconds_remaining'] = max(0, int(estimated_remaining))
-        
-        # Wait for process to complete
-        return_code = process.wait()
-        
-        if return_code == 0:
-            with progress_lock:
-                pipeline_progress['status'] = 'completed'
-                pipeline_progress['current_step'] = 'Pipeline completed'
-                pipeline_progress['progress_percent'] = 100
-                pipeline_progress['estimated_seconds_remaining'] = 0
-                pipeline_progress['message'] = 'Pipeline completed successfully'
-            logger.info("Pipeline completed successfully")
+                    pipeline_progress['progress_percent'] = int(20 + (step_progress * 40))
+                    pipeline_progress['estimated_seconds_remaining'] = max(0, int(remaining))
         else:
+            # Scraping stage
+            step_progress = min(elapsed / STEP_ESTIMATES['scraping'], 1.0)
+            remaining = TOTAL_ESTIMATE * (1 - step_progress)
             with progress_lock:
-                pipeline_progress['status'] = 'error'
-                pipeline_progress['current_step'] = 'Pipeline failed'
-                pipeline_progress['message'] = f'Pipeline failed with exit code {return_code}'
-            logger.error(f"Pipeline failed with exit code {return_code}")
-            
-    except Exception as e:
-        with progress_lock:
-            pipeline_progress['status'] = 'error'
-            pipeline_progress['current_step'] = 'Pipeline error'
-            pipeline_progress['message'] = f'Error running pipeline: {str(e)}'
-        logger.error(f"Error running pipeline: {e}", exc_info=True)
+                pipeline_progress['current_step'] = 'Scraping RSS feeds...'
+                pipeline_progress['progress_percent'] = int(step_progress * 20)
+                pipeline_progress['estimated_seconds_remaining'] = max(0, int(remaining))
+        
+        time.sleep(2)  # Check every 2 seconds
+    
+    # Timeout
+    with progress_lock:
+        if pipeline_progress['status'] == 'running':
+            pipeline_progress['status'] = 'timeout'
+            pipeline_progress['current_step'] = 'Pipeline taking longer than expected'
+            pipeline_progress['message'] = 'Pipeline may still be running'
+    logger.warning("Pipeline progress monitoring timed out")
 
 
 @app.route('/api/pipeline-progress', methods=['GET'])
@@ -532,7 +494,7 @@ def get_pipeline_progress():
 @app.route('/api/trigger-pipeline', methods=['POST'])
 def trigger_pipeline():
     """
-    Trigger the pipeline script directly (faster than n8n).
+    Trigger the n8n webhook pipeline with progress tracking.
     
     Returns:
         JSON response with status and message
@@ -548,10 +510,88 @@ def trigger_pipeline():
                     'message': 'Pipeline is already running'
                 }), 400
         
-        logger.info("Triggering pipeline script directly")
+        # Get webhook URL from environment
+        webhook_url = os.getenv('N8N_WEBHOOK_URL', '')
         
-        # Start pipeline in background thread
-        thread = threading.Thread(target=run_pipeline_in_background, daemon=True)
+        # If not set, or if it contains localhost (wrong for Docker), use Docker service name
+        if not webhook_url or 'localhost' in webhook_url or '127.0.0.1' in webhook_url:
+            # Use Docker service name for container-to-container communication
+            n8n_port = settings.N8N_PORT
+            webhook_url = f"http://n8n:{n8n_port}/webhook/run-pipeline"
+            logger.info(f"Using Docker service webhook URL: {webhook_url}")
+        else:
+            logger.info(f"Using configured webhook URL from environment")
+        
+        # Initialize progress tracking
+        with progress_lock:
+            pipeline_progress['status'] = 'running'
+            pipeline_progress['start_time'] = time.time()
+            pipeline_progress['current_step'] = 'Starting pipeline...'
+            pipeline_progress['progress_percent'] = 0
+            pipeline_progress['estimated_seconds_remaining'] = 55  # Total estimate
+            pipeline_progress['message'] = 'Pipeline started'
+        
+        # Construct payload
+        import datetime
+        payload = {
+            "trigger_source": "web_ui",
+            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "triggered_by": "web_ui_button"
+        }
+        
+        logger.info(f"Triggering n8n webhook: {webhook_url}")
+        
+        # Send webhook request
+        webhook_triggered = False
+        try:
+            response = requests.post(
+                webhook_url,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=10  # Short timeout - we just need to send the request
+            )
+            
+            if response.status_code in [200, 201, 202]:
+                logger.info(f"Webhook acknowledged with status {response.status_code}")
+                webhook_triggered = True
+            else:
+                logger.warning(f"Webhook returned unexpected status {response.status_code}: {response.text}")
+                webhook_triggered = True
+                
+        except requests.exceptions.Timeout:
+            # Timeout is OK - n8n may have accepted the request but not responded yet
+            logger.info("Webhook request timed out (workflow may still be running)")
+            webhook_triggered = True
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"Failed to connect to n8n webhook: {e}")
+            with progress_lock:
+                pipeline_progress['status'] = 'error'
+                pipeline_progress['message'] = f'Failed to connect to n8n: {str(e)}'
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to connect to n8n: {str(e)}'
+            }), 500
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error sending webhook request: {e}")
+            with progress_lock:
+                pipeline_progress['status'] = 'error'
+                pipeline_progress['message'] = f'Failed to trigger webhook: {str(e)}'
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to trigger webhook: {str(e)}'
+            }), 500
+        
+        if not webhook_triggered:
+            with progress_lock:
+                pipeline_progress['status'] = 'error'
+                pipeline_progress['message'] = 'Failed to trigger webhook'
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to trigger webhook'
+            }), 500
+        
+        # Start progress monitoring in background thread
+        thread = threading.Thread(target=monitor_pipeline_progress, daemon=True)
         thread.start()
         
         # Return immediately with status
@@ -563,6 +603,9 @@ def trigger_pipeline():
         
     except Exception as e:
         logger.error(f"Error triggering pipeline: {e}", exc_info=True)
+        with progress_lock:
+            pipeline_progress['status'] = 'error'
+            pipeline_progress['message'] = f'Failed to trigger pipeline: {str(e)}'
         return jsonify({
             'status': 'error',
             'message': f'Failed to trigger pipeline: {str(e)}'
