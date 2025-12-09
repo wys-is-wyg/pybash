@@ -37,3 +37,42 @@ Perfect for content creators, marketers, and AI enthusiasts who need to stay ahe
 ✅ **Real-World Problem** - Solves AI news information overload
 ✅ **End-to-End** - From news to video ideas automatically
 
+Here is the updated plan dropping the "Kiwi bird" character for a sleek, high-tech server corridor intro (matching your uploaded images), followed by the technical write-up you need for the submission.
+
+### Part 1: Revised Video Intro Idea
+**Visual:** A fast, first-person camera fly-through of the infinite server tunnel shown in your images. The orange and teal lights streak past like warp speed.
+**Overlay Text:** *KiwiLab AI News* (Fade in center)
+**Voiceover:** "Most AI news aggregators are just expensive wrappers. We built an engine."
+
+#### **Leonardo AI Video Prompt (for the Server Tunnel)**
+Use this prompt to generate the video clip based on the style of images you uploaded:
+
+> **Prompt:**
+> fast cinematic camera fly-through down an infinite futuristic server room corridor, glowing orange and cyan neon lights, high-tech data center, motion blur, 4k resolution, symmetrical perspective, cyberpunk aesthetic, digital data streams flowing in the air.
+
+> **Motion Settings:**
+> *   **Strength:** 6 or 7 (High speed)
+> *   **Camera:** Zoom In / Move Forward (Essential to create the "tunnel" effect)
+
+---
+
+### Part 2: "How It Works" Write-up (100–300 Words)
+
+This is drafted to hit all the judging criteria: **Automation, Creativity, Execution, and Impact.**
+
+**Title: The Engine Behind KiwiLab AI News**
+
+KiwiLab AI News is not just a wrapper for the OpenAI API; it is a self-contained, automated intelligence engine built on a production-grade microservices architecture.
+
+**The Pipeline (Automation & Architecture)**
+The backend is orchestrated by **n8n** workflows running in Docker. The system autonomously monitors dozens of RSS feeds, social signals, and event calendars. When new signals are detected, the system scrapes the full content and passes it through a cleaning layer to remove noise.
+
+**The Intelligence (Local Inference)**
+Unlike competitors burning cash on tokens, this solution utilizes **Llama 3.2** running locally via **Ollama** in a Docker container. This allows for zero-cost, unlimited inference. The LLM performs two critical tasks:
+1.  **Summarization:** Condenses complex technical news into digestible insights.
+2.  **Virality Analysis:** Analyzes the content against current SEO trends to generate pre-validated video ideas and hooks likely to perform well on social media.
+
+**The Delivery (Impact & Execution)**
+The frontend is a custom **Node.js/React** application served via **Nginx** with full **SSL** encryption. The entire stack is hosted on a **Hostinger VPS**, ensuring complete data sovereignty and scalability. It features automated error handling, guardrails against prompt injection, and runs 24/7 without manual intervention.
+
+**(Word Count: ~185 words)**
