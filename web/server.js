@@ -4,6 +4,7 @@ const path = require("path");
 const https = require("https");
 const http = require("http");
 const fs = require("fs");
+const zlib = require("zlib");
 const { createProxyMiddleware } = require("http-proxy-middleware");
 
 const app = express();
@@ -69,35 +70,14 @@ app.use(
     ws: true, // Enable WebSocket support for n8n
     cookieDomainRewrite: "", // Preserve cookies
     cookiePathRewrite: "/n8n", // Rewrite cookie paths to work with proxy
-    selfHandleResponse: true, // Handle response to rewrite HTML
+    selfHandleResponse: false, // Let proxy handle responses automatically (fixes gzip issue)
     onProxyReq: (proxyReq, req, res) => {
       // Preserve original host and protocol
       proxyReq.setHeader("X-Forwarded-Proto", req.protocol);
       proxyReq.setHeader("X-Forwarded-Host", req.get("host"));
       proxyReq.setHeader("X-Forwarded-For", req.ip);
     },
-    onProxyRes: async (proxyRes, req, res) => {
-      // Only rewrite HTML responses
-      const contentType = proxyRes.headers["content-type"] || "";
-      if (contentType.includes("text/html")) {
-        let body = "";
-        proxyRes.on("data", (chunk) => {
-          body += chunk.toString();
-        });
-        proxyRes.on("end", () => {
-          // Rewrite absolute paths to work with proxy
-          body = body
-            .replace(/href="\/(static|assets)/g, 'href="/$1') // Keep /static and /assets as-is (proxied)
-            .replace(/src="\/(static|assets)/g, 'src="/$1') // Keep /static and /assets as-is (proxied)
-            .replace(/url\("\/(static|assets)/g, 'url("/$1'); // CSS url() references
-          res.setHeader("content-type", contentType);
-          res.end(body);
-        });
-      } else {
-        // For non-HTML, just pass through
-        proxyRes.pipe(res);
-      }
-
+    onProxyRes: (proxyRes, req, res) => {
       // Fix Set-Cookie headers to work with proxy path
       if (proxyRes.headers["set-cookie"]) {
         proxyRes.headers["set-cookie"] = proxyRes.headers["set-cookie"].map(
@@ -108,6 +88,7 @@ app.use(
           }
         );
       }
+      // Let the proxy middleware handle the response automatically (including gzip)
     },
     onError: (err, req, res) => {
       console.error("[n8n proxy error]:", err.message);
