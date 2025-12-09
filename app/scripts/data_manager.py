@@ -599,8 +599,31 @@ if __name__ == "__main__":
                 'total_items': len(merged_data),
             }
             save_json(feed_data, settings.FEED_FILE)
-            
             logger.info(f"Feed saved to {settings.FEED_FILE}")
+            
+            # Also generate display.json using build_display_data (new structure)
+            try:
+                summaries_file = settings.get_data_file_path("summaries.json")
+                video_ideas_file = settings.get_data_file_path(settings.VIDEO_IDEAS_FILE)
+                
+                summaries = load_json(str(summaries_file)).get('items', []) if summaries_file.exists() else []
+                video_ideas = load_json(str(video_ideas_file)).get('items', []) if video_ideas_file.exists() else []
+                
+                # Use build_display_data for display.json (optimized for frontend)
+                display_items = build_display_data(news_items, summaries, video_ideas, max_items=feed_limit)
+                
+                display_data = {
+                    'version': '2.0',
+                    'generated_at': datetime.utcnow().isoformat(),
+                    'items': display_items,
+                    'total_items': len(display_items),
+                }
+                
+                display_file = settings.get_data_file_path(settings.DISPLAY_FILE)
+                save_json(display_data, str(display_file))
+                logger.info(f"Display data saved to {settings.DISPLAY_FILE}")
+            except Exception as e:
+                logger.warning(f"Failed to generate display.json: {e} (feed.json was created successfully)")
             
         except FileNotFoundError as e:
             logger.error(f"Required data file not found: {e}")

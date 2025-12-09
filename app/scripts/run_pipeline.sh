@@ -382,63 +382,25 @@ trap 'error_exit ${LINENO} $?' ERR
 
     # Step 6: Merge all data into unified feed (tag images assigned based on visual_tags)
     STEP_START=$(date +%s)
-    log "INFO" "=== STEP 6: Merging data into feed.json (limit: $FEED_LIMIT) ==="
+    log "INFO" "=== STEP 6: Merging data into feed.json and display.json (limit: $FEED_LIMIT) ==="
     
-    # Determine Flask URL (from .env or default)
-    FLASK_HOST="${FLASK_HOST:-localhost}"
-    FLASK_PORT="${PYTHON_APP_PORT:-5001}"
-    FLASK_URL="http://$FLASK_HOST:$FLASK_PORT"
-    
-    # Try to call API endpoint first (cleaner), fall back to direct script execution
-    log "INFO" "Attempting to merge via API endpoint: $FLASK_URL/api/merge"
-    if curl -sf "$FLASK_URL/health" > /dev/null 2>&1; then
-        # Flask is reachable, use API endpoint
-        merge_response=$(curl -s -X POST "$FLASK_URL/api/merge" \
-            -H "Content-Type: application/json" \
-            -d "{\"limit\": $FEED_LIMIT}" 2>&1)
-        
-        if echo "$merge_response" | grep -q '"status":"success"'; then
-            log "INFO" "Merge completed via API endpoint"
-            item_count=$(echo "$merge_response" | grep -o '"total_items":[0-9]*' | grep -o '[0-9]*' || echo "0")
-            log "INFO" "Final feed contains $item_count items (limit: $FEED_LIMIT)"
+    # Use data_manager.py directly (simpler, no API dependency)
+    if [ -f "$APP_DIR/scripts/data_manager.py" ]; then
+        log "INFO" "Running data manager with feed limit: $FEED_LIMIT..."
+        if [ -n "$DOCKER_EXEC" ]; then
+            $DOCKER_EXEC $PYTHON "/app/app/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
+                log "ERROR" "Data manager failed"
+                exit 1
+            }
         else
-            log "WARN" "API merge failed, falling back to direct script execution"
-            log "WARN" "API response: $merge_response"
-            # Fall through to direct script execution
-            if [ -f "$APP_DIR/scripts/data_manager.py" ]; then
-                log "INFO" "Running data manager directly with feed limit: $FEED_LIMIT..."
-                if [ -n "$DOCKER_EXEC" ]; then
-                    $DOCKER_EXEC $PYTHON "/app/app/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
-                        log "ERROR" "Data manager failed"
-                        exit 1
-                    }
-                else
-                    $PYTHON "$APP_DIR/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
-                        log "ERROR" "Data manager failed"
-                        exit 1
-                    }
-                fi
-            fi
+            $PYTHON "$APP_DIR/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
+                log "ERROR" "Data manager failed"
+                exit 1
+            }
         fi
     else
-        # Flask not reachable, use direct script execution
-        log "INFO" "Flask API not reachable, running data manager directly..."
-        if [ -f "$APP_DIR/scripts/data_manager.py" ]; then
-            log "INFO" "Running data manager with feed limit: $FEED_LIMIT..."
-            if [ -n "$DOCKER_EXEC" ]; then
-                $DOCKER_EXEC $PYTHON "/app/app/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
-                    log "ERROR" "Data manager failed"
-                    exit 1
-                }
-            else
-                $PYTHON "$APP_DIR/scripts/data_manager.py" --limit "$FEED_LIMIT" 2>&1 || {
-                    log "ERROR" "Data manager failed"
-                    exit 1
-                }
-            fi
-        else
-            log "WARN" "Data manager not found, skipping merge..."
-        fi
+        log "ERROR" "Data manager not found at $APP_DIR/scripts/data_manager.py"
+        exit 1
     fi
     
     log "INFO" "Merged feed saved to: $DATA_DIR/feed.json"
