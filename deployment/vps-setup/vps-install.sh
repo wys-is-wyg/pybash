@@ -20,23 +20,25 @@ echo -e "${GREEN}AI News Tracker - VPS Installation${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════${NC}"
 echo ""
 
-# Check if running as root or with sudo
+# Check if running as root or with ${SUDO_CMD}
 if [ "$EUID" -eq 0 ]; then
-    echo -e "${RED}Error: Do not run this script as root. Run as a regular user with sudo privileges.${NC}"
-    exit 1
-fi
-
-# Check sudo access
-if ! sudo -n true 2>/dev/null; then
-    echo -e "${YELLOW}This script requires sudo privileges. You may be prompted for your password.${NC}"
+    echo -e "${YELLOW}Warning: Running as root. This is allowed but not recommended.${NC}"
+    echo -e "${YELLOW}Consider using a regular user with ${SUDO_CMD} privileges instead.${NC}"
+    SUDO_CMD=""  # No ${SUDO_CMD} needed when running as root
+else
+    SUDO_CMD="sudo"  # Use sudo when running as regular user
+    # Check sudo access
+    if ! sudo -n true 2>/dev/null; then
+        echo -e "${YELLOW}This script requires sudo privileges. You may be prompted for your password.${NC}"
+    fi
 fi
 
 echo -e "${GREEN}[1/8] Updating system packages...${NC}"
-sudo apt update
-sudo apt upgrade -y
+${SUDO_CMD} apt update
+${SUDO_CMD} apt upgrade -y
 
 echo -e "${GREEN}[2/8] Installing prerequisites...${NC}"
-sudo apt-get install -y \
+${SUDO_CMD} apt-get install -y \
     ca-certificates \
     curl \
     gnupg \
@@ -48,35 +50,35 @@ sudo apt-get install -y \
 
 echo -e "${GREEN}[3/8] Installing Docker...${NC}"
 # Remove old versions if any
-sudo apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
+${SUDO_CMD} apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
 
 # Add Docker's official GPG key
-sudo install -m 0755 -d /etc/apt/keyrings
+${SUDO_CMD} install -m 0755 -d /etc/apt/keyrings
 if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | ${SUDO_CMD} gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    ${SUDO_CMD} chmod a+r /etc/apt/keyrings/docker.gpg
 fi
 
 # Set up repository
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  ${SUDO_CMD} tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 # Install Docker
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+${SUDO_CMD} apt-get update
+${SUDO_CMD} apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 # Add user to docker group
 if ! groups | grep -q docker; then
     echo -e "${GREEN}Adding user to docker group...${NC}"
-    sudo usermod -aG docker $USER
+    ${SUDO_CMD} usermod -aG docker $USER
     echo -e "${YELLOW}Note: You may need to log out and back in for docker group changes to take effect.${NC}"
     echo -e "${YELLOW}Or run: newgrp docker${NC}"
 fi
 
 # Verify Docker installation
-if sudo docker run --rm hello-world > /dev/null 2>&1; then
+if ${SUDO_CMD} docker run --rm hello-world > /dev/null 2>&1; then
     echo -e "${GREEN}Docker installed successfully!${NC}"
 else
     echo -e "${RED}Docker installation verification failed.${NC}"
@@ -85,17 +87,17 @@ fi
 
 echo -e "${GREEN}[4/8] Configuring firewall (UFW)...${NC}"
 # Allow SSH first (critical!)
-sudo ufw allow 22/tcp comment 'SSH'
+${SUDO_CMD} ufw allow 22/tcp comment 'SSH'
 
 # Allow HTTP and HTTPS
-sudo ufw allow 80/tcp comment 'HTTP'
-sudo ufw allow 443/tcp comment 'HTTPS'
+${SUDO_CMD} ufw allow 80/tcp comment 'HTTP'
+${SUDO_CMD} ufw allow 443/tcp comment 'HTTPS'
 
 # Enable firewall (non-interactive)
-echo "y" | sudo ufw enable
+echo "y" | ${SUDO_CMD} ufw enable
 
 # Show status
-sudo ufw status verbose
+${SUDO_CMD} ufw status verbose
 
 echo -e "${GREEN}[5/8] Checking project directory...${NC}"
 if [ ! -d "$PROJECT_DIR" ]; then
@@ -127,9 +129,9 @@ rm -f docker-compose.yml.bak
 
 echo -e "${GREEN}[7/8] Configuring Nginx reverse proxy...${NC}"
 
-# Create Nginx configuration
-sudo tee /etc/nginx/sites-available/pybash > /dev/null <<EOF
-# HTTP server - redirect to HTTPS
+# Create Nginx configuration (HTTP only initially, HTTPS added after SSL setup)
+${SUDO_CMD} tee /etc/nginx/sites-available/pybash > /dev/null <<EOF
+# HTTP server - serve directly until SSL is configured
 server {
     listen 80;
     listen [::]:80;
@@ -140,29 +142,7 @@ server {
         root /var/www/html;
     }
 
-    # Redirect all other HTTP to HTTPS
-    location / {
-        return 301 https://\$server_name\$request_uri;
-    }
-}
-
-# HTTPS server
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name ${DOMAIN};
-
-    # SSL certificates (will be added by Certbot)
-    # ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
-    # ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
-
-    # SSL configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-
+    # Serve content directly (will redirect to HTTPS after SSL is set up)
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
@@ -217,17 +197,79 @@ server {
         proxy_http_version 1.1;
     }
 }
+
+# HTTPS server (will be enabled after SSL certificates are obtained)
+# Uncomment and configure after running certbot
+# server {
+#     listen 443 ssl http2;
+#     listen [::]:443 ssl http2;
+#     server_name ${DOMAIN};
+#
+#     ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+#     ssl_protocols TLSv1.2 TLSv1.3;
+#     ssl_ciphers HIGH:!aNULL:!MD5;
+#     ssl_prefer_server_ciphers on;
+#     ssl_session_cache shared:SSL:10m;
+#     ssl_session_timeout 10m;
+#
+#     add_header X-Frame-Options "SAMEORIGIN" always;
+#     add_header X-Content-Type-Options "nosniff" always;
+#     add_header X-XSS-Protection "1; mode=block" always;
+#
+#     proxy_set_header Host \$host;
+#     proxy_set_header X-Real-IP \$remote_addr;
+#     proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+#     proxy_set_header X-Forwarded-Proto \$scheme;
+#     proxy_set_header X-Forwarded-Host \$host;
+#     proxy_set_header X-Forwarded-Port \$server_port;
+#     proxy_connect_timeout 60s;
+#     proxy_send_timeout 60s;
+#     proxy_read_timeout 60s;
+#
+#     location / {
+#         proxy_pass http://localhost:8080;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade \$http_upgrade;
+#         proxy_set_header Connection "upgrade";
+#     }
+#
+#     location /api/ {
+#         proxy_pass http://localhost:5001;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade \$http_upgrade;
+#         proxy_set_header Connection "upgrade";
+#     }
+#
+#     location /n8n/ {
+#         proxy_pass http://localhost:5678/;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade \$http_upgrade;
+#         proxy_set_header Connection "upgrade";
+#         proxy_buffering off;
+#     }
+#
+#     location /static/ {
+#         proxy_pass http://localhost:5678/static/;
+#         proxy_http_version 1.1;
+#     }
+#
+#     location /assets/ {
+#         proxy_pass http://localhost:5678/assets/;
+#         proxy_http_version 1.1;
+#     }
+# }
 EOF
 
 # Enable site
-sudo ln -sf /etc/nginx/sites-available/pybash /etc/nginx/sites-enabled/
+${SUDO_CMD} ln -sf /etc/nginx/sites-available/pybash /etc/nginx/sites-enabled/
 
 # Remove default site
-sudo rm -f /etc/nginx/sites-enabled/default
+${SUDO_CMD} rm -f /etc/nginx/sites-enabled/default
 
 # Test Nginx configuration
-if sudo nginx -t; then
-    sudo systemctl reload nginx
+if ${SUDO_CMD} nginx -t; then
+    ${SUDO_CMD} systemctl reload nginx
     echo -e "${GREEN}Nginx configured successfully!${NC}"
 else
     echo -e "${RED}Nginx configuration test failed!${NC}"
@@ -240,25 +282,98 @@ read -p "Do you want to set up SSL now? (y/n) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     # Stop Nginx temporarily
-    sudo systemctl stop nginx
+    ${SUDO_CMD} systemctl stop nginx
     
     # Generate certificate
-    if sudo certbot certonly --standalone -d "$DOMAIN" --non-interactive --agree-tos --email "admin@${DOMAIN}" 2>/dev/null || \
-       sudo certbot certonly --standalone -d "$DOMAIN"; then
+    if ${SUDO_CMD} certbot certonly --standalone -d "$DOMAIN" --non-interactive --agree-tos --email "admin@${DOMAIN}" 2>/dev/null || \
+       ${SUDO_CMD} certbot certonly --standalone -d "$DOMAIN"; then
         echo -e "${GREEN}SSL certificate obtained!${NC}"
         
-        # Update Nginx config with certificate paths
-        sudo sed -i "s|# ssl_certificate|ssl_certificate|g" /etc/nginx/sites-available/pybash
-        sudo sed -i "s|# ssl_certificate_key|ssl_certificate_key|g" /etc/nginx/sites-available/pybash
+        # Add HTTPS server block and update HTTP to redirect
+        ${SUDO_CMD} tee -a /etc/nginx/sites-available/pybash > /dev/null <<HTTPS_EOF
+
+# HTTPS server
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${DOMAIN};
+
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header X-Forwarded-Host \$host;
+    proxy_set_header X-Forwarded-Port \$server_port;
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    location /api/ {
+        proxy_pass http://localhost:5001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    location /n8n/ {
+        proxy_pass http://localhost:5678/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+    }
+
+    location /static/ {
+        proxy_pass http://localhost:5678/static/;
+        proxy_http_version 1.1;
+    }
+
+    location /assets/ {
+        proxy_pass http://localhost:5678/assets/;
+        proxy_http_version 1.1;
+    }
+}
+HTTPS_EOF
+        
+        # Update HTTP server to redirect to HTTPS
+        ${SUDO_CMD} sed -i '/# Serve content directly/,/location \/ {/c\
+    # Redirect all other HTTP to HTTPS\n    location / {' /etc/nginx/sites-available/pybash
+        ${SUDO_CMD} sed -i '/proxy_pass http:\/\/localhost:8080;/i\
+        return 301 https://$server_name$request_uri;' /etc/nginx/sites-available/pybash
+        ${SUDO_CMD} sed -i '/return 301 https:/a\
+    }' /etc/nginx/sites-available/pybash
+        
+        # Remove duplicate location blocks from HTTP server
+        ${SUDO_CMD} sed -i '/# Python API/,/location \/assets\/ {/,/}/d' /etc/nginx/sites-available/pybash
         
         # Test and reload
-        if sudo nginx -t; then
-            sudo systemctl start nginx
-            sudo systemctl reload nginx
+        if ${SUDO_CMD} nginx -t; then
+            ${SUDO_CMD} systemctl start nginx
+            ${SUDO_CMD} systemctl reload nginx
             echo -e "${GREEN}SSL configured in Nginx!${NC}"
         else
             echo -e "${RED}Nginx configuration error after SSL setup!${NC}"
-            sudo systemctl start nginx
+            echo -e "${YELLOW}You may need to manually configure HTTPS. See /etc/nginx/sites-available/pybash${NC}"
+            ${SUDO_CMD} systemctl start nginx
         fi
         
         # Set up auto-renewal
@@ -266,11 +381,11 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo -e "${GREEN}SSL auto-renewal configured!${NC}"
     else
         echo -e "${YELLOW}SSL certificate generation failed or skipped. You can set it up later.${NC}"
-        sudo systemctl start nginx
+        ${SUDO_CMD} systemctl start nginx
     fi
 else
     echo -e "${YELLOW}Skipping SSL setup. You can set it up later with:${NC}"
-    echo -e "${YELLOW}  sudo certbot certonly --standalone -d ${DOMAIN}${NC}"
+    echo -e "${YELLOW}  ${SUDO_CMD} certbot certonly --standalone -d ${DOMAIN}${NC}"
 fi
 
 echo ""
