@@ -4,6 +4,20 @@ Scripts to automate VPS deployment of AI News Tracker.
 
 ## Quick Start
 
+### Prerequisites
+
+**The upload script requires SSH access to your VPS.** If you don't have SSH set up:
+
+1. **Test SSH connection first:**
+   ```bash
+   ssh ubuntu@srv1186603.hstgr.cloud
+   # Or: ssh root@srv1186603.hstgr.cloud
+   ```
+
+2. **If SSH doesn't work**, see `MANUAL_UPLOAD.md` for alternative methods (file manager, SFTP client, etc.)
+
+3. **If SSH works**, proceed with the upload script below.
+
 ### 1. Upload Project to VPS
 
 From your **local machine** (WSL2/Ubuntu):
@@ -13,6 +27,8 @@ cd deployment/vps-setup
 chmod +x upload-to-vps.sh
 ./upload-to-vps.sh [username] [hostname] [destination-path]
 ```
+
+**Note:** The script uses SSH/SCP/rsync, so SSH must be working. If you get connection errors, see `MANUAL_UPLOAD.md`.
 
 **Examples:**
 ```bash

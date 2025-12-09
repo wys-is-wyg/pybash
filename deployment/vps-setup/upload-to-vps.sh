@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Configuration - EDIT THESE
-VPS_USER="${1:-root}"           # VPS username (default: root)
+VPS_USER="${1:-ubuntu}"         # VPS username (default: ubuntu, NOT root)
 VPS_HOST="${2:-srv1186603.hstgr.cloud}"  # VPS hostname or IP
 VPS_PATH="${3:-~/ai-news-tracker}"       # Destination path on VPS
 LOCAL_PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -19,6 +19,9 @@ LOCAL_PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 echo -e "${GREEN}═══════════════════════════════════════════${NC}"
 echo -e "${GREEN}Upload AI News Tracker to VPS${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════${NC}"
+echo ""
+echo -e "${YELLOW}Note: This script requires SSH access to your VPS.${NC}"
+echo -e "${YELLOW}If SSH is not configured, see MANUAL_UPLOAD.md for alternatives.${NC}"
 echo ""
 echo "Configuration:"
 echo "  VPS User: $VPS_USER"

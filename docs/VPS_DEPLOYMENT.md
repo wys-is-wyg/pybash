@@ -22,18 +22,25 @@ Complete guide for deploying AI News Tracker to a bare Ubuntu 24.04 VPS.
 
 ### Step 1: Upload Project to VPS
 
+**Option A: Automated Upload Script (Requires SSH)**
+
 From your **local machine** (WSL2/Ubuntu bash):
 
 ```bash
+# First, test SSH connection:
+ssh ubuntu@srv1186603.hstgr.cloud
+
+# If SSH works, use upload script:
 cd deployment/vps-setup
 chmod +x upload-to-vps.sh
-./upload-to-vps.sh [username] [hostname] [destination-path]
+./upload-to-vps.sh ubuntu srv1186603.hstgr.cloud ~/ai-news-tracker
 ```
 
-**Example:**
-```bash
-./upload-to-vps.sh root srv1186603.hstgr.cloud ~/ai-news-tracker
-```
+**Option B: Manual Upload (If SSH Not Available)**
+
+If you don't have SSH access or prefer manual methods:
+- See `deployment/vps-setup/MANUAL_UPLOAD.md` for detailed instructions
+- Options include: Hostinger file manager, SFTP client (WinSCP/FileZilla), manual SCP, or direct file creation
 
 ### Step 2: Run Installation Script on VPS
 

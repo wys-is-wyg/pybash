@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 DOMAIN="${1:-srv1186603.hstgr.cloud}"  # Default domain, can override with argument
-PROJECT_DIR="${HOME}/ai-news-tracker"
+PROJECT_DIR="${2:-${HOME}/pybash}"  # Project directory (default: ~/pybash)
 
 echo -e "${GREEN}═══════════════════════════════════════════${NC}"
 echo -e "${GREEN}AI News Tracker - VPS Installation${NC}"
@@ -128,7 +128,7 @@ rm -f docker-compose.yml.bak
 echo -e "${GREEN}[7/8] Configuring Nginx reverse proxy...${NC}"
 
 # Create Nginx configuration
-sudo tee /etc/nginx/sites-available/ai-news-tracker > /dev/null <<EOF
+sudo tee /etc/nginx/sites-available/pybash > /dev/null <<EOF
 # HTTP server - redirect to HTTPS
 server {
     listen 80;
@@ -220,7 +220,7 @@ server {
 EOF
 
 # Enable site
-sudo ln -sf /etc/nginx/sites-available/ai-news-tracker /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/pybash /etc/nginx/sites-enabled/
 
 # Remove default site
 sudo rm -f /etc/nginx/sites-enabled/default
@@ -248,8 +248,8 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo -e "${GREEN}SSL certificate obtained!${NC}"
         
         # Update Nginx config with certificate paths
-        sudo sed -i "s|# ssl_certificate|ssl_certificate|g" /etc/nginx/sites-available/ai-news-tracker
-        sudo sed -i "s|# ssl_certificate_key|ssl_certificate_key|g" /etc/nginx/sites-available/ai-news-tracker
+        sudo sed -i "s|# ssl_certificate|ssl_certificate|g" /etc/nginx/sites-available/pybash
+        sudo sed -i "s|# ssl_certificate_key|ssl_certificate_key|g" /etc/nginx/sites-available/pybash
         
         # Test and reload
         if sudo nginx -t; then
