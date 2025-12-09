@@ -478,13 +478,13 @@ def generate_ideas():
     """
     try:
         logger.info("Triggering video idea generation")
-        # Increased timeout: 30 articles × 2 ideas × ~30s per idea = ~1800s worst case
-        # Using 2400s (40 min) to allow for overhead and slower generations
+        # Timeout based on actual VPS performance: ~29 articles × ~29s per article = ~14 minutes
+        # Using 1200s (20 min) to allow for overhead and slower generations
         result = subprocess.run(
             ['python', '/app/app/scripts/video_idea_generator.py'],
             capture_output=True,
             text=True,
-            timeout=2400  # 40 minutes (was 300s/5min)
+            timeout=1200  # 20 minutes (based on actual log analysis: ~14 min for 29 articles)
         )
         
         if result.returncode == 0:
@@ -580,20 +580,71 @@ def n8n_webhook():
         return jsonify({'error': 'Failed to process webhook'}), 500
 
 
+def parse_video_ideas_log():
+    """
+    Parse video_ideas_stderr.log to track real-time progress.
+    Returns: (completed_count, total_expected, avg_seconds_per_article, start_time, last_time)
+    """
+    log_file = settings.get_data_file_path("video_ideas_stderr.log")
+    if not log_file.exists():
+        return None, None, None, None, None
+    
+    try:
+        with open(log_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Pattern to match: "2025-12-08 18:21:19 - __main__ - INFO - Generating 2 video ideas for:"
+        pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*Generating \d+ video ideas for:'
+        
+        completed_count = 0
+        timestamps = []
+        
+        for line in lines:
+            match = re.search(pattern, line)
+            if match:
+                completed_count += 1
+                timestamp_str = match.group(1)
+                try:
+                    # Parse timestamp: "2025-12-08 18:21:19"
+                    dt = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+                    timestamps.append(dt.timestamp())
+                except ValueError:
+                    pass
+        
+        if completed_count == 0:
+            return 0, None, None, None, None
+        
+        # Calculate average time per article
+        avg_seconds_per_article = None
+        if len(timestamps) >= 2:
+            # Calculate time differences between consecutive articles
+            time_diffs = [timestamps[i] - timestamps[i-1] for i in range(1, len(timestamps))]
+            if time_diffs:
+                avg_seconds_per_article = sum(time_diffs) / len(time_diffs)
+        
+        start_time = timestamps[0] if timestamps else None
+        last_time = timestamps[-1] if timestamps else None
+        
+        return completed_count, None, avg_seconds_per_article, start_time, last_time
+    
+    except Exception as e:
+        logger.debug(f"Error parsing video ideas log: {e}")
+        return None, None, None, None, None
+
+
 def monitor_pipeline_progress():
     """Monitor pipeline progress by checking data files and estimating based on typical stages."""
     global pipeline_progress
     
-    # Pipeline step estimates (in seconds) - realistic estimates based on actual performance
-    # Video ideas: ~15 minutes (900s) for ~30 articles × 2 ideas × ~15s per idea
-    # Total process: ~18 minutes
+    # Pipeline step estimates (in seconds) - updated based on actual VPS performance (~10 minutes total)
+    # Video ideas: ~14 minutes (840s) for ~30 articles, but actual is ~10 minutes total pipeline
     STEP_ESTIMATES = {
         'scraping': 10,
         'summarization': 30,
-        'video_ideas': 900,  # ~15 minutes (83% of total time)
+        'video_ideas': 840,  # ~14 minutes (based on log analysis: 29 articles × ~29s avg)
         'merging': 5,
     }
-    TOTAL_ESTIMATE = sum(STEP_ESTIMATES.values())
+    TOTAL_ESTIMATE = sum(STEP_ESTIMATES.values())  # ~14.75 minutes, but actual is ~10 min on VPS
     
     feed_file = settings.get_data_file_path(settings.FEED_FILE)
     raw_news_file = settings.get_data_file_path(settings.RAW_NEWS_FILE)
@@ -642,7 +693,7 @@ def monitor_pipeline_progress():
                             pipeline_progress['progress_percent'] = 95
                             pipeline_progress['estimated_seconds_remaining'] = max(0, int(remaining))
                 else:
-                    # Video ideas stage - file doesn't exist yet, use time-based estimation
+                    # Video ideas stage - file doesn't exist yet, use log-based estimation
                     # Get expected article count from summaries for better estimation
                     if expected_article_count is None:
                         try:
@@ -653,13 +704,35 @@ def monitor_pipeline_progress():
                         except Exception:
                             pass
                     
+                    # Parse video ideas log for real-time progress tracking
+                    log_completed, _, log_avg_time, log_start_time, log_last_time = parse_video_ideas_log()
+                    
                     video_elapsed = max(0, elapsed - 40)  # Time since video ideas started (after scraping + summarization)
                     
-                    # Better estimation: ~30 seconds per article (for 2 ideas per article, ~15s per idea)
-                    if expected_article_count and expected_article_count > 0:
-                        estimated_total_time = expected_article_count * 30  # 30s per article
-                        step_progress = min(video_elapsed / estimated_total_time, 0.95)  # Cap at 95% until file exists
-                        estimated_article = min(int((video_elapsed / 40) + 1), expected_article_count)
+                    # Use log-based tracking if available
+                    if log_completed is not None and expected_article_count and expected_article_count > 0:
+                        # Real-time tracking from log file
+                        articles_completed = log_completed
+                        articles_remaining = max(0, expected_article_count - articles_completed)
+                        
+                        # Use average time from log if available, otherwise fall back to ~29s per article
+                        if log_avg_time and log_avg_time > 0:
+                            avg_time_per_article = log_avg_time
+                        else:
+                            avg_time_per_article = 29  # Based on actual log analysis
+                        
+                        estimated_remaining_time = articles_remaining * avg_time_per_article
+                        step_progress = min(articles_completed / expected_article_count, 0.95)  # Cap at 95% until file exists
+                        
+                        with progress_lock:
+                            pipeline_progress['current_step'] = f'Generating video ideas... (article {articles_completed}/{expected_article_count})'
+                            pipeline_progress['progress_percent'] = int(60 + (step_progress * 30))
+                            pipeline_progress['estimated_seconds_remaining'] = max(0, int(estimated_remaining_time + STEP_ESTIMATES['merging']))
+                    elif expected_article_count and expected_article_count > 0:
+                        # Fallback: time-based estimation without log
+                        estimated_total_time = expected_article_count * 29  # ~29s per article based on log analysis
+                        step_progress = min(video_elapsed / estimated_total_time, 0.95)
+                        estimated_article = min(int((video_elapsed / 29) + 1), expected_article_count)
                         remaining = max(0, estimated_total_time - video_elapsed) + STEP_ESTIMATES['merging']
                         with progress_lock:
                             pipeline_progress['current_step'] = f'Generating video ideas... (article {estimated_article}/{expected_article_count})'

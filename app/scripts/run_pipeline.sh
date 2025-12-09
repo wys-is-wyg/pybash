@@ -108,6 +108,7 @@ cleanup_old_data() {
     log "INFO" "=== CLEANUP: Removing old feed data and images ==="
     
     # Remove JSON data files (recreate all files each run)
+    # NOTE: display.json is NOT deleted here - it's only removed after new one is successfully created
     local data_files=(
         "$DATA_DIR/raw_news.json"
         "$DATA_DIR/filtered_news.json"
@@ -115,7 +116,6 @@ cleanup_old_data() {
         "$DATA_DIR/video_ideas.json"
         "$DATA_DIR/thumbnails.json"
         "$DATA_DIR/feed.json"
-        "$DATA_DIR/display.json"
     )
     
     local removed_count=0
@@ -408,6 +408,21 @@ trap 'error_exit ${LINENO} $?' ERR
         feed_count=$(grep -c '"title"' "$DATA_DIR/feed.json" 2>/dev/null || echo 0)
         log "INFO" "Final feed contains $feed_count items (limit: $FEED_LIMIT)"
     fi
+    
+    # Verify display.json was successfully created and is valid
+    # (We don't delete display.json in cleanup - only overwrite it when new one is ready)
+    if [ -f "$DATA_DIR/display.json" ]; then
+        # Verify new display.json is valid (has items array and version)
+        if grep -q '"items"' "$DATA_DIR/display.json" 2>/dev/null && grep -q '"version"' "$DATA_DIR/display.json" 2>/dev/null; then
+            display_count=$(grep -c '"article_id"' "$DATA_DIR/display.json" 2>/dev/null || echo 0)
+            log "INFO" "display.json created successfully with $display_count items"
+        else
+            log "WARN" "display.json exists but appears invalid - old version may still be in use"
+        fi
+    else
+        log "WARN" "display.json was not created - old version will remain if it exists"
+    fi
+    
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
     [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 6 (Merging): ${STEP_DURATION}s" >> "$EXECUTION_LOG"

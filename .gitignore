@@ -17,6 +17,8 @@ data/*.json
 # Log files
 app/logs/*.log
 logs/*.log
+app/data/*.json
+app/data/*.log
 
 # LLM Model files (too large for GitHub, download on VPS)
 app/models/
