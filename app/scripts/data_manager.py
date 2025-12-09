@@ -396,10 +396,25 @@ def build_display_data(
     summaries: List[Dict[str, Any]],
     video_ideas: List[Dict[str, Any]],
     max_items: int = 30
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
-    Build display data optimized for frontend.
-    Merges all data sources by article_id.
+    Build display data optimized for frontend with centralized data lookup.
+    
+    Structure:
+    {
+        "data": {
+            "article_id": { /* full article data */ },
+            ...
+        },
+        "items": [
+            {
+                "article_id": "...",
+                "type": "news",
+                "video_ideas": [...]
+            },
+            ...
+        ]
+    }
     
     Args:
         filtered_news: News items from filtered_news.json
@@ -408,7 +423,7 @@ def build_display_data(
         max_items: Maximum number of news items
         
     Returns:
-        List of display items optimized for frontend
+        Dictionary with 'data' lookup and 'items' array
     """
     logger.info(f"Building display data from {len(filtered_news)} news, {len(summaries)} summaries, {len(video_ideas)} video ideas")
     
@@ -422,7 +437,8 @@ def build_display_data(
                 video_ideas_by_article[article_id] = []
             video_ideas_by_article[article_id].append(idea)
     
-    # Merge news items with summaries and video ideas
+    # Build centralized data lookup and items array
+    data_lookup = {}
     display_items = []
     
     for news_item in filtered_news[:max_items]:
@@ -433,7 +449,46 @@ def build_display_data(
         if article_id in summaries_lookup:
             summary = summaries_lookup[article_id].get('summary', '')
         
-        # Get video ideas
+        # Assign visual tags
+        news_with_tags = assign_visual_tags_to_articles([news_item])
+        visual_tags = news_with_tags[0].get('visual_tags', []) if news_with_tags else []
+        thumbnail_url = get_tag_image_url(visual_tags)
+        
+        # Build complete article data object (stored once in data lookup)
+        article_data = {
+            'article_id': article_id,
+            'title': clean_html_and_entities(news_item.get('title', '')),
+            'summary': clean_html_and_entities(summary),
+            'source_url': news_item.get('source_url', ''),
+            'published_date': news_item.get('published_date', ''),
+            'source': news_item.get('source', ''),
+            'author': clean_html_and_entities(news_item.get('author', '')),
+            'thumbnail_url': thumbnail_url,
+            'visual_tags': visual_tags,
+        }
+        
+        # Add full_summary if available
+        if news_item.get('full_summary'):
+            article_data['full_summary'] = clean_html_and_entities(news_item.get('full_summary'))
+        
+        # Add scores
+        if 'trend_score' in news_item:
+            article_data['trend_score'] = news_item['trend_score']
+        if 'seo_score' in news_item:
+            article_data['seo_score'] = news_item['seo_score']
+        if 'uniqueness_score' in news_item:
+            article_data['uniqueness_score'] = news_item['uniqueness_score']
+        
+        # Store in centralized data lookup
+        data_lookup[article_id] = article_data
+        
+        # Build minimal display item (references article_id)
+        display_item = {
+            'article_id': article_id,
+            'type': 'news',
+        }
+        
+        # Get video ideas for this article
         video_ideas_list = []
         if article_id in video_ideas_by_article:
             for idea in video_ideas_by_article[article_id]:
@@ -456,44 +511,17 @@ def build_display_data(
                         'description': clean_html_and_entities(video_desc),
                     })
         
-        # Assign visual tags
-        news_with_tags = assign_visual_tags_to_articles([news_item])
-        visual_tags = news_with_tags[0].get('visual_tags', []) if news_with_tags else []
-        thumbnail_url = get_tag_image_url(visual_tags)
-        
-        display_item = {
-            'article_id': article_id,
-            'type': 'news',
-            'title': clean_html_and_entities(news_item.get('title', '')),
-            'summary': clean_html_and_entities(summary),
-            'source_url': news_item.get('source_url', ''),
-            'published_date': news_item.get('published_date', ''),
-            'source': news_item.get('source', ''),
-            'author': clean_html_and_entities(news_item.get('author', '')),
-            'thumbnail_url': thumbnail_url,
-            'visual_tags': visual_tags,
-            'category': 'all',
-        }
-        
-        # Add full_summary from filtered_news.json (for modal display)
-        if news_item.get('full_summary'):
-            display_item['full_summary'] = clean_html_and_entities(news_item.get('full_summary'))
-        
-        # Include scores from filtered_news.json if available
-        if 'trend_score' in news_item:
-            display_item['trend_score'] = news_item['trend_score']
-        if 'seo_score' in news_item:
-            display_item['seo_score'] = news_item['seo_score']
-        if 'uniqueness_score' in news_item:
-            display_item['uniqueness_score'] = news_item['uniqueness_score']
-        
         if video_ideas_list:
             display_item['video_ideas'] = video_ideas_list
         
         display_items.append(display_item)
     
-    logger.info(f"Built {len(display_items)} display items")
-    return display_items
+    logger.info(f"Built {len(display_items)} display items with {len(data_lookup)} data entries")
+    
+    return {
+        'data': data_lookup,
+        'items': display_items
+    }
 
 
 def generate_feed_json(merged_data: List[Dict[str, Any]], output_file: str = None) -> None:
@@ -614,13 +642,14 @@ if __name__ == "__main__":
                 video_ideas = load_json(str(video_ideas_file)).get('items', []) if video_ideas_file.exists() else []
                 
                 # Use build_display_data for display.json (optimized for frontend)
-                display_items = build_display_data(news_items, summaries, video_ideas, max_items=feed_limit)
+                display_result = build_display_data(news_items, summaries, video_ideas, max_items=feed_limit)
                 
                 display_data = {
                     'version': '2.0',
                     'generated_at': datetime.utcnow().isoformat(),
-                    'items': display_items,
-                    'total_items': len(display_items),
+                    'data': display_result['data'],  # Centralized data lookup
+                    'items': display_result['items'],  # Minimal items array
+                    'total_items': len(display_result['items']),
                 }
                 
                 display_file = settings.get_data_file_path(settings.DISPLAY_FILE)

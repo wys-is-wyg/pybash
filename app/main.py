@@ -115,15 +115,26 @@ def get_news_feed():
     Get current news feed from display.json.
     
     Returns:
-        JSON response with display data (array of items) or empty array if display.json doesn't exist
+        JSON response with display data structure:
+        {
+            "data": { "article_id": {...}, ... },  // Centralized data lookup
+            "items": [...]  // Minimal items array
+        }
     """
     try:
         # Try display.json first (new structure)
         display_data = load_json(settings.DISPLAY_FILE)
-        # display.json contains items array directly (from build_display_data)
-        items = display_data.get('items', display_data if isinstance(display_data, list) else [])
-        logger.info(f"Returning {len(items)} display items from {settings.DISPLAY_FILE}")
-        return jsonify(items), 200
+        # New structure: { "data": {...}, "items": [...] }
+        # Old structure (backward compat): { "items": [...] } or just [...]
+        if 'data' in display_data and 'items' in display_data:
+            # New structure with centralized data
+            logger.info(f"Returning {len(display_data['items'])} display items with {len(display_data['data'])} data entries from {settings.DISPLAY_FILE}")
+            return jsonify(display_data), 200
+        else:
+            # Fallback for old structure
+            items = display_data.get('items', display_data if isinstance(display_data, list) else [])
+            logger.info(f"Returning {len(items)} display items (old structure) from {settings.DISPLAY_FILE}")
+            return jsonify(items), 200
     except FileNotFoundError:
         # Fallback to feed.json for backward compatibility during migration
         try:
@@ -275,22 +286,23 @@ def refresh_feed():
                 video_ideas = load_json(str(video_ideas_file)).get('items', []) if video_ideas_file.exists() else []
                 
                 # Use new build_display_data function
-                merged_data = build_display_data(filtered_news, summaries, video_ideas, max_items=feed_limit)
+                display_result = build_display_data(filtered_news, summaries, video_ideas, max_items=feed_limit)
                 
                 # Save to both feed.json (for backward compatibility) and display.json (new structure)
-                generate_feed_json(merged_data)
+                # Note: generate_feed_json expects list, but we're using new structure for display.json
                 display_file = settings.get_data_file_path(settings.DISPLAY_FILE)
                 from datetime import datetime
                 display_data = {
                     'version': '2.0',
                     'generated_at': datetime.utcnow().isoformat(),
-                    'items': merged_data,
-                    'total_items': len(merged_data)
+                    'data': display_result['data'],  # Centralized data lookup
+                    'items': display_result['items'],  # Minimal items array
+                    'total_items': len(display_result['items'])
                 }
                 save_json(display_data, str(display_file))
                 logger.info(f"Saved display data to {settings.DISPLAY_FILE}")
                 
-                item_count = len(merged_data)
+                item_count = len(display_result['items'])
                 logger.info(f"Feed refreshed with {item_count} items from data files")
                 
                 return jsonify({
@@ -332,22 +344,23 @@ def refresh_feed():
                 video_ideas = load_json(str(video_ideas_file)).get('items', []) if video_ideas_file.exists() else []
                 
                 # Use new build_display_data function (default limit 12)
-                merged_data = build_display_data(filtered_news, summaries, video_ideas, max_items=12)
+                display_result = build_display_data(filtered_news, summaries, video_ideas, max_items=12)
                 
                 # Save to both feed.json (for backward compatibility) and display.json (new structure)
-                generate_feed_json(merged_data)
+                # Note: generate_feed_json expects list, but we're using new structure for display.json
                 display_file = settings.get_data_file_path(settings.DISPLAY_FILE)
                 from datetime import datetime
                 display_data = {
                     'version': '2.0',
                     'generated_at': datetime.utcnow().isoformat(),
-                    'items': merged_data,
-                    'total_items': len(merged_data)
+                    'data': display_result['data'],  # Centralized data lookup
+                    'items': display_result['items'],  # Minimal items array
+                    'total_items': len(display_result['items'])
                 }
                 save_json(display_data, str(display_file))
                 logger.info(f"Saved display data to {settings.DISPLAY_FILE}")
                 
-                item_count = len(merged_data)
+                item_count = len(display_result['items'])
                 logger.info(f"Feed refreshed with {item_count} items from data files")
                 
                 return jsonify({
@@ -549,22 +562,23 @@ def n8n_webhook():
                     
                     # Use new build_display_data function
                     feed_limit = getattr(settings, 'FEED_LIMIT', 30)
-                    merged_data = build_display_data(filtered_news, summaries, video_ideas, max_items=feed_limit)
+                    display_result = build_display_data(filtered_news, summaries, video_ideas, max_items=feed_limit)
                     
                     # Save to both feed.json (for backward compatibility) and display.json (new structure)
-                    generate_feed_json(merged_data)
+                    # Note: generate_feed_json expects list, but we're using new structure for display.json
                     display_file = settings.get_data_file_path(settings.DISPLAY_FILE)
                     from datetime import datetime
                     display_data = {
                         'version': '2.0',
                         'generated_at': datetime.utcnow().isoformat(),
-                        'items': merged_data,
-                        'total_items': len(merged_data)
+                        'data': display_result['data'],  # Centralized data lookup
+                        'items': display_result['items'],  # Minimal items array
+                        'total_items': len(display_result['items'])
                     }
                     save_json(display_data, str(display_file))
                     logger.info(f"Saved display data to {settings.DISPLAY_FILE}")
                     
-                    logger.info(f"Feed updated from n8n webhook: {len(merged_data)} items")
+                    logger.info(f"Feed updated from n8n webhook: {len(display_result['items'])} items")
                 else:
                     logger.warning(f"{settings.FILTERED_NEWS_FILE} not found, skipping feed update")
             except Exception as e:
