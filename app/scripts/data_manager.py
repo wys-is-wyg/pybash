@@ -475,6 +475,10 @@ def build_display_data(
             'category': 'all',
         }
         
+        # Add full_summary from filtered_news.json (for modal display)
+        if news_item.get('full_summary'):
+            display_item['full_summary'] = clean_html_and_entities(news_item.get('full_summary'))
+        
         # Include scores from filtered_news.json if available
         if 'trend_score' in news_item:
             display_item['trend_score'] = news_item['trend_score']

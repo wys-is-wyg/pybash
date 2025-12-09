@@ -168,6 +168,10 @@ def main():
             if item.get('author'):
                 minimal_item['author'] = item.get('author')
             
+            # Add full summary from raw_news.json (for modal display)
+            if item.get('summary'):
+                minimal_item['full_summary'] = item.get('summary')
+            
             minimal_items.append(minimal_item)
         
         # Save filtered news to filtered_news.json (don't overwrite raw_news.json)
