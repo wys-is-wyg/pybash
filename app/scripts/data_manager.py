@@ -450,10 +450,6 @@ def build_display_data(
             'visual_tags': visual_tags,
         }
         
-        # Add full_summary if available
-        if news_item.get('full_summary'):
-            article_data['full_summary'] = clean_html_and_entities(news_item.get('full_summary'))
-        
         # Add scores
         if 'trend_score' in news_item:
             article_data['trend_score'] = news_item['trend_score']

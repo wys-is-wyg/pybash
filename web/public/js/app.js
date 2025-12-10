@@ -29,14 +29,16 @@ async function fetchFeed() {
     }
 
     const data = await response.json();
-    
+
     // Expect new structure with centralized data lookup
     if (data && data.data && data.items) {
       return data;
     }
-    
+
     // If structure is wrong, return empty
-    console.error("Invalid data structure: expected { data: {...}, items: [...] }");
+    console.error(
+      "Invalid data structure: expected { data: {...}, items: [...] }"
+    );
     return { data: {}, items: [] };
   } catch (error) {
     console.error("Error fetching feed:", error);
@@ -78,7 +80,7 @@ function renderFeed(feedData) {
   updateFeedTimestamp();
 
   // Build full items with data for filtering
-  const fullItems = items.map(item => {
+  const fullItems = items.map((item) => {
     const articleData = feedDataLookup[item.article_id] || {};
     return { ...item, ...articleData };
   });
@@ -120,11 +122,11 @@ function renderFeed(feedData) {
 function createFeedCard(item) {
   // Get full article data from centralized lookup
   const articleData = feedDataLookup[item.article_id] || {};
-  
+
   const card = document.createElement("div");
   card.className = "news-card";
   card.style.cursor = "pointer";
-  card.onclick = function(e) {
+  card.onclick = function (e) {
     // Don't open modal if clicking on a link or inside a link (let link handle it)
     if (e.target.tagName === "A" || e.target.closest("a")) {
       return;
@@ -155,11 +157,11 @@ function createFeedCard(item) {
   const articleTitle = document.createElement("h3");
   articleTitle.className = "news-card-title";
   const articleTitleText = articleData.title || "Untitled Article";
-  if (articleData.source_url || articleData.full_summary || articleData.summary) {
+  if (articleData.source_url || articleData.summary) {
     const titleLink = document.createElement("a");
     titleLink.href = "#";
     titleLink.textContent = articleTitleText;
-    titleLink.onclick = function(e) {
+    titleLink.onclick = function (e) {
       e.preventDefault();
       e.stopPropagation();
       openSummaryModal(item.article_id);
@@ -218,12 +220,12 @@ function createFeedCard(item) {
   }
 
   // Read More link (opens modal)
-  if (articleData.full_summary || articleData.summary) {
+  if (articleData.summary) {
     const readMoreLink = document.createElement("a");
     readMoreLink.href = "#";
     readMoreLink.className = "news-card-article-link";
     readMoreLink.textContent = "Read More →";
-    readMoreLink.onclick = function(e) {
+    readMoreLink.onclick = function (e) {
       e.preventDefault();
       e.stopPropagation();
       openSummaryModal(item.article_id);
@@ -235,7 +237,7 @@ function createFeedCard(item) {
     articleLink.href = "#";
     articleLink.className = "news-card-article-link";
     articleLink.textContent = "Read Article →";
-    articleLink.onclick = function(e) {
+    articleLink.onclick = function (e) {
       e.preventDefault();
       e.stopPropagation();
       openSummaryModal(item.article_id);
@@ -267,7 +269,7 @@ function openSummaryModal(articleId) {
   }
 
   // Find the item to get video ideas
-  const item = currentFeedData?.items?.find(i => i.article_id === articleId);
+  const item = currentFeedData?.items?.find((i) => i.article_id === articleId);
   const videoIdeas = item?.video_ideas || [];
 
   // Create or get modal
@@ -300,17 +302,17 @@ function openSummaryModal(articleId) {
 
     // Close handlers
     const closeBtn = document.getElementById("summary-modal-close");
-    closeBtn.onclick = function() {
+    closeBtn.onclick = function () {
       modal.classList.remove("active");
     };
-    modal.onclick = function(e) {
+    modal.onclick = function (e) {
       if (e.target === modal) {
         modal.classList.remove("active");
       }
     };
-    
+
     // Close on Escape key
-    document.addEventListener("keydown", function(e) {
+    document.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && modal.classList.contains("active")) {
         modal.classList.remove("active");
       }
@@ -350,33 +352,39 @@ function openSummaryModal(articleId) {
 
   // Populate summary
   const contentEl = document.getElementById("summary-modal-content");
-  if (articleData.full_summary) {
-    contentEl.innerHTML = `<div class="summary-content">${escapeHtml(articleData.full_summary)}</div>`;
-  } else if (articleData.summary) {
-    contentEl.innerHTML = `<div class="summary-content">${escapeHtml(articleData.summary)}</div>`;
+  if (articleData.summary) {
+    contentEl.innerHTML = `<div class="summary-content">${escapeHtml(
+      articleData.summary
+    )}</div>`;
   } else {
-    contentEl.innerHTML = '<div class="summary-content">No summary available.</div>';
+    contentEl.innerHTML =
+      '<div class="summary-content">No summary available.</div>';
   }
 
   // Populate video ideas (full width, below with orange separator)
   const videoIdeasEl = document.getElementById("summary-modal-video-ideas");
   videoIdeasEl.innerHTML = "";
   if (videoIdeas.length > 0) {
-    let videoIdeasHTML = '<div class="summary-video-ideas"><h3>Video Ideas</h3>';
+    let videoIdeasHTML =
+      '<div class="summary-video-ideas"><h3>Video Ideas</h3>';
     videoIdeas.forEach((idea, index) => {
       videoIdeasHTML += '<div class="summary-video-idea">';
       if (idea.title) {
-        videoIdeasHTML += `<h4 class="summary-video-idea-title">${escapeHtml(idea.title)}</h4>`;
+        videoIdeasHTML += `<h4 class="summary-video-idea-title">${escapeHtml(
+          idea.title
+        )}</h4>`;
       }
       if (idea.description) {
-        videoIdeasHTML += `<p class="summary-video-idea-description">${escapeHtml(idea.description)}</p>`;
+        videoIdeasHTML += `<p class="summary-video-idea-description">${escapeHtml(
+          idea.description
+        )}</p>`;
       }
-      videoIdeasHTML += '</div>';
+      videoIdeasHTML += "</div>";
     });
-    videoIdeasHTML += '</div>';
+    videoIdeasHTML += "</div>";
     videoIdeasEl.innerHTML = videoIdeasHTML;
   }
-  
+
   // Populate footer link
   const linkEl = document.getElementById("summary-modal-link");
   if (articleData.source_url) {
@@ -1119,7 +1127,6 @@ function setupTagFilters() {
       }
     });
   }
-
 }
 
 /**
