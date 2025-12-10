@@ -123,6 +123,14 @@ function createFeedCard(item) {
   
   const card = document.createElement("div");
   card.className = "news-card";
+  card.style.cursor = "pointer";
+  card.onclick = function(e) {
+    // Don't open modal if clicking on a link or inside a link (let link handle it)
+    if (e.target.tagName === "A" || e.target.closest("a")) {
+      return;
+    }
+    openSummaryModal(item.article_id);
+  };
 
   // Thumbnail
   const thumbnail = document.createElement("div");
@@ -143,16 +151,19 @@ function createFeedCard(item) {
   const content = document.createElement("div");
   content.className = "news-card-content";
 
-  // Article title
+  // Article title (opens modal)
   const articleTitle = document.createElement("h3");
   articleTitle.className = "news-card-title";
   const articleTitleText = articleData.title || "Untitled Article";
-  if (articleData.source_url) {
+  if (articleData.source_url || articleData.full_summary || articleData.summary) {
     const titleLink = document.createElement("a");
-    titleLink.href = articleData.source_url;
-    titleLink.target = "_blank";
-    titleLink.rel = "noopener noreferrer";
+    titleLink.href = "#";
     titleLink.textContent = articleTitleText;
+    titleLink.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openSummaryModal(item.article_id);
+    };
     articleTitle.appendChild(titleLink);
   } else {
     articleTitle.textContent = articleTitleText;
@@ -206,8 +217,8 @@ function createFeedCard(item) {
     meta.appendChild(dateText);
   }
 
-  // Read More link (opens modal with full summary)
-  if (articleData.full_summary) {
+  // Read More link (opens modal)
+  if (articleData.full_summary || articleData.summary) {
     const readMoreLink = document.createElement("a");
     readMoreLink.href = "#";
     readMoreLink.className = "news-card-article-link";
@@ -219,13 +230,16 @@ function createFeedCard(item) {
     };
     meta.appendChild(readMoreLink);
   } else if (articleData.source_url) {
-    // Fallback to external link if no full summary
+    // Fallback: open modal even if no summary
     const articleLink = document.createElement("a");
-    articleLink.href = articleData.source_url;
-    articleLink.target = "_blank";
-    articleLink.rel = "noopener noreferrer";
+    articleLink.href = "#";
     articleLink.className = "news-card-article-link";
     articleLink.textContent = "Read Article →";
+    articleLink.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openSummaryModal(item.article_id);
+    };
     meta.appendChild(articleLink);
   }
 
@@ -265,15 +279,17 @@ function openSummaryModal(articleId) {
     modal.innerHTML = `
       <div class="summary-modal-content">
         <div class="summary-modal-header">
-          <h2 id="summary-modal-title"></h2>
           <button class="summary-modal-close" id="summary-modal-close">&times;</button>
         </div>
         <div class="summary-modal-body">
-          <div id="summary-modal-meta"></div>
-          <div id="summary-modal-content"></div>
-          <div id="summary-modal-scores"></div>
-          <div id="summary-modal-tags"></div>
-          <div id="summary-modal-video-ideas"></div>
+          <div class="summary-modal-top-section">
+            <div id="summary-modal-image" class="summary-modal-image-container"></div>
+            <div class="summary-modal-right-content">
+              <h2 id="summary-modal-title" class="summary-modal-title"></h2>
+              <div id="summary-modal-content" class="summary-modal-summary"></div>
+            </div>
+          </div>
+          <div id="summary-modal-video-ideas" class="summary-modal-video-ideas-container"></div>
         </div>
         <div class="summary-modal-footer">
           <a id="summary-modal-link" href="#" target="_blank" class="btn-primary">Read Full Article →</a>
@@ -301,27 +317,38 @@ function openSummaryModal(articleId) {
     });
   }
 
-  // Populate modal title
-  document.getElementById("summary-modal-title").textContent = articleData.title || "Article Summary";
-
-  // Populate meta information (author, date, source)
-  const metaEl = document.getElementById("summary-modal-meta");
-  metaEl.innerHTML = "";
-  const metaInfo = [];
-  if (articleData.author) {
-    metaInfo.push(`<span class="summary-meta-item"><strong>Author:</strong> ${articleData.author}</span>`);
-  }
-  if (articleData.published_date) {
-    metaInfo.push(`<span class="summary-meta-item"><strong>Published:</strong> ${formatDate(articleData.published_date)}</span>`);
-  }
-  if (articleData.source) {
-    metaInfo.push(`<span class="summary-meta-item"><strong>Source:</strong> ${articleData.source}</span>`);
-  }
-  if (metaInfo.length > 0) {
-    metaEl.innerHTML = `<div class="summary-meta">${metaInfo.join(" • ")}</div>`;
+  // Populate image
+  const imageEl = document.getElementById("summary-modal-image");
+  imageEl.innerHTML = "";
+  if (articleData.thumbnail_url) {
+    const img = document.createElement("img");
+    img.src = articleData.thumbnail_url;
+    img.alt = articleData.title || "Article thumbnail";
+    img.className = "summary-modal-image";
+    img.onerror = function () {
+      this.style.display = "none";
+    };
+    imageEl.appendChild(img);
   }
 
-  // Populate full summary
+  // Populate title (orange, linked to article)
+  const titleEl = document.getElementById("summary-modal-title");
+  titleEl.innerHTML = "";
+  const titleText = articleData.title || "Article Summary";
+  if (articleData.source_url) {
+    const titleLink = document.createElement("a");
+    titleLink.href = articleData.source_url;
+    titleLink.target = "_blank";
+    titleLink.rel = "noopener noreferrer";
+    titleLink.textContent = titleText;
+    titleLink.className = "summary-modal-title-link";
+    titleEl.appendChild(titleLink);
+  } else {
+    titleEl.textContent = titleText;
+    titleEl.className = "summary-modal-title-text";
+  }
+
+  // Populate summary
   const contentEl = document.getElementById("summary-modal-content");
   if (articleData.full_summary) {
     contentEl.innerHTML = `<div class="summary-content">${escapeHtml(articleData.full_summary)}</div>`;
@@ -331,34 +358,7 @@ function openSummaryModal(articleId) {
     contentEl.innerHTML = '<div class="summary-content">No summary available.</div>';
   }
 
-  // Populate scores
-  const scoresEl = document.getElementById("summary-modal-scores");
-  scoresEl.innerHTML = "";
-  const scoreParts = [];
-  if (articleData.trend_score !== undefined) {
-    scoreParts.push(`<span class="summary-score"><strong>Trend Score:</strong> ${(articleData.trend_score * 100).toFixed(0)}%</span>`);
-  }
-  if (articleData.seo_score !== undefined) {
-    scoreParts.push(`<span class="summary-score"><strong>SEO Score:</strong> ${(articleData.seo_score * 100).toFixed(0)}%</span>`);
-  }
-  if (articleData.uniqueness_score !== undefined) {
-    scoreParts.push(`<span class="summary-score"><strong>Uniqueness Score:</strong> ${(articleData.uniqueness_score * 100).toFixed(0)}%</span>`);
-  }
-  if (scoreParts.length > 0) {
-    scoresEl.innerHTML = `<div class="summary-scores">${scoreParts.join(" • ")}</div>`;
-  }
-
-  // Populate tags
-  const tagsEl = document.getElementById("summary-modal-tags");
-  tagsEl.innerHTML = "";
-  if (articleData.visual_tags && articleData.visual_tags.length > 0) {
-    const tagElements = articleData.visual_tags.map(tag => 
-      `<span class="summary-tag">${escapeHtml(tag)}</span>`
-    ).join("");
-    tagsEl.innerHTML = `<div class="summary-tags"><strong>Tags:</strong> ${tagElements}</div>`;
-  }
-
-  // Populate video ideas
+  // Populate video ideas (full width, below with orange separator)
   const videoIdeasEl = document.getElementById("summary-modal-video-ideas");
   videoIdeasEl.innerHTML = "";
   if (videoIdeas.length > 0) {
