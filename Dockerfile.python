@@ -26,9 +26,14 @@ RUN mkdir -p /app/app/models
 
 COPY app/ ./app/
 COPY .env .
-RUN chmod +x /app/app/run.sh
+# Set execute permissions for all shell scripts (for image, entrypoint handles volumes)
+RUN chmod +x /app/app/run.sh /app/app/scripts/*.sh
+# Copy and set up entrypoint script that fixes permissions on startup
+COPY app/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 EXPOSE 5001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:5001/health || exit 1
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["/app/app/run.sh"]
 
