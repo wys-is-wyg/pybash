@@ -1717,3 +1717,22 @@ p {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
 }
+
+/* Mobile styles for summary modal */
+@media (max-width: 768px) {
+  .summary-modal-top-section {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .summary-modal-image-container {
+    flex: none;
+    width: 66%;
+    align-self: flex-start;
+  }
+
+  .summary-modal-right-content {
+    flex: none;
+    width: 100%;
+  }
+}

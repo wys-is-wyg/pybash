@@ -994,8 +994,13 @@ def contact_form():
         message = data['message'].strip()
         
         # Validate and sanitize email address
-        parsed_email, _ = parseaddr(email)
-        if '@' not in parsed_email or '.' not in parsed_email.split('@')[1]:
+        _, parsed_email = parseaddr(email)  # parseaddr returns (realname, email_address)
+        if not parsed_email or '@' not in parsed_email:
+            return jsonify({'error': 'Invalid email address'}), 400
+        
+        # Check that domain part contains a dot
+        email_parts = parsed_email.split('@')
+        if len(email_parts) != 2 or '.' not in email_parts[1]:
             return jsonify({'error': 'Invalid email address'}), 400
         
         # Sanitize subject and name (remove newlines and control chars to prevent header injection)
@@ -1030,7 +1035,7 @@ This message was sent from the AI News Tracker contact form.
         
         # Send email via SMTP
         try:
-            smtp_server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT)
+            smtp_server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
             
             if settings.SMTP_USE_TLS:
                 smtp_server.starttls()
@@ -1048,8 +1053,13 @@ This message was sent from the AI News Tracker contact form.
             
         except Exception as e:
             log_exception(e, context="contact_form.send_email")
+            # In development, show more detailed error
+            error_msg = str(e)
+            # For production, use generic message; for development, show details
+            is_dev = os.getenv("FLASK_ENV", "").lower() in ["development", "dev"] or not os.getenv("FLASK_ENV")
             return jsonify({
-                'error': 'Failed to send email. Please try again later.'
+                'error': f'Failed to send email: {error_msg}' if is_dev else 'Failed to send email. Please try again later.',
+                'details': error_msg if is_dev else None
             }), 500
         
     except Exception as e:
