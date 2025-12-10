@@ -10,16 +10,15 @@ const API_BASE_URL = "/api";
 const REFRESH_INTERVAL = 300000;
 
 // State management
-let currentFeedData = [];
+let currentFeedData = null; // Will store { data: {...}, items: [...] }
+let feedDataLookup = {}; // Centralized data lookup by article_id
 let refreshTimer = null;
 let currentFeedTag = "all";
 let currentFeedSource = "all";
-let currentVideoIdeasTag = "all";
-let currentVideoIdeasSource = "all";
 
 /**
  * Fetches feed data from the API
- * @returns {Promise<Array>} Array of feed items
+ * @returns {Promise<Object>} Object with { data: {...}, items: [...] } structure
  */
 async function fetchFeed() {
   try {
@@ -30,7 +29,15 @@ async function fetchFeed() {
     }
 
     const data = await response.json();
-    return Array.isArray(data) ? data : [];
+    
+    // Expect new structure with centralized data lookup
+    if (data && data.data && data.items) {
+      return data;
+    }
+    
+    // If structure is wrong, return empty
+    console.error("Invalid data structure: expected { data: {...}, items: [...] }");
+    return { data: {}, items: [] };
   } catch (error) {
     console.error("Error fetching feed:", error);
     throw error;
@@ -39,7 +46,7 @@ async function fetchFeed() {
 
 /**
  * Renders feed items into the feed container
- * @param {Array} feedData - Array of feed items with title, summary, thumbnail, source
+ * @param {Object} feedData - Object with { data: {...}, items: [...] } structure
  */
 function renderFeed(feedData) {
   const container = document.getElementById("feed-container");
@@ -54,8 +61,13 @@ function renderFeed(feedData) {
   if (!container) return;
   container.innerHTML = "";
 
+  // Store feed data and lookup globally
+  currentFeedData = feedData;
+  feedDataLookup = feedData.data || {};
+
   // Handle empty feed
-  if (!feedData || feedData.length === 0) {
+  const items = feedData.items || [];
+  if (!items || items.length === 0) {
     if (emptyContainer) emptyContainer.style.display = "block";
     updateFeedStatus("empty", "No items available");
     return;
@@ -65,218 +77,328 @@ function renderFeed(feedData) {
   updateFeedStatus("success", "Loaded");
   updateFeedTimestamp();
 
+  // Build full items with data for filtering
+  const fullItems = items.map(item => {
+    const articleData = feedDataLookup[item.article_id] || {};
+    return { ...item, ...articleData };
+  });
+
   // Update tag filter buttons (use all data to show all available tags)
-  updateTagFilters(feedData, "feed-tag-filters");
+  updateTagFilters(fullItems, "feed-tag-filters");
 
   // Filter by tag if not "all"
-  let filteredData = feedData;
+  let filteredItems = items;
   if (currentFeedTag !== "all") {
-    filteredData = filteredData.filter((item) => {
-      const tags = item.visual_tags || [];
+    filteredItems = filteredItems.filter((item) => {
+      const articleData = feedDataLookup[item.article_id] || {};
+      const tags = articleData.visual_tags || [];
       return tags.includes(currentFeedTag);
     });
   }
 
   // Filter by source if not "all"
   if (currentFeedSource !== "all") {
-    filteredData = filteredData.filter((item) => {
-      const source = item.source || "";
+    filteredItems = filteredItems.filter((item) => {
+      const articleData = feedDataLookup[item.article_id] || {};
+      const source = articleData.source || "";
       return source.toLowerCase() === currentFeedSource.toLowerCase();
     });
   }
 
   // Render each feed item as a card
-  filteredData.forEach((item) => {
+  filteredItems.forEach((item) => {
     const card = createFeedCard(item);
     container.appendChild(card);
   });
 }
 
 /**
- * Creates a feed card element from an item
- * @param {Object} item - Feed item with title, summary, thumbnail_url, source_url, etc.
+ * Creates a feed card element from an item (using Video Ideas card design)
+ * @param {Object} item - Minimal item with article_id, type, video_ideas
  * @returns {HTMLElement} Card element
  */
 function createFeedCard(item) {
+  // Get full article data from centralized lookup
+  const articleData = feedDataLookup[item.article_id] || {};
+  
   const card = document.createElement("div");
   card.className = "news-card";
 
-  // Thumbnail - use news-card-image class to match CSS
+  // Thumbnail
   const thumbnail = document.createElement("div");
   thumbnail.className = "news-card-image";
-  if (item.thumbnail_url) {
+  if (articleData.thumbnail_url) {
     const img = document.createElement("img");
-    img.src = item.thumbnail_url;
-    img.alt = item.title || "News thumbnail";
+    img.src = articleData.thumbnail_url;
+    img.alt = articleData.title || "News thumbnail";
     img.loading = "lazy";
     img.onerror = function () {
-      // Hide image and show placeholder on error
       this.style.display = "none";
-      const placeholder = document.createElement("div");
-      placeholder.className = "thumbnail-placeholder";
-      placeholder.textContent = "No Image";
-      thumbnail.appendChild(placeholder);
     };
     thumbnail.appendChild(img);
-  } else {
-    const placeholder = document.createElement("div");
-    placeholder.className = "thumbnail-placeholder";
-    placeholder.textContent = "No Image";
-    thumbnail.appendChild(placeholder);
   }
+  card.appendChild(thumbnail);
 
-  // Card content
+  // Content
   const content = document.createElement("div");
   content.className = "news-card-content";
 
-  // Title
-  const title = document.createElement("h3");
-  title.className = "news-card-title";
-  if (item.source_url) {
+  // Article title
+  const articleTitle = document.createElement("h3");
+  articleTitle.className = "news-card-title";
+  const articleTitleText = articleData.title || "Untitled Article";
+  if (articleData.source_url) {
     const titleLink = document.createElement("a");
-    titleLink.href = item.source_url;
+    titleLink.href = articleData.source_url;
     titleLink.target = "_blank";
     titleLink.rel = "noopener noreferrer";
-    titleLink.textContent = item.title || "Untitled";
-    title.appendChild(titleLink);
+    titleLink.textContent = articleTitleText;
+    articleTitle.appendChild(titleLink);
   } else {
-    title.textContent = item.title || "Untitled";
+    articleTitle.textContent = articleTitleText;
+  }
+  content.appendChild(articleTitle);
+
+  // Article summary (short summary)
+  if (articleData.summary) {
+    const summary = document.createElement("p");
+    summary.className = "news-card-summary";
+    summary.textContent = articleData.summary;
+    content.appendChild(summary);
   }
 
-  // Summary
-  const summary = document.createElement("p");
-  summary.className = "news-card-summary";
-  summary.textContent =
-    item.summary || item.description || "No summary available.";
+  // Video ideas section - display all video ideas from the array
+  const videoIdeas = item.video_ideas || [];
+  if (videoIdeas.length > 0) {
+    const videoIdeasSection = document.createElement("div");
+    videoIdeasSection.className = "video-ideas-section";
 
-  // Visual tags (only tags we use - from categorization)
-  if (item.visual_tags && item.visual_tags.length > 0) {
-    const visualTagsContainer = document.createElement("div");
-    visualTagsContainer.className = "news-card-visual-tags";
-    item.visual_tags.slice(0, 3).forEach((tag) => {
-      const tagElement = document.createElement("span");
-      tagElement.className = "news-visual-tag";
-      tagElement.textContent = tag;
-      visualTagsContainer.appendChild(tagElement);
+    videoIdeas.forEach((idea, index) => {
+      if (idea.title || idea.description) {
+        if (idea.title) {
+          const videoIdeaTitle = document.createElement("h4");
+          videoIdeaTitle.className = "video-idea-title";
+          videoIdeaTitle.textContent = idea.title;
+          videoIdeasSection.appendChild(videoIdeaTitle);
+        }
+
+        if (idea.description) {
+          const videoIdeaDesc = document.createElement("p");
+          videoIdeaDesc.className = "video-idea-description";
+          videoIdeaDesc.textContent = idea.description;
+          videoIdeasSection.appendChild(videoIdeaDesc);
+        }
+      }
     });
-    content.appendChild(visualTagsContainer);
+
+    if (videoIdeasSection.children.length > 0) {
+      content.appendChild(videoIdeasSection);
+    }
   }
 
-  // Scores (if available)
-  if (
-    item.trend_score !== undefined ||
-    item.seo_score !== undefined ||
-    item.uniqueness_score !== undefined
-  ) {
-    const scores = document.createElement("div");
-    scores.className = "news-card-scores";
-    const scoreParts = [];
-    if (item.trend_score !== undefined) {
-      scoreParts.push(`Trend: ${(item.trend_score * 100).toFixed(0)}%`);
-    }
-    if (item.seo_score !== undefined) {
-      scoreParts.push(`SEO: ${(item.seo_score * 100).toFixed(0)}%`);
-    }
-    if (item.uniqueness_score !== undefined) {
-      scoreParts.push(
-        `Uniqueness: ${(item.uniqueness_score * 100).toFixed(0)}%`
-      );
-    }
-    scores.textContent = scoreParts.join(" • ");
-    content.appendChild(scores);
-  }
+  // Meta information (source, date, and Read More link)
+  const meta = document.createElement("div");
+  meta.className = "news-card-meta";
 
-  // Source info and article link
-  const source = document.createElement("div");
-  source.className = "news-card-meta";
-  if (item.published_date) {
+  if (articleData.published_date) {
     const dateText = document.createElement("span");
-    dateText.textContent = formatDate(item.published_date);
-    source.appendChild(dateText);
+    dateText.textContent = formatDate(articleData.published_date);
+    meta.appendChild(dateText);
   }
-  if (item.source_url) {
+
+  // Read More link (opens modal with full summary)
+  if (articleData.full_summary) {
+    const readMoreLink = document.createElement("a");
+    readMoreLink.href = "#";
+    readMoreLink.className = "news-card-article-link";
+    readMoreLink.textContent = "Read More →";
+    readMoreLink.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openSummaryModal(item.article_id);
+    };
+    meta.appendChild(readMoreLink);
+  } else if (articleData.source_url) {
+    // Fallback to external link if no full summary
     const articleLink = document.createElement("a");
-    articleLink.href = item.source_url;
+    articleLink.href = articleData.source_url;
     articleLink.target = "_blank";
     articleLink.rel = "noopener noreferrer";
     articleLink.className = "news-card-article-link";
     articleLink.textContent = "Read Article →";
-    source.appendChild(articleLink);
+    meta.appendChild(articleLink);
   }
 
-  content.appendChild(title);
-  content.appendChild(summary);
-  content.appendChild(source);
-
-  // Video ideas toggle button (if video ideas exist) - support multiple ideas per article
-  let videoIdeaDiv = null;
-  const videoIdeas = item.video_ideas || [];
-
-  if (videoIdeas.length > 0) {
-    // Video idea toggle button - add at the very end (bottom of card)
-    const toggleBtn = document.createElement("button");
-    toggleBtn.className = "video-idea-toggle";
-    toggleBtn.textContent = `Show Video Idea${
-      videoIdeas.length > 1 ? `s (${videoIdeas.length})` : ""
-    }`;
-    toggleBtn.setAttribute("aria-label", "Toggle video ideas");
-
-    // Create video idea content div
-    videoIdeaDiv = document.createElement("div");
-    videoIdeaDiv.className = "video-idea-content";
-
-    // Add all video ideas
-    videoIdeas.forEach((idea, index) => {
-      const videoIdeaTitle = document.createElement("h4");
-      videoIdeaTitle.className = "video-idea-title";
-      videoIdeaTitle.textContent = idea.title || `Video Idea ${index + 1}`;
-      videoIdeaDiv.appendChild(videoIdeaTitle);
-
-      if (idea.description) {
-        const videoIdeaDesc = document.createElement("p");
-        videoIdeaDesc.className = "video-idea-description";
-        videoIdeaDesc.textContent = idea.description;
-        videoIdeaDiv.appendChild(videoIdeaDesc);
-      }
-    });
-
-    // Toggle handler with fade animation
-    toggleBtn.onclick = function (e) {
-      e.stopPropagation();
-      e.preventDefault();
-      if (videoIdeaDiv) {
-        const isHidden = !videoIdeaDiv.classList.contains("visible");
-
-        if (isHidden) {
-          // Fade in
-          videoIdeaDiv.classList.add("visible");
-          toggleBtn.textContent = `Hide Video Idea${
-            videoIdeas.length > 1 ? `s (${videoIdeas.length})` : ""
-          }`;
-        } else {
-          // Fade out
-          videoIdeaDiv.classList.remove("visible");
-          toggleBtn.textContent = `Show Video Idea${
-            videoIdeas.length > 1 ? `s (${videoIdeas.length})` : ""
-          }`;
-        }
-      }
-    };
-
-    // Append button to content AFTER source (at very bottom)
-    content.appendChild(toggleBtn);
+  if (articleData.source) {
+    const source = document.createElement("span");
+    source.className = "news-card-source";
+    source.textContent = articleData.source;
+    meta.appendChild(source);
   }
 
-  // Append thumbnail and content to card
-  card.appendChild(thumbnail);
+  content.appendChild(meta);
   card.appendChild(content);
 
-  // Append video idea content to card LAST (after thumbnail and content, so it appears at bottom)
-  if (videoIdeaDiv) {
-    card.appendChild(videoIdeaDiv);
+  return card;
+}
+
+/**
+ * Opens a modal with the complete blog article summary
+ * @param {string} articleId - Article ID to look up
+ */
+function openSummaryModal(articleId) {
+  const articleData = feedDataLookup[articleId];
+  if (!articleData) {
+    return;
   }
 
-  return card;
+  // Find the item to get video ideas
+  const item = currentFeedData?.items?.find(i => i.article_id === articleId);
+  const videoIdeas = item?.video_ideas || [];
+
+  // Create or get modal
+  let modal = document.getElementById("summary-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "summary-modal";
+    modal.className = "summary-modal";
+    modal.innerHTML = `
+      <div class="summary-modal-content">
+        <div class="summary-modal-header">
+          <h2 id="summary-modal-title"></h2>
+          <button class="summary-modal-close" id="summary-modal-close">&times;</button>
+        </div>
+        <div class="summary-modal-body">
+          <div id="summary-modal-meta"></div>
+          <div id="summary-modal-content"></div>
+          <div id="summary-modal-scores"></div>
+          <div id="summary-modal-tags"></div>
+          <div id="summary-modal-video-ideas"></div>
+        </div>
+        <div class="summary-modal-footer">
+          <a id="summary-modal-link" href="#" target="_blank" class="btn-primary">Read Full Article →</a>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    // Close handlers
+    const closeBtn = document.getElementById("summary-modal-close");
+    closeBtn.onclick = function() {
+      modal.classList.remove("active");
+    };
+    modal.onclick = function(e) {
+      if (e.target === modal) {
+        modal.classList.remove("active");
+      }
+    };
+    
+    // Close on Escape key
+    document.addEventListener("keydown", function(e) {
+      if (e.key === "Escape" && modal.classList.contains("active")) {
+        modal.classList.remove("active");
+      }
+    });
+  }
+
+  // Populate modal title
+  document.getElementById("summary-modal-title").textContent = articleData.title || "Article Summary";
+
+  // Populate meta information (author, date, source)
+  const metaEl = document.getElementById("summary-modal-meta");
+  metaEl.innerHTML = "";
+  const metaInfo = [];
+  if (articleData.author) {
+    metaInfo.push(`<span class="summary-meta-item"><strong>Author:</strong> ${articleData.author}</span>`);
+  }
+  if (articleData.published_date) {
+    metaInfo.push(`<span class="summary-meta-item"><strong>Published:</strong> ${formatDate(articleData.published_date)}</span>`);
+  }
+  if (articleData.source) {
+    metaInfo.push(`<span class="summary-meta-item"><strong>Source:</strong> ${articleData.source}</span>`);
+  }
+  if (metaInfo.length > 0) {
+    metaEl.innerHTML = `<div class="summary-meta">${metaInfo.join(" • ")}</div>`;
+  }
+
+  // Populate full summary
+  const contentEl = document.getElementById("summary-modal-content");
+  if (articleData.full_summary) {
+    contentEl.innerHTML = `<div class="summary-content">${escapeHtml(articleData.full_summary)}</div>`;
+  } else if (articleData.summary) {
+    contentEl.innerHTML = `<div class="summary-content">${escapeHtml(articleData.summary)}</div>`;
+  } else {
+    contentEl.innerHTML = '<div class="summary-content">No summary available.</div>';
+  }
+
+  // Populate scores
+  const scoresEl = document.getElementById("summary-modal-scores");
+  scoresEl.innerHTML = "";
+  const scoreParts = [];
+  if (articleData.trend_score !== undefined) {
+    scoreParts.push(`<span class="summary-score"><strong>Trend Score:</strong> ${(articleData.trend_score * 100).toFixed(0)}%</span>`);
+  }
+  if (articleData.seo_score !== undefined) {
+    scoreParts.push(`<span class="summary-score"><strong>SEO Score:</strong> ${(articleData.seo_score * 100).toFixed(0)}%</span>`);
+  }
+  if (articleData.uniqueness_score !== undefined) {
+    scoreParts.push(`<span class="summary-score"><strong>Uniqueness Score:</strong> ${(articleData.uniqueness_score * 100).toFixed(0)}%</span>`);
+  }
+  if (scoreParts.length > 0) {
+    scoresEl.innerHTML = `<div class="summary-scores">${scoreParts.join(" • ")}</div>`;
+  }
+
+  // Populate tags
+  const tagsEl = document.getElementById("summary-modal-tags");
+  tagsEl.innerHTML = "";
+  if (articleData.visual_tags && articleData.visual_tags.length > 0) {
+    const tagElements = articleData.visual_tags.map(tag => 
+      `<span class="summary-tag">${escapeHtml(tag)}</span>`
+    ).join("");
+    tagsEl.innerHTML = `<div class="summary-tags"><strong>Tags:</strong> ${tagElements}</div>`;
+  }
+
+  // Populate video ideas
+  const videoIdeasEl = document.getElementById("summary-modal-video-ideas");
+  videoIdeasEl.innerHTML = "";
+  if (videoIdeas.length > 0) {
+    let videoIdeasHTML = '<div class="summary-video-ideas"><h3>Video Ideas</h3>';
+    videoIdeas.forEach((idea, index) => {
+      videoIdeasHTML += '<div class="summary-video-idea">';
+      if (idea.title) {
+        videoIdeasHTML += `<h4 class="summary-video-idea-title">${escapeHtml(idea.title)}</h4>`;
+      }
+      if (idea.description) {
+        videoIdeasHTML += `<p class="summary-video-idea-description">${escapeHtml(idea.description)}</p>`;
+      }
+      videoIdeasHTML += '</div>';
+    });
+    videoIdeasHTML += '</div>';
+    videoIdeasEl.innerHTML = videoIdeasHTML;
+  }
+  
+  // Populate footer link
+  const linkEl = document.getElementById("summary-modal-link");
+  if (articleData.source_url) {
+    linkEl.href = articleData.source_url;
+    linkEl.style.display = "inline-block";
+  } else {
+    linkEl.style.display = "none";
+  }
+
+  // Show modal with fade-in animation
+  modal.classList.add("active");
+}
+
+/**
+ * Escapes HTML to prevent XSS
+ * @param {string} text - Text to escape
+ * @returns {string} Escaped text
+ */
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 /**
@@ -481,16 +603,13 @@ async function loadSectionContent(sectionId) {
     case "feed":
       await loadFeed();
       break;
-    case "video-ideas":
-      await loadVideoIdeas();
-      break;
     case "output":
       await loadOutputFeed();
       break;
     case "contact":
       // Contact form is static, no loading needed
       break;
-    // dashboard and rationale are static, no loading needed
+    // rationale is static, no loading needed
   }
 }
 
@@ -941,12 +1060,7 @@ function updateTagFilters(data, filterContainerId) {
     btn.className = "filter-btn";
     btn.dataset.tag = tag;
     btn.textContent = tag;
-    if (
-      tag ===
-      (filterContainerId === "feed-tag-filters"
-        ? currentFeedTag
-        : currentVideoIdeasTag)
-    ) {
+    if (tag === currentFeedTag) {
       btn.classList.add("active");
     }
     container.appendChild(btn);
@@ -999,32 +1113,13 @@ function setupTagFilters() {
         currentFeedTag = e.target.dataset.tag;
 
         // Re-render feed with new filter
-        if (currentFeedData.length > 0) {
+        if (currentFeedData && currentFeedData.items) {
           renderFeed(currentFeedData);
         }
       }
     });
   }
 
-  // Video ideas tag filters
-  const videoIdeasFilters = document.getElementById("video-ideas-tag-filters");
-  if (videoIdeasFilters) {
-    videoIdeasFilters.addEventListener("click", (e) => {
-      if (e.target.classList.contains("filter-btn")) {
-        // Update active state
-        videoIdeasFilters.querySelectorAll(".filter-btn").forEach((btn) => {
-          btn.classList.remove("active");
-        });
-        e.target.classList.add("active");
-
-        // Update filter
-        currentVideoIdeasTag = e.target.dataset.tag;
-
-        // Re-render video ideas with new filter
-        loadVideoIdeas();
-      }
-    });
-  }
 }
 
 /**

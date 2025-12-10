@@ -33,11 +33,6 @@
               >
             </li>
             <li>
-              <a href="#video-ideas" class="nav-link" data-section="video-ideas"
-                >Video Ideas</a
-              >
-            </li>
-            <li>
               <a href="#contact" class="nav-link" data-section="contact"
                 >Get in Touch</a
               >
@@ -312,66 +307,6 @@
         </div>
       </section>
 
-      <!-- Video Ideas Section -->
-      <section id="video-ideas" class="content-section">
-        <div class="section-header">
-          <h2>Video Ideas</h2>
-          <p class="section-description">
-            AI-generated video concepts based on trending topics
-          </p>
-        </div>
-
-        <!-- Status indicators -->
-        <div class="status-bar">
-          <div class="status-item">
-            <span class="status-label">Status:</span>
-            <span id="video-ideas-status" class="status-badge loading"
-              >Loading...</span
-            >
-          </div>
-          <div class="status-item">
-            <span class="status-label">Last Updated:</span>
-            <span id="video-ideas-timestamp" class="status-value">Never</span>
-          </div>
-        </div>
-
-        <!-- Tag Filters -->
-        <div class="tag-filters">
-          <span class="filter-label">Filter by tag:</span>
-          <div class="filter-buttons" id="video-ideas-tag-filters">
-            <button class="filter-btn active" data-tag="all">All</button>
-            <!-- Tag buttons will be dynamically generated -->
-          </div>
-        </div>
-
-        <div class="filter-bar">
-          <input
-            type="text"
-            id="idea-search"
-            class="search-input"
-            placeholder="Search video ideas..."
-          />
-          <select id="idea-sort" class="sort-select">
-            <option value="date">Latest First</option>
-            <option value="title">Title (A-Z)</option>
-            <option value="source">By Source</option>
-          </select>
-        </div>
-
-        <div id="video-ideas-container" class="ideas-grid">
-          <div class="loading-spinner">
-            <div class="spinner"></div>
-            <p>Loading video ideas...</p>
-          </div>
-        </div>
-
-        <div id="ideas-empty" class="empty-state" style="display: none">
-          <p>No video ideas generated yet.</p>
-          <p class="text-muted">
-            Ideas will appear after the pipeline processes summaries.
-          </p>
-        </div>
-      </section>
 
       <!-- Output Feed (Raw JSON) Section -->
       <section id="output" class="content-section">

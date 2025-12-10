@@ -126,15 +126,13 @@ def get_news_feed():
         display_data = load_json(settings.DISPLAY_FILE)
         # New structure: { "data": {...}, "items": [...] }
         # Old structure (backward compat): { "items": [...] } or just [...]
+        # Expect new structure with centralized data lookup
         if 'data' in display_data and 'items' in display_data:
-            # New structure with centralized data
             logger.info(f"Returning {len(display_data['items'])} display items with {len(display_data['data'])} data entries from {settings.DISPLAY_FILE}")
             return jsonify(display_data), 200
         else:
-            # Fallback for old structure
-            items = display_data.get('items', display_data if isinstance(display_data, list) else [])
-            logger.info(f"Returning {len(items)} display items (old structure) from {settings.DISPLAY_FILE}")
-            return jsonify(items), 200
+            logger.error(f"Invalid display.json structure: expected {{ data: {{...}}, items: [...] }}, got keys: {list(display_data.keys())}")
+            return jsonify({'error': 'Invalid display.json structure. Please re-run the pipeline.'}), 500
     except FileNotFoundError:
         # Fallback to feed.json for backward compatibility during migration
         try:
