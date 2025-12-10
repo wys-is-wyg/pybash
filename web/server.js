@@ -118,6 +118,10 @@ app.get("/output", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
+app.get("/vote", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "vote.html"));
+});
+
 // Static middleware for public files (CSS, JS, images, etc.)
 app.use(express.static("public"));
 

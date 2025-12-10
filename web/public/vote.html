@@ -24,11 +24,11 @@
         box-sizing: border-box;
       }
 
-      /* CSS Variables - Yellow Theme */
+      /* CSS Variables - Orange Theme (Matching Main App) */
       :root {
-        --color-primary: #ffd700;
-        --color-primary-hover: #ffed4e;
-        --color-primary-dark: #daa500;
+        --color-primary: #ff6b35;
+        --color-primary-hover: #ff8555;
+        --color-primary-dark: #e85a1f;
         --color-background: #0f1419;
         --color-surface: #1a1f2e;
         --color-surface-elevated: #252b3b;
@@ -36,12 +36,10 @@
         --color-text-primary: #fff;
         --color-text-secondary: #a0a8b8;
         --color-success: #4ade80;
-        --color-gradient-start: #ffd700;
-        --color-gradient-end: #ffed4e;
+        --color-gradient-start: #ff6b35;
+        --color-gradient-end: #ffa07a;
         --spacing-unit: 0.25rem;
-      }
-
-      /* Base Styles */
+      } /* Base Styles */
       html {
         -webkit-text-size-adjust: 100%;
         line-height: 1.5;
@@ -129,9 +127,8 @@
         font-size: 1.75rem;
         margin: 0 0 0.3rem 0;
         color: var(--color-primary);
-        text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+        text-shadow: 0 0 10px rgba(255, 107, 53, 0.3);
       }
-
       .navbar-brand .tagline {
         font-size: 0.75rem;
         color: var(--color-text-secondary);
@@ -726,9 +723,6 @@
           }_files/thumbnail.png" 
                              alt="${design.name}" 
                              onerror="this.style.display='none'" />
-                        <div style="padding: 1rem; text-align: center; color: var(--color-text-secondary);">
-                            <p style="margin: 0;">Preview of ${design.name}</p>
-                        </div>
                     </div>
                     <div class="design-info">
                         <h3 class="design-title">${design.name}</h3>
@@ -746,12 +740,12 @@
                             <button class="btn-preview" data-design-id="${
                               design.id
                             }">
-                                👁️ Preview
+                                Preview
                             </button>
                             <button class="btn-vote" data-design-id="${
                               design.id
                             }">
-                                ⭐ Vote
+                                Vote
                             </button>
                         </div>
                     </div>
@@ -773,20 +767,20 @@
                 label: "Votes",
                 data: DESIGNS.map((d) => voteData[d.id] || 0),
                 backgroundColor: [
-                  "rgba(255, 215, 0, 0.8)",
-                  "rgba(255, 237, 78, 0.8)",
-                  "rgba(255, 228, 109, 0.8)",
-                  "rgba(255, 245, 157, 0.8)",
-                  "rgba(255, 250, 205, 0.8)",
-                  "rgba(218, 165, 0, 0.8)",
+                  "rgba(255, 107, 53, 0.8)",
+                  "rgba(255, 133, 85, 0.8)",
+                  "rgba(255, 159, 117, 0.8)",
+                  "rgba(255, 185, 149, 0.8)",
+                  "rgba(255, 211, 181, 0.8)",
+                  "rgba(232, 90, 31, 0.8)",
                 ],
                 borderColor: [
-                  "#ffd700",
-                  "#ffed4e",
-                  "#ffe46b",
-                  "#fff59d",
-                  "#fffacd",
-                  "#daa500",
+                  "#ff6b35",
+                  "#ff8555",
+                  "#ff9f75",
+                  "#ffb995",
+                  "#ffd3b5",
+                  "#e85a1f",
                 ],
                 borderWidth: 2,
                 borderRadius: 4,
@@ -970,11 +964,11 @@
           const designId = btn.dataset.designId;
           if (designId === userVote) {
             btn.classList.add("voted");
-            btn.textContent = "✓ Voted";
+            btn.textContent = "Voted";
             btn.disabled = true;
           } else {
             btn.classList.remove("voted");
-            btn.textContent = "⭐ Vote";
+            btn.textContent = "Vote";
             btn.disabled = false;
           }
         });

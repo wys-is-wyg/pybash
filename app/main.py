@@ -1155,8 +1155,7 @@ def record_vote():
             return jsonify({'error': 'Invalid design_id. Must be kiwilab1-6'}), 400
         
         # Load current votes
-        votes_file = settings.DATA_DIR / 'votes.json'
-        votes = load_json(votes_file) or {design: 0 for design in valid_designs}
+        votes = load_json('votes.json') or {design: 0 for design in valid_designs}
         
         # Increment vote count
         if design_id not in votes:
@@ -1164,7 +1163,7 @@ def record_vote():
         votes[design_id] += 1
         
         # Save updated votes
-        save_json(votes_file, votes)
+        save_json(votes, 'votes.json')
         
         return jsonify({
             'status': 'success',
@@ -1192,14 +1191,13 @@ def get_vote_stats():
         }
     """
     try:
-        votes_file = settings.DATA_DIR / 'votes.json'
-        votes = load_json(votes_file)
+        votes = load_json('votes.json')
         
         if not votes:
             # Initialize if file doesn't exist
             valid_designs = ['kiwilab1', 'kiwilab2', 'kiwilab3', 'kiwilab4', 'kiwilab5', 'kiwilab6']
             votes = {design: 0 for design in valid_designs}
-            save_json(votes_file, votes)
+            save_json(votes, 'votes.json')
         
         return jsonify(votes), 200
     except Exception as e:

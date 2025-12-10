@@ -115,6 +115,9 @@ server {
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Port $server_port;
         
+        # Origin header - let n8n handle it based on N8N_EDITOR_BASE_URL
+        # Don't override Origin, let it pass through naturally
+        
         # WebSocket specific settings
         proxy_cache_bypass $http_upgrade;
         proxy_no_cache $http_upgrade;
