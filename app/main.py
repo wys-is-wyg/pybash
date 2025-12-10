@@ -1114,6 +1114,99 @@ def clear_cache_endpoint():
         return jsonify({'error': 'Failed to clear cache'}), 500
 
 
+@app.route('/vote', methods=['GET'])
+def vote_page():
+    """
+    Serve the design voting page.
+    
+    Returns:
+        HTML page for voting on design variants
+    """
+    try:
+        return send_from_directory(
+            os.path.join(os.path.dirname(__file__), '..', 'web', 'public'),
+            'vote.html'
+        )
+    except Exception as e:
+        log_exception(e, context="vote_page")
+        return jsonify({'error': 'Failed to load voting page'}), 500
+
+
+@app.route('/api/vote', methods=['POST'])
+def record_vote():
+    """
+    Record a vote for a design variant.
+    
+    Request body:
+        {
+            "design_id": "kiwilab1" | "kiwilab2" | ... | "kiwilab6"
+        }
+    
+    Returns:
+        JSON response with status and updated vote count
+    """
+    try:
+        data = request.get_json() or {}
+        design_id = data.get('design_id', '').strip()
+        
+        # Validate design_id
+        valid_designs = ['kiwilab1', 'kiwilab2', 'kiwilab3', 'kiwilab4', 'kiwilab5', 'kiwilab6']
+        if not design_id or design_id not in valid_designs:
+            return jsonify({'error': 'Invalid design_id. Must be kiwilab1-6'}), 400
+        
+        # Load current votes
+        votes_file = settings.DATA_DIR / 'votes.json'
+        votes = load_json(votes_file) or {design: 0 for design in valid_designs}
+        
+        # Increment vote count
+        if design_id not in votes:
+            votes[design_id] = 0
+        votes[design_id] += 1
+        
+        # Save updated votes
+        save_json(votes_file, votes)
+        
+        return jsonify({
+            'status': 'success',
+            'design_id': design_id,
+            'vote_count': votes[design_id],
+            'total_votes': sum(votes.values())
+        }), 200
+    except Exception as e:
+        log_exception(e, context="record_vote")
+        return jsonify({'error': 'Failed to record vote'}), 500
+
+
+@app.route('/api/vote-stats', methods=['GET'])
+def get_vote_stats():
+    """
+    Get voting statistics for all design variants.
+    
+    Returns:
+        JSON object with vote counts for each design variant
+        {
+            "kiwilab1": 0,
+            "kiwilab2": 0,
+            ...
+            "kiwilab6": 0
+        }
+    """
+    try:
+        votes_file = settings.DATA_DIR / 'votes.json'
+        votes = load_json(votes_file)
+        
+        if not votes:
+            # Initialize if file doesn't exist
+            valid_designs = ['kiwilab1', 'kiwilab2', 'kiwilab3', 'kiwilab4', 'kiwilab5', 'kiwilab6']
+            votes = {design: 0 for design in valid_designs}
+            save_json(votes_file, votes)
+        
+        return jsonify(votes), 200
+    except Exception as e:
+        log_exception(e, context="get_vote_stats")
+        return jsonify({'error': 'Failed to retrieve vote statistics'}), 500
+
+
 def preload_models():
     """Preload models on startup to improve first-request performance."""
     def _preload():

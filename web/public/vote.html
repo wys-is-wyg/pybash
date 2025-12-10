@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Design Variant Voting - Vote for your favorite KiwiLab design"
+    />
+    <title>Vote for Your Favorite Design</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      /* ============================================
+           Vote Page - Yellow Theme Variant
+           Based on AI News Tracker Design System
+           ============================================ */
+
+      /* CSS Reset */
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      /* CSS Variables - Yellow Theme */
+      :root {
+        --color-primary: #ffd700;
+        --color-primary-hover: #ffed4e;
+        --color-primary-dark: #daa500;
+        --color-background: #0f1419;
+        --color-surface: #1a1f2e;
+        --color-surface-elevated: #252b3b;
+        --color-border: rgba(255, 255, 255, 0.1);
+        --color-text-primary: #fff;
+        --color-text-secondary: #a0a8b8;
+        --color-success: #4ade80;
+        --color-gradient-start: #ffd700;
+        --color-gradient-end: #ffed4e;
+        --spacing-unit: 0.25rem;
+      }
+
+      /* Base Styles */
+      html {
+        -webkit-text-size-adjust: 100%;
+        line-height: 1.5;
+      }
+
+      body {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-color: var(--color-background);
+        color: var(--color-text-primary);
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
+          Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+        transition: all 0.3s ease;
+      }
+
+      /* Typography */
+      h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        line-height: 1.2;
+        color: var(--color-text-primary);
+      }
+
+      h2 {
+        font-size: 2rem;
+        font-weight: 600;
+        line-height: 1.3;
+        color: var(--color-text-primary);
+      }
+
+      h3 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        line-height: 1.4;
+        color: var(--color-text-primary);
+      }
+
+      p {
+        font-size: 1rem;
+        line-height: 1.6;
+        color: var(--color-text-primary);
+      }
+
+      /* Navigation Styles - Sticky with Backdrop Blur */
+      .navbar {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background-color: rgba(26, 31, 46, 0.8);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .navbar-container {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 1rem 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .navbar-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .navbar-logo {
+        height: 5rem;
+        width: auto;
+        object-fit: contain;
+        flex-shrink: 0;
+      }
+
+      .navbar-brand-text {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .navbar-brand h1 {
+        font-size: 1.75rem;
+        margin: 0 0 0.3rem 0;
+        color: var(--color-primary);
+        text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+      }
+
+      .navbar-brand .tagline {
+        font-size: 0.75rem;
+        color: var(--color-text-secondary);
+        margin: 0;
+      }
+
+      .navbar-menu {
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+      }
+
+      .navbar-menu ul {
+        display: flex;
+        list-style: none;
+        gap: 2rem;
+      }
+
+      .nav-link {
+        text-decoration: none;
+        color: var(--color-text-secondary);
+        font-weight: 500;
+        transition: color 0.3s ease;
+      }
+
+      .nav-link:hover,
+      .nav-link.active {
+        color: var(--color-primary);
+      }
+
+      .back-to-main-btn {
+        padding: 0.75rem 1.5rem;
+        background-color: transparent;
+        color: var(--color-primary);
+        border: 1px solid var(--color-primary);
+        border-radius: 0.375rem;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-block;
+      }
+
+      .back-to-main-btn:hover {
+        background-color: var(--color-primary);
+        color: var(--color-background);
+      }
+
+      @media (max-width: 768px) {
+        .navbar-logo {
+          height: 4rem;
+        }
+
+        .navbar-brand {
+          gap: 0.5rem;
+        }
+
+        .navbar-menu {
+          gap: 1rem;
+        }
+
+        .navbar-menu ul {
+          gap: 1rem;
+        }
+      }
+
+      /* Main Content */
+      .main-content {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem;
+      }
+
+      .page-header {
+        text-align: center;
+        margin-bottom: 3rem;
+      }
+
+      .page-header h2 {
+        margin-bottom: 0.5rem;
+        color: var(--color-primary);
+      }
+
+      .page-header p {
+        color: var(--color-text-secondary);
+        font-size: 1.1rem;
+      }
+
+      /* Chart Section */
+      .chart-section {
+        background-color: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 0.75rem;
+        padding: 2rem;
+        margin-bottom: 3rem;
+        max-width: 800px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .chart-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 1.5rem;
+        color: var(--color-primary);
+      }
+
+      #voteChart {
+        max-height: 300px;
+      }
+
+      /* Design Grid */
+      .designs-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+      }
+
+      .design-card {
+        background-color: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 0.75rem;
+        overflow: hidden;
+        transition: all 0.3s ease;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .design-card:hover {
+        border-color: var(--color-primary);
+        box-shadow: 0 0 20px rgba(255, 215, 0, 0.15);
+        transform: translateY(-4px);
+      }
+
+      .design-thumbnail {
+        width: 100%;
+        height: 200px;
+        background-color: var(--color-surface-elevated);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        cursor: pointer;
+        position: relative;
+      }
+
+      .design-thumbnail img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .design-thumbnail:hover::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(255, 215, 0, 0.1);
+      }
+
+      .design-info {
+        padding: 1.5rem;
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .design-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: var(--color-text-primary);
+      }
+
+      .design-number {
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+        margin-bottom: 1rem;
+      }
+
+      .vote-count {
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .vote-count-number {
+        font-weight: 600;
+        color: var(--color-primary);
+      }
+
+      .card-actions {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: auto;
+      }
+
+      .btn-preview {
+        flex: 1;
+        padding: 0.75rem 1rem;
+        background-color: transparent;
+        color: var(--color-primary);
+        border: 1px solid var(--color-primary);
+        border-radius: 0.375rem;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        font-size: 0.9rem;
+      }
+
+      .btn-preview:hover {
+        background-color: rgba(255, 215, 0, 0.1);
+      }
+
+      .btn-vote {
+        flex: 1;
+        padding: 0.75rem 1rem;
+        background-color: var(--color-primary);
+        color: var(--color-background);
+        border: none;
+        border-radius: 0.375rem;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        font-size: 0.9rem;
+      }
+
+      .btn-vote:hover {
+        background-color: var(--color-primary-hover);
+        transform: scale(1.05);
+      }
+
+      .btn-vote.voted {
+        background-color: var(--color-success);
+      }
+
+      .btn-vote:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* Modal Styles */
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(4px);
+        animation: fadeIn 0.3s ease;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      .modal.show {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal-content {
+        background-color: var(--color-surface-elevated);
+        border: 1px solid var(--color-border);
+        border-radius: 0.75rem;
+        max-width: 900px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+        position: relative;
+        animation: slideIn 0.3s ease;
+      }
+
+      @keyframes slideIn {
+        from {
+          transform: translateY(-50px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--color-border);
+        position: sticky;
+        top: 0;
+        background-color: var(--color-surface-elevated);
+        z-index: 1001;
+      }
+
+      .modal-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0;
+        color: var(--color-primary);
+      }
+
+      .modal-close {
+        background: none;
+        border: none;
+        color: var(--color-text-secondary);
+        font-size: 2rem;
+        cursor: pointer;
+        transition: color 0.3s ease;
+        padding: 0;
+        width: 2rem;
+        height: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal-close:hover {
+        color: var(--color-primary);
+      }
+
+      .modal-body {
+        padding: 2rem;
+      }
+
+      .modal-body img {
+        width: 100%;
+        height: auto;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+      }
+
+      .design-description {
+        color: var(--color-text-secondary);
+        line-height: 1.8;
+      }
+
+      /* Utility Classes */
+      .text-center {
+        text-align: center;
+      }
+
+      .text-muted {
+        color: var(--color-text-secondary);
+      }
+
+      .loading-spinner {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 200px;
+      }
+
+      .spinner {
+        border: 3px solid var(--color-border);
+        border-top: 3px solid var(--color-primary);
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .status-message {
+        padding: 1rem;
+        border-radius: 0.375rem;
+        margin-bottom: 1rem;
+        text-align: center;
+      }
+
+      .status-message.success {
+        background-color: rgba(74, 222, 128, 0.1);
+        color: var(--color-success);
+        border: 1px solid var(--color-success);
+      }
+
+      .status-message.error {
+        background-color: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
+        border: 1px solid #ef4444;
+      }
+
+      /* Responsive Design */
+      @media (max-width: 768px) {
+        .main-content {
+          padding: 1rem 1rem;
+        }
+
+        .page-header h2 {
+          font-size: 1.5rem;
+        }
+
+        .designs-grid {
+          grid-template-columns: 1fr;
+          gap: 1rem;
+        }
+
+        .chart-section {
+          padding: 1rem;
+        }
+
+        .modal-content {
+          width: 95%;
+        }
+
+        .navbar-menu {
+          gap: 1rem;
+        }
+
+        .navbar-menu ul {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navigation Header -->
+    <header class="navbar">
+      <div class="navbar-container">
+        <div class="navbar-brand">
+          <img src="/images/logo.png" alt="KiwiLab Logo" class="navbar-logo" />
+          <div class="navbar-brand-text">
+            <h1>Design Vote</h1>
+            <p class="tagline">Choose your favorite variant</p>
+          </div>
+        </div>
+        <nav class="navbar-menu">
+          <ul>
+            <li>
+              <a href="/" class="nav-link">← Back to Main</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="page-header">
+        <h2>Vote for Your Favorite Design</h2>
+        <p>Preview all 6 design variants and vote for your favorite</p>
+      </div>
+
+      <!-- Status Message -->
+      <div
+        id="status-message"
+        class="status-message"
+        style="display: none"
+      ></div>
+
+      <!-- Chart Section -->
+      <div class="chart-section">
+        <div class="chart-title">📊 Current Vote Distribution</div>
+        <canvas id="voteChart"></canvas>
+      </div>
+
+      <!-- Design Cards Grid -->
+      <div class="designs-grid" id="designs-grid">
+        <div class="loading-spinner">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Preview Modal -->
+    <div id="preview-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-title">Design Preview</h2>
+          <button class="modal-close" id="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <iframe
+            id="modal-iframe"
+            style="
+              width: 100%;
+              height: 600px;
+              border: none;
+              border-radius: 0.5rem;
+            "
+            title="Design Preview"
+          ></iframe>
+          <p class="design-description" id="modal-description"></p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Configuration
+      const DESIGNS = [
+        {
+          id: "kiwilab1",
+          name: "KiwiLab 1",
+          path: "/kiwilabs/kiwilab1/kiwilab1.html",
+          description:
+            "Modern, clean design with focus on typography and whitespace.",
+        },
+        {
+          id: "kiwilab2",
+          name: "KiwiLab 2",
+          path: "/kiwilabs/kiwilab2/kiwilab2.html",
+          description:
+            "Contemporary design with vibrant colors and dynamic layouts.",
+        },
+        {
+          id: "kiwilab3",
+          name: "KiwiLab 3",
+          path: "/kiwilabs/kiwilab3/kiwilab3.html",
+          description:
+            "Minimalist approach emphasizing content clarity and user focus.",
+        },
+        {
+          id: "kiwilab4",
+          name: "KiwiLab 4",
+          path: "/kiwilabs/kiwilab4/kiwilab4.html",
+          description:
+            "Bold and adventurous design with striking visual elements.",
+        },
+        {
+          id: "kiwilab5",
+          name: "KiwiLab 5",
+          path: "/kiwilabs/kiwilab5/kiwilab5.html",
+          description:
+            "Tech-forward design blending innovation with usability.",
+        },
+        {
+          id: "kiwilab6",
+          name: "KiwiLab 6",
+          path: "/kiwilabs/kiwilab6/kiwilab6.html",
+          description:
+            "Elegant and sophisticated design with premium aesthetics.",
+        },
+      ];
+
+      // State
+      let voteData = {};
+      let chart = null;
+      let userVote = null; // Track user's vote in session
+
+      // Initialize
+      document.addEventListener("DOMContentLoaded", () => {
+        initializeVoteData();
+        renderDesignCards();
+        initializeChart();
+        loadVoteStats();
+        attachEventListeners();
+      });
+
+      // Initialize vote data structure
+      function initializeVoteData() {
+        DESIGNS.forEach((design) => {
+          voteData[design.id] = 0;
+        });
+      }
+
+      // Render design cards
+      function renderDesignCards() {
+        const grid = document.getElementById("designs-grid");
+        grid.innerHTML = "";
+
+        DESIGNS.forEach((design) => {
+          const card = document.createElement("div");
+          card.className = "design-card";
+          card.innerHTML = `
+                    <div class="design-thumbnail" data-design-id="${design.id}">
+                        <img src="/kiwilabs/${design.id}/${
+            design.id
+          }_files/thumbnail.png" 
+                             alt="${design.name}" 
+                             onerror="this.style.display='none'" />
+                        <div style="padding: 1rem; text-align: center; color: var(--color-text-secondary);">
+                            <p style="margin: 0;">Preview of ${design.name}</p>
+                        </div>
+                    </div>
+                    <div class="design-info">
+                        <h3 class="design-title">${design.name}</h3>
+                        <p class="design-number">Design Variant ${design.id.replace(
+                          "kiwilab",
+                          ""
+                        )}</p>
+                        <div class="vote-count">
+                            <span>Votes:</span>
+                            <span class="vote-count-number" data-vote-count="${
+                              design.id
+                            }">0</span>
+                        </div>
+                        <div class="card-actions">
+                            <button class="btn-preview" data-design-id="${
+                              design.id
+                            }">
+                                👁️ Preview
+                            </button>
+                            <button class="btn-vote" data-design-id="${
+                              design.id
+                            }">
+                                ⭐ Vote
+                            </button>
+                        </div>
+                    </div>
+                `;
+          grid.appendChild(card);
+        });
+      }
+
+      // Initialize Chart.js chart
+      function initializeChart() {
+        const ctx = document.getElementById("voteChart").getContext("2d");
+
+        chart = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: DESIGNS.map((d) => d.name),
+            datasets: [
+              {
+                label: "Votes",
+                data: DESIGNS.map((d) => voteData[d.id] || 0),
+                backgroundColor: [
+                  "rgba(255, 215, 0, 0.8)",
+                  "rgba(255, 237, 78, 0.8)",
+                  "rgba(255, 228, 109, 0.8)",
+                  "rgba(255, 245, 157, 0.8)",
+                  "rgba(255, 250, 205, 0.8)",
+                  "rgba(218, 165, 0, 0.8)",
+                ],
+                borderColor: [
+                  "#ffd700",
+                  "#ffed4e",
+                  "#ffe46b",
+                  "#fff59d",
+                  "#fffacd",
+                  "#daa500",
+                ],
+                borderWidth: 2,
+                borderRadius: 4,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: {
+                display: false,
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  stepSize: 1,
+                  color: "rgba(255, 255, 255, 0.7)",
+                  font: {
+                    size: 12,
+                  },
+                },
+                grid: {
+                  color: "rgba(255, 255, 255, 0.1)",
+                  drawBorder: false,
+                },
+              },
+              x: {
+                ticks: {
+                  color: "rgba(255, 255, 255, 0.7)",
+                  font: {
+                    size: 12,
+                  },
+                },
+                grid: {
+                  display: false,
+                  drawBorder: false,
+                },
+              },
+            },
+          },
+        });
+      }
+
+      // Load vote statistics from API
+      async function loadVoteStats() {
+        try {
+          const response = await fetch("/api/vote-stats");
+          if (response.ok) {
+            const stats = await response.json();
+            Object.assign(voteData, stats);
+            updateChart();
+            updateVoteCountsDisplay();
+          }
+        } catch (error) {
+          console.error("Error loading vote stats:", error);
+        }
+      }
+
+      // Update chart with new data
+      function updateChart() {
+        if (chart) {
+          chart.data.datasets[0].data = DESIGNS.map((d) => voteData[d.id] || 0);
+          chart.update();
+        }
+      }
+
+      // Update vote counts displayed on cards
+      function updateVoteCountsDisplay() {
+        DESIGNS.forEach((design) => {
+          const element = document.querySelector(
+            `[data-vote-count="${design.id}"]`
+          );
+          if (element) {
+            element.textContent = voteData[design.id] || 0;
+          }
+        });
+      }
+
+      // Attach event listeners
+      function attachEventListeners() {
+        // Preview buttons
+        document.querySelectorAll(".btn-preview").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            const designId = e.target.dataset.designId;
+            openPreviewModal(designId);
+          });
+        });
+
+        // Vote buttons
+        document.querySelectorAll(".btn-vote").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            const designId = e.target.dataset.designId;
+            submitVote(designId);
+          });
+        });
+
+        // Thumbnail click for preview
+        document.querySelectorAll(".design-thumbnail").forEach((thumb) => {
+          thumb.addEventListener("click", (e) => {
+            const designId = e.currentTarget.dataset.designId;
+            openPreviewModal(designId);
+          });
+        });
+
+        // Modal close
+        document
+          .getElementById("modal-close")
+          .addEventListener("click", closePreviewModal);
+        document
+          .getElementById("preview-modal")
+          .addEventListener("click", (e) => {
+            if (e.target.id === "preview-modal") {
+              closePreviewModal();
+            }
+          });
+      }
+
+      // Open preview modal
+      function openPreviewModal(designId) {
+        const design = DESIGNS.find((d) => d.id === designId);
+        if (!design) return;
+
+        document.getElementById(
+          "modal-title"
+        ).textContent = `${design.name} - Full Preview`;
+        document.getElementById("modal-iframe").src = design.path;
+        document.getElementById("modal-description").textContent =
+          design.description;
+        document.getElementById("preview-modal").classList.add("show");
+        document.body.style.overflow = "hidden";
+      }
+
+      // Close preview modal
+      function closePreviewModal() {
+        document.getElementById("preview-modal").classList.remove("show");
+        document.getElementById("modal-iframe").src = "";
+        document.body.style.overflow = "auto";
+      }
+
+      // Submit vote
+      async function submitVote(designId) {
+        try {
+          const response = await fetch("/api/vote", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ design_id: designId }),
+          });
+
+          if (response.ok) {
+            userVote = designId;
+            showStatusMessage(
+              `✓ Vote for ${
+                DESIGNS.find((d) => d.id === designId).name
+              } recorded!`,
+              "success"
+            );
+            loadVoteStats();
+            updateVoteButtonStates();
+          } else {
+            const error = await response.json();
+            showStatusMessage(
+              `Error: ${error.error || "Failed to record vote"}`,
+              "error"
+            );
+          }
+        } catch (error) {
+          console.error("Error submitting vote:", error);
+          showStatusMessage("Network error: Failed to submit vote", "error");
+        }
+      }
+
+      // Update vote button states
+      function updateVoteButtonStates() {
+        document.querySelectorAll(".btn-vote").forEach((btn) => {
+          const designId = btn.dataset.designId;
+          if (designId === userVote) {
+            btn.classList.add("voted");
+            btn.textContent = "✓ Voted";
+            btn.disabled = true;
+          } else {
+            btn.classList.remove("voted");
+            btn.textContent = "⭐ Vote";
+            btn.disabled = false;
+          }
+        });
+      }
+
+      // Show status message
+      function showStatusMessage(message, type) {
+        const element = document.getElementById("status-message");
+        element.textContent = message;
+        element.className = `status-message ${type}`;
+        element.style.display = "block";
+
+        setTimeout(() => {
+          element.style.display = "none";
+        }, 5000);
+      }
+
+      // Keyboard navigation
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          closePreviewModal();
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -4,9 +4,17 @@ Quick reference guide for Docker, pipeline, testing, and development commands.
 
 ## Docker Commands
 
+**Note:** Docker Compose v2 (plugin) uses `docker compose` (space), while v1 (standalone) uses `docker-compose` (hyphen). Both work identically. On VPS, you likely have v2 plugin installed.
+
 ### Full Rebuild (Cache Clear)
 
 ```bash
+# Docker Compose v2 (plugin) - recommended
+docker compose down
+docker compose build --no-cache
+docker compose up -d
+
+# OR Docker Compose v1 (standalone)
 docker-compose down
 docker-compose build --no-cache
 docker-compose up -d
@@ -15,6 +23,11 @@ docker-compose up -d
 ### Rebuild Specific Service
 
 ```bash
+# Docker Compose v2
+docker compose build --no-cache <service>
+docker compose up -d <service>
+
+# OR Docker Compose v1
 docker-compose build --no-cache <service>
 docker-compose up -d <service>
 ```
@@ -22,18 +35,26 @@ docker-compose up -d <service>
 ### Restart Service
 
 ```bash
-docker-compose restart <service>
+# Docker Compose v2
+docker compose restart <service>
 # Or restart all:
+docker compose restart
+
+# OR Docker Compose v1
+docker-compose restart <service>
 docker-compose restart
 ```
 
 ### View Logs
 
 ```bash
-# All services
+# All services (v2)
+docker compose logs -f
+
+# All services (v1)
 docker-compose logs -f
 
-# Specific service
+# Specific service (works with both)
 docker logs -f ai-news-python
 docker logs -f ai-news-web
 docker logs -f ai-news-n8n
@@ -42,7 +63,13 @@ docker logs -f ai-news-n8n
 ### Service Status
 
 ```bash
+# Docker Compose v2
+docker compose ps
+
+# OR Docker Compose v1
 docker-compose ps
+
+# Direct Docker command (works with both)
 docker ps | grep ai-news
 ```
 
@@ -229,7 +256,10 @@ docker logs <container-name>
 # Check port conflicts
 netstat -tulpn | grep -E '5001|8080|5678'
 
-# Rebuild with cache clear
+# Rebuild with cache clear (v2)
+docker compose build --no-cache <service>
+
+# OR (v1)
 docker-compose build --no-cache <service>
 ```
 
@@ -241,7 +271,11 @@ docker-compose build --no-cache <service>
 # Or restart container
 docker restart <container-name>
 
-# For code changes in containers
+# For code changes in containers (v2)
+docker compose build --no-cache <service>
+docker compose up -d <service>
+
+# OR (v1)
 docker-compose build --no-cache <service>
 docker-compose up -d <service>
 ```

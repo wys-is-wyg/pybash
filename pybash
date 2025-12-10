@@ -1,0 +1,136 @@
+# HTTP server - redirect to HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name srv1186603.hstgr.cloud;
+
+    # Let's Encrypt challenge
+    location /.well-known/acme-challenge/ {
+        root /home/ubuntu/pybash/web/public;
+    }
+
+    # Redirect all other HTTP traffic to HTTPS
+    location / {
+        return 301 https://$server_name$request_uri;
+    }
+}
+
+# HTTPS server (main application)
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name srv1186603.hstgr.cloud;
+
+    # SSL certificates
+    ssl_certificate /etc/letsencrypt/live/srv1186603.hstgr.cloud/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/srv1186603.hstgr.cloud/privkey.pem;
+    
+    # SSL configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Proxy settings
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
+
+    # Increase timeouts for long-running requests
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+
+    # Proxy to Express web server (port 8080)
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+
+# HTTPS server for n8n on port 5678
+server {
+    listen 5678 ssl http2;
+    listen [::]:5678 ssl http2;
+    server_name srv1186603.hstgr.cloud;
+
+    # SSL certificates
+    ssl_certificate /etc/letsencrypt/live/srv1186603.hstgr.cloud/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/srv1186603.hstgr.cloud/privkey.pem;
+    
+    # SSL configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Proxy settings for n8n
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
+
+    # Increase timeouts for n8n (it can have long-running workflows)
+    proxy_connect_timeout 300s;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
+
+    # Disable buffering for n8n (important for real-time updates)
+    proxy_buffering off;
+    proxy_request_buffering off;
+
+    # Proxy all requests to n8n (Docker internal port 15678)
+    location / {
+        proxy_pass http://localhost:15678;
+        proxy_http_version 1.1;
+        
+        # WebSocket support - REQUIRED for n8n workflow imports and real-time updates
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        
+        # WebSocket specific settings
+        proxy_cache_bypass $http_upgrade;
+        proxy_no_cache $http_upgrade;
+        
+        # WebSocket headers (n8n needs these)
+        proxy_set_header Sec-WebSocket-Extensions $http_sec_websocket_extensions;
+        proxy_set_header Sec-WebSocket-Key $http_sec_websocket_key;
+        proxy_set_header Sec-WebSocket-Version $http_sec_websocket_version;
+        proxy_set_header Sec-WebSocket-Protocol $http_sec_websocket_protocol;
+        
+        # Increase WebSocket timeouts (24 hours for long-running connections)
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+        proxy_connect_timeout 86400s;
+        
+        # Allow WebSocket connections to stay open
+        chunked_transfer_encoding off;
+    }
+}
