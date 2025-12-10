@@ -307,8 +307,9 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
             if existing_summary:
                 existing_summary = clean_html_and_entities(existing_summary)
             
-            # Use existing summary if it's already good, otherwise summarize
-            if existing_summary and len(existing_summary.split()) >= settings.SUMMARY_MIN_WORDS:
+            # Use existing summary if it's already good (within word limits), otherwise summarize
+            word_count = len(existing_summary.split()) if existing_summary else 0
+            if existing_summary and settings.SUMMARY_MIN_WORDS <= word_count <= settings.SUMMARY_MAX_WORDS:
                 summary = existing_summary
             else:
                 # Combine title and summary for full context
@@ -320,6 +321,12 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
                     item_start = time.time()
                     summary = summarize_article(text_to_summarize)
                     item_time = time.time() - item_start
+                    
+                    # Ensure summary doesn't exceed max_words (trim if necessary)
+                    if summary:
+                        summary_words = summary.split()
+                        if len(summary_words) > settings.SUMMARY_MAX_WORDS:
+                            summary = " ".join(summary_words[:settings.SUMMARY_MAX_WORDS])
             
             # Create new item with summary
             summarized_item = item.copy()
