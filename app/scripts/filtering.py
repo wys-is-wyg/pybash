@@ -319,7 +319,8 @@ def calculate_interest_score(item: Dict[str, Any]) -> float:
             days_old = (now - pub_date.replace(tzinfo=timezone.utc)).days
             if days_old <= 7:
                 score += 0.2  # Recent content
-        except:
+        except Exception as e:
+            # Date parsing failure - continue without date bonus
             pass
     
     return min(score, 1.0)

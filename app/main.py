@@ -25,7 +25,7 @@ from flask_cors import CORS
 # from flask_limiter import Limiter
 # from flask_limiter.util import get_remote_address
 from app.config import settings
-from app.scripts.error_logger import initialize_error_logging
+from app.scripts.error_logger import initialize_error_logging, log_exception
 from app.scripts.data_manager import load_json, save_json, merge_feeds, generate_feed_json, build_display_data
 
 # Initialize centralized error logging (catches all unhandled exceptions)
@@ -78,10 +78,10 @@ def cleanup_old_data():
                 try:
                     json_file.unlink()
                     removed_count += 1
-                except Exception:
-                    pass
-    except Exception:
-        pass
+                except Exception as e:
+                    log_exception(e, context="cleanup_old_data.unlink")
+    except Exception as e:
+        log_exception(e, context="cleanup_old_data")
     
     if removed_count > 0:
         pass
@@ -135,7 +135,6 @@ def get_news_feed():
         except FileNotFoundError:
             return jsonify([]), 200
     except Exception as e:
-        from app.scripts.error_logger import log_exception
         log_exception(e, context="get_news_feed")
         return jsonify({'error': f'Failed to load feed: {str(e)}'}), 500
 
@@ -212,11 +211,13 @@ def merge_data():
         }), 200
         
     except FileNotFoundError as e:
+        log_exception(e, context="merge_data.FileNotFoundError")
         return jsonify({
             'status': 'error',
             'message': f'Required data file not found: {str(e)}'
         }), 404
     except Exception as e:
+        log_exception(e, context="merge_data")
         return jsonify({
             'status': 'error',
             'message': f'Failed to merge data: {str(e)}'
@@ -287,11 +288,13 @@ def refresh_feed():
                     'items_count': item_count
                 }), 200
             except FileNotFoundError as e:
+                log_exception(e, context="refresh_feed.GET.FileNotFoundError")
                 return jsonify({
                     'status': 'error',
                     'message': f'Required data file not found: {str(e)}'
                 }), 404
             except Exception as e:
+                log_exception(e, context="refresh_feed.GET")
                 return jsonify({'error': f'Failed to merge feed: {str(e)}'}), 500
         
         # POST request: try to get JSON body, but fall back to merging from files if no body
@@ -340,11 +343,13 @@ def refresh_feed():
                     'items_count': item_count
                 }), 200
             except FileNotFoundError as e:
+                log_exception(e, context="refresh_feed.POST.FileNotFoundError")
                 return jsonify({
                     'status': 'error',
                     'message': f'Required data file not found: {str(e)}'
                 }), 404
             except Exception as e:
+                log_exception(e, context="refresh_feed.POST")
                 return jsonify({'error': f'Failed to merge feed: {str(e)}'}), 500
         
         # POST with body: validate and save directly
@@ -363,6 +368,7 @@ def refresh_feed():
         }), 200
         
     except Exception as e:
+        log_exception(e, context="refresh_feed")
         return jsonify({'error': 'Failed to refresh feed'}), 500
 
 
@@ -398,8 +404,10 @@ def scrape_feeds():
             }), 500
             
     except subprocess.TimeoutExpired:
+        log_exception(Exception("RSS scraping timed out"), context="scrape_feeds.TimeoutExpired")
         return jsonify({'error': 'Scraping timed out'}), 500
     except Exception as e:
+        log_exception(e, context="scrape_feeds")
         return jsonify({'error': 'Failed to trigger scraping'}), 500
 
 
@@ -435,8 +443,10 @@ def pre_filter_articles():
             }), 500
             
     except subprocess.TimeoutExpired:
+        log_exception(Exception("Pre-filtering timed out"), context="pre_filter_articles.TimeoutExpired")
         return jsonify({'error': 'Pre-filtering timed out'}), 500
     except Exception as e:
+        log_exception(e, context="pre_filter_articles")
         return jsonify({'error': 'Failed to trigger pre-filtering'}), 500
 
 
@@ -470,8 +480,10 @@ def summarize_articles():
             }), 500
             
     except subprocess.TimeoutExpired:
+        log_exception(Exception("Summarization timed out"), context="summarize_articles.TimeoutExpired")
         return jsonify({'error': 'Summarization timed out'}), 500
     except Exception as e:
+        log_exception(e, context="summarize_articles")
         return jsonify({'error': 'Failed to trigger summarization'}), 500
 
 
@@ -506,8 +518,10 @@ def generate_ideas():
             }), 500
             
     except subprocess.TimeoutExpired:
+        log_exception(Exception("Video idea generation timed out"), context="generate_ideas.TimeoutExpired")
         return jsonify({'error': 'Generation timed out'}), 500
     except Exception as e:
+        log_exception(e, context="generate_ideas")
         return jsonify({'error': 'Failed to trigger generation'}), 500
 
 
@@ -567,8 +581,7 @@ def n8n_webhook():
                 else:
                     pass
             except Exception as e:
-                from app.scripts.error_logger import log_exception
-                log_exception(e, context="n8n_webhook")
+                log_exception(e, context="n8n_webhook.merge_data")
         
         return jsonify({
             'status': 'received',
@@ -576,6 +589,7 @@ def n8n_webhook():
         }), 200
         
     except Exception as e:
+        log_exception(e, context="n8n_webhook")
         return jsonify({'error': 'Failed to process webhook'}), 500
 
 
@@ -627,6 +641,7 @@ def parse_video_ideas_log():
         return completed_count, None, avg_seconds_per_article, start_time, last_time
     
     except Exception as e:
+        log_exception(e, context="parse_video_ideas_log")
         return None, None, None, None, None
 
 
@@ -807,6 +822,7 @@ def validate_pipeline_password():
             }), 401
             
     except Exception as e:
+        log_exception(e, context="validate_pipeline_password")
         return jsonify({
             'valid': False,
             'message': 'Error validating password'
@@ -895,6 +911,7 @@ def trigger_pipeline():
             # Timeout is OK - n8n may have accepted the request but not responded yet
             webhook_triggered = True
         except requests.exceptions.ConnectionError as e:
+            log_exception(e, context="trigger_pipeline.ConnectionError")
             with progress_lock:
                 pipeline_progress['status'] = 'error'
                 pipeline_progress['message'] = f'Failed to connect to n8n: {str(e)}'
@@ -903,6 +920,7 @@ def trigger_pipeline():
                 'message': f'Failed to connect to n8n: {str(e)}'
             }), 500
         except requests.exceptions.RequestException as e:
+            log_exception(e, context="trigger_pipeline.RequestException")
             with progress_lock:
                 pipeline_progress['status'] = 'error'
                 pipeline_progress['message'] = f'Failed to trigger webhook: {str(e)}'
@@ -932,6 +950,7 @@ def trigger_pipeline():
         }), 200
         
     except Exception as e:
+        log_exception(e, context="trigger_pipeline")
         with progress_lock:
             pipeline_progress['status'] = 'error'
             pipeline_progress['message'] = f'Failed to trigger pipeline: {str(e)}'
@@ -1028,11 +1047,13 @@ This message was sent from the AI News Tracker contact form.
             }), 200
             
         except Exception as e:
+            log_exception(e, context="contact_form.send_email")
             return jsonify({
                 'error': 'Failed to send email. Please try again later.'
             }), 500
         
     except Exception as e:
+        log_exception(e, context="contact_form")
         return jsonify({'error': 'Failed to process contact form'}), 500
 
 
@@ -1065,6 +1086,7 @@ def get_cache_stats():
             'cache_stats': stats
         }), 200
     except Exception as e:
+        log_exception(e, context="get_cache_stats")
         return jsonify({'error': 'Failed to get cache stats'}), 500
 
 
@@ -1088,6 +1110,7 @@ def clear_cache_endpoint():
             'message': f'Cache cleared{" for key: " + cache_key if cache_key else ""}'
         }), 200
     except Exception as e:
+        log_exception(e, context="clear_cache_endpoint")
         return jsonify({'error': 'Failed to clear cache'}), 500
 
 
@@ -1101,7 +1124,6 @@ def preload_models():
             if llm:
                 pass
         except Exception as e:
-            from app.scripts.error_logger import log_exception
             log_exception(e, context="preload_llm_model")
         
         try:
@@ -1112,7 +1134,6 @@ def preload_models():
                 if summarizer:
                     pass
         except Exception as e:
-            from app.scripts.error_logger import log_exception
             log_exception(e, context="preload_summarizer")
     
     # Run in background thread to not block startup

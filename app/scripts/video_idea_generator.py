@@ -16,6 +16,7 @@ from app.scripts.data_manager import load_json, save_json
 from app.scripts.tag_categorizer import categorize_article
 from app.scripts.input_validator import validate_for_video_ideas
 from app.scripts.cache_manager import cached, get_cached, set_cached
+from app.scripts.error_logger import log_exception
 
 
 # Try to import llama-cpp-python
@@ -73,6 +74,7 @@ def get_llm_model():
         
         return model
     except Exception as e:
+        log_exception(e, context="get_llm_model")
         return None
 
 # Templates removed - using LLM-generated titles directly
@@ -324,6 +326,7 @@ def generate_batch_video_ideas_with_llm(
         try:
             grammar = LlamaGrammar.from_json_schema(json.dumps(VIDEO_IDEA_ARRAY_SCHEMA))
         except Exception as e:
+            log_exception(e, context="generate_batch_video_ideas_with_llm.grammar")
             return []
         
         # Build prompt requesting multiple ideas with different angles
@@ -399,11 +402,13 @@ Return ONLY the JSON array, no other text.<|eot_id|><|start_header_id|>assistant
                 else:
                     return [ideas] if isinstance(ideas, dict) else []
             except json.JSONDecodeError as e:
+                log_exception(e, context="generate_batch_video_ideas_with_llm.JSONDecodeError")
                 return []
         else:
             return []
             
     except Exception as e:
+        log_exception(e, context="generate_batch_video_ideas_with_llm")
         return []
 
 
@@ -470,6 +475,7 @@ def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 2) -
         return processed_ideas
         
     except Exception as e:
+        log_exception(e, context="generate_video_ideas_for_article")
         return []
 
 
@@ -560,6 +566,7 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 video_ideas.append(video_idea)
             
         except Exception as e:
+            log_exception(e, context=f"generate_video_ideas.item_{i}")
             continue
     
     return video_ideas
@@ -619,6 +626,7 @@ def main():
         return 0
         
     except Exception as e:
+        log_exception(e, context="video_idea_generator.main")
         return 1
 
 

@@ -14,6 +14,7 @@ from app.scripts.data_manager import load_json, save_json
 from app.scripts.tag_categorizer import assign_visual_tags_to_articles
 from app.scripts.input_validator import validate_for_summarization
 from app.scripts.cache_manager import cached, get_cached, set_cached
+from app.scripts.error_logger import log_exception
 
 # Try to import sumy for fast extractive summarization
 try:
@@ -98,7 +99,7 @@ def get_summarizer():
         
         return summarizer
     except Exception as e:
-        pass
+        log_exception(e, context="get_summarizer")
         raise
 
 
@@ -267,6 +268,7 @@ def summarize_article(text: str, max_words: int = None) -> str:
         return summary
         
     except Exception as e:
+        log_exception(e, context="summarize_article")
         # Fallback: return first N words
         words = text.split()[:max_words]
         return " ".join(words)
@@ -288,6 +290,7 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
         try:
             summarizer = get_summarizer()
         except Exception as e:
+            log_exception(e, context="preload_summarizer")
             raise
     
     import time
@@ -327,6 +330,7 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
             summarized_items.append(summarized_item)
             
         except Exception as e:
+            log_exception(e, context=f"batch_summarize_news.item_{i}")
             # Keep original item without summary
             item_copy = item.copy()
             item_copy['summary'] = item.get('summary', '')
@@ -410,6 +414,7 @@ def main():
         return 0
         
     except Exception as e:
+        log_exception(e, context="summarizer.main")
         return 1
 
 

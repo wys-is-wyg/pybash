@@ -166,7 +166,9 @@ def main():
         filtered_news_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
         save_json(filtered_data, str(filtered_news_file))
         
-    except Exception:
+    except Exception as e:
+        from app.scripts.error_logger import log_exception
+        log_exception(e, context="pre_filter.main")
         sys.exit(1)
 
 

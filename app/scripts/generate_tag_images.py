@@ -19,6 +19,7 @@ from app.scripts.leonardo_api import (
     get_generation_status,
     download_generated_image
 )
+from app.scripts.error_logger import log_exception
 
 
 
@@ -117,6 +118,7 @@ def generate_tag_images(output_dir: Path, limit: int = 30) -> List[Dict[str, Any
                 pass
                 
         except Exception as e:
+            log_exception(e, context=f"generate_tag_images.tag_{i}")
             continue
     
     # Save metadata
@@ -148,6 +150,7 @@ def main():
         generate_tag_images(output_dir, limit=args.limit)
         return 0
     except Exception as e:
+        log_exception(e, context="generate_tag_images.main")
         return 1
 
 

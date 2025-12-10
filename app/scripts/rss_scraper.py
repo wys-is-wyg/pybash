@@ -13,6 +13,7 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 from app.config import settings
 from app.scripts.data_manager import save_json
+from app.scripts.error_logger import log_exception
 
 
 def fetch_rss_feeds(feed_urls: List[str] = None) -> List[Dict[str, Any]]:
@@ -43,9 +44,11 @@ def fetch_rss_feeds(feed_urls: List[str] = None) -> List[Dict[str, Any]]:
             
             feeds.append(feed)
             
-        except requests.RequestException:
+        except requests.RequestException as e:
+            log_exception(e, context=f"fetch_rss_feeds.RequestException: {url}")
             continue
-        except Exception:
+        except Exception as e:
+            log_exception(e, context=f"fetch_rss_feeds: {url}")
             continue
     return feeds
 
@@ -147,7 +150,8 @@ def parse_feed_entries(entries: List[Any]) -> List[Dict[str, Any]]:
             
             news_items.append(news_item)
             
-        except Exception:
+        except Exception as e:
+            log_exception(e, context="parse_feed_entries")
             continue
     return news_items
 
@@ -191,7 +195,8 @@ def main():
         
         return 0
         
-    except Exception:
+    except Exception as e:
+        log_exception(e, context="rss_scraper.main")
         return 1
 
 

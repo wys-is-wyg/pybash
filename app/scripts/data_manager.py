@@ -14,6 +14,7 @@ from typing import Dict, List, Any, Optional
 from app.config import settings
 from app.scripts.filtering import filter_and_deduplicate
 from app.scripts.tag_categorizer import assign_visual_tags_to_articles, AI_TOPICS
+from app.scripts.error_logger import log_exception
 
 
 def generate_article_id(source_url: str) -> str:
@@ -85,8 +86,10 @@ def load_json(file_path: str) -> Dict[str, Any]:
             data = json.load(f)
         return data
     except json.JSONDecodeError as e:
+        log_exception(e, context=f"load_json.JSONDecodeError: {path}")
         raise
     except Exception as e:
+        log_exception(e, context=f"load_json: {path}")
         raise
 
 
@@ -117,6 +120,7 @@ def save_json(data: Dict[str, Any], file_path: str) -> None:
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=True)
     except OSError as e:
+        log_exception(e, context=f"save_json.OSError: {path}")
         raise
 
 
@@ -625,6 +629,8 @@ if __name__ == "__main__":
                 pass
             
         except FileNotFoundError as e:
+            log_exception(e, context="data_manager.main.FileNotFoundError")
             sys.exit(1)
         except Exception as e:
+            log_exception(e, context="data_manager.main")
             sys.exit(1)
