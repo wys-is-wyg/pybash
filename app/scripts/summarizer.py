@@ -224,7 +224,6 @@ def summarize_article(text: str, max_words: int = None) -> str:
     # Validate and sanitize input before passing to Hugging Face
     is_valid, sanitized_text, reason = validate_for_summarization(text)
     if not is_valid:
-        # logger.error(f"Input validation failed for summarization: {reason}")
         # Return empty string rather than processing potentially dangerous input
         return ""
     
@@ -268,7 +267,6 @@ def summarize_article(text: str, max_words: int = None) -> str:
         return summary
         
     except Exception as e:
-        # logger.error(f"Failed to summarize article: {e}")
         # Fallback: return first N words
         words = text.split()[:max_words]
         return " ".join(words)
@@ -290,7 +288,6 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
         try:
             summarizer = get_summarizer()
         except Exception as e:
-            # logger.error(f"Failed to pre-load transformers model: {e}", exc_info=True)
             raise
     
     import time
@@ -330,7 +327,6 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
             summarized_items.append(summarized_item)
             
         except Exception as e:
-            # logger.error(f"Failed to summarize item {i}/{len(news_items)}: {e}")
             # Keep original item without summary
             item_copy = item.copy()
             item_copy['summary'] = item.get('summary', '')
@@ -360,7 +356,6 @@ def main():
                     data = json.loads(stdin_data)
                     news_items = data.get('items', [])
             except (json.JSONDecodeError, ValueError) as e:
-                # logger.error(f"Failed to parse JSON from stdin: {e}")
                 pass
         
         # If stdin didn't work, load from filtered_news.json (pre-filtered top 30)
@@ -415,7 +410,6 @@ def main():
         return 0
         
     except Exception as e:
-        # logger.error(f"Summarization failed: {e}", exc_info=True)
         return 1
 
 

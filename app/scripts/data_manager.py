@@ -85,10 +85,8 @@ def load_json(file_path: str) -> Dict[str, Any]:
             data = json.load(f)
         return data
     except json.JSONDecodeError as e:
-        # logger.error(f"Invalid JSON in {path}: {e}")
         raise
     except Exception as e:
-        # logger.error(f"Failed to load JSON from {path}: {e}")
         raise
 
 
@@ -119,7 +117,6 @@ def save_json(data: Dict[str, Any], file_path: str) -> None:
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=True)
     except OSError as e:
-        # logger.error(f"Failed to save JSON to {path}: {e}")
         raise
 
 
@@ -628,8 +625,6 @@ if __name__ == "__main__":
                 pass
             
         except FileNotFoundError as e:
-            # logger.error(f"Required data file not found: {e}")
             sys.exit(1)
         except Exception as e:
-            # logger.error(f"Data manager failed: {e}", exc_info=True)
             sys.exit(1)

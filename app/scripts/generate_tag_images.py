@@ -117,7 +117,6 @@ def generate_tag_images(output_dir: Path, limit: int = 30) -> List[Dict[str, Any
                 pass
                 
         except Exception as e:
-            # logger.error(f"Error generating image for tag '{tag}': {e}")
             continue
     
     # Save metadata
@@ -149,7 +148,6 @@ def main():
         generate_tag_images(output_dir, limit=args.limit)
         return 0
     except Exception as e:
-        # logger.error(f"Tag image generation failed: {e}", exc_info=True)
         return 1
 
 

@@ -56,7 +56,6 @@ def get_llm_model():
     model_path = settings.LLM_MODEL_PATH
     
     if not os.path.exists(model_path):
-        # logger.error(f"Model file not found: {model_path}")
         return None
     
     try:
@@ -74,7 +73,6 @@ def get_llm_model():
         
         return model
     except Exception as e:
-        # logger.error(f"Failed to load LLM model: {e}", exc_info=True)
         return None
 
 # Templates removed - using LLM-generated titles directly
@@ -326,7 +324,6 @@ def generate_batch_video_ideas_with_llm(
         try:
             grammar = LlamaGrammar.from_json_schema(json.dumps(VIDEO_IDEA_ARRAY_SCHEMA))
         except Exception as e:
-            # logger.error(f"Grammar creation failed: {e}")
             return []
         
         # Build prompt requesting multiple ideas with different angles
@@ -402,14 +399,11 @@ Return ONLY the JSON array, no other text.<|eot_id|><|start_header_id|>assistant
                 else:
                     return [ideas] if isinstance(ideas, dict) else []
             except json.JSONDecodeError as e:
-                # logger.error(f"Failed to parse JSON from LLM response: {e}")
                 return []
         else:
-            # logger.error("Unexpected response format from LLM")
             return []
             
     except Exception as e:
-        # logger.error(f"Error during batch LLM generation: {e}", exc_info=True)
         return []
 
 
@@ -476,7 +470,6 @@ def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 2) -
         return processed_ideas
         
     except Exception as e:
-        # logger.error(f"Failed to generate video ideas: {e}", exc_info=True)
         return []
 
 
@@ -546,7 +539,6 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
             video_ideas_data = generate_video_ideas_for_article(item, num_ideas=num_ideas)
                 
             if not video_ideas_data:
-                # logger.error(f"Video idea generation failed for article {i}: {title[:50]}... - No video ideas generated")
                 continue
             
             # Get article_id from item or generate it
@@ -568,7 +560,6 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 video_ideas.append(video_idea)
             
         except Exception as e:
-            # logger.error(f"Failed to generate video idea for item {i}/{len(summaries)}: {e}")
             continue
     
     return video_ideas
@@ -602,7 +593,6 @@ def main():
                 data = load_json(input_file)
                 summaries = data.get('items', [])
             except FileNotFoundError:
-                # logger.error(f"Input file not found: {input_file}")
                 return 1
         
         if not summaries:
@@ -629,7 +619,6 @@ def main():
         return 0
         
     except Exception as e:
-        # logger.error(f"Video idea generation failed: {e}", exc_info=True)
         return 1
 
 
