@@ -1,100 +1,10 @@
-# Build and Development Guide
+# Build and Development Quick Reference
 
-Complete guide for building, running, and developing the AI News Tracker application.
+Quick reference guide for Docker, pipeline, testing, and development commands.
 
-## Table of Contents
+## Docker Commands
 
-- [Initial Setup](#initial-setup)
-- [Docker Build and Start](#docker-build-and-start)
-- [Cache Clearing and Rebuilds](#cache-clearing-and-rebuilds)
-- [Starting Services](#starting-services)
-- [CSS Building](#css-building)
-- [Accessing the Application](#accessing-the-application)
-- [Troubleshooting](#troubleshooting)
-
-## Initial Setup
-
-### Prerequisites
-
-- Docker and Docker Compose installed
-- WSL2 Ubuntu (for Windows users)
-- `.env` file configured with required environment variables
-
-### First-Time Build
-
-Build all Docker images:
-
-```bash
-docker-compose build
-```
-
-Start all services:
-
-```bash
-docker-compose up -d
-```
-
-Verify all containers are running:
-
-```bash
-docker-compose ps
-```
-
-Expected output should show three services:
-- `ai-news-python` (Python Flask API)
-- `ai-news-web` (Node.js web server)
-- `ai-news-n8n` (n8n workflow automation)
-
-## Docker Build and Start
-
-### Full Stack Build and Start
-
-Build and start all services:
-
-```bash
-docker-compose up -d --build
-```
-
-### Individual Service Build
-
-Build a specific service:
-
-```bash
-docker-compose build python-app
-docker-compose build web-server
-docker-compose build n8n
-```
-
-### Start Services
-
-Start all services (assumes images already built):
-
-```bash
-docker-compose up -d
-```
-
-Start a specific service:
-
-```bash
-docker-compose up -d python-app
-docker-compose up -d web-server
-docker-compose up -d n8n
-```
-
-## Cache Clearing and Rebuilds
-
-### When to Clear Cache
-
-**Always use `--no-cache` after:**
-- Changes to Dockerfiles
-- Changes to `requirements.txt` or `package.json`
-- Changes to environment variables or configuration
-- When changes aren't appearing despite volume mounts
-- After any build-related changes
-
-### Full Rebuild with Cache Clear
-
-Rebuild all services from scratch:
+### Full Rebuild (Cache Clear)
 
 ```bash
 docker-compose down
@@ -102,228 +12,22 @@ docker-compose build --no-cache
 docker-compose up -d
 ```
 
-### Rebuild Specific Service with Cache Clear
-
-Rebuild a single service:
+### Rebuild Specific Service
 
 ```bash
-# Stop the service
-docker-compose stop python-app
-
-# Rebuild without cache
-docker-compose build --no-cache python-app
-
-# Start the service
-docker-compose up -d python-app
+docker-compose build --no-cache <service>
+docker-compose up -d <service>
 ```
 
-**Python App rebuild:**
-```bash
-docker-compose stop python-app
-docker-compose build --no-cache python-app
-docker-compose up -d python-app
-```
-
-**Web Server rebuild:**
-```bash
-docker-compose stop web-server
-docker-compose build --no-cache web-server
-docker-compose up -d web-server
-```
-
-### Quick Restart (No Rebuild)
-
-When only configuration or volume-mounted files change:
+### Restart Service
 
 ```bash
-docker-compose restart python-app
-docker-compose restart web-server
-docker-compose restart n8n
-```
-
-Or restart all:
-
-```bash
+docker-compose restart <service>
+# Or restart all:
 docker-compose restart
 ```
 
-## Starting Services
-
-### Python Flask Application
-
-The Python app runs automatically when the `python-app` container starts. It uses Gunicorn and listens on port 5001.
-
-**Start Python app:**
-```bash
-docker-compose up -d python-app
-```
-
-**View Python app logs:**
-```bash
-docker logs -f ai-news-python
-```
-
-**Check Python app health:**
-```bash
-curl http://localhost:5001/health
-```
-
-**Restart Python app:**
-```bash
-docker-compose restart python-app
-```
-
-### Web Server
-
-The Node.js web server runs automatically when the `web-server` container starts. It serves on ports 8080 (HTTP) and 8443 (HTTPS).
-
-**Start web server:**
-```bash
-docker-compose up -d web-server
-```
-
-**View web server logs:**
-```bash
-docker logs -f ai-news-web
-```
-
-**Restart web server:**
-```bash
-docker-compose restart web-server
-```
-
-### n8n Workflow Automation
-
-n8n runs automatically when the `n8n` container starts. It serves on port 5678.
-
-**Start n8n:**
-```bash
-docker-compose up -d n8n
-```
-
-**View n8n logs:**
-```bash
-docker logs -f ai-news-n8n
-```
-
-## CSS Building
-
-This project uses **Tailwind CSS v4** for styling. The CSS is built from a source file into the public directory.
-
-### Source and Output Files
-
-- **Source**: `web/src/input.css` (Tailwind imports + custom CSS)
-- **Output**: `web/public/css/style.css` (compiled CSS)
-
-### Build CSS in Docker Container (Recommended)
-
-Since Tailwind is a dev dependency, install dev dependencies first:
-
-```bash
-# Install dev dependencies (includes Tailwind)
-docker exec ai-news-web npm install --include=dev
-
-# Build CSS
-docker exec ai-news-web npm run build:css
-```
-
-Or as a one-liner:
-```bash
-docker exec ai-news-web sh -c "npm install --include=dev && npm run build:css"
-```
-
-### Build CSS Locally (WSL)
-
-If you have Node.js installed in WSL:
-
-```bash
-# In WSL bash (not PowerShell)
-cd ~/projects/pybash/web
-npm install  # Only needed first time
-npm run build:css
-```
-
-**Note**: Make sure you're in WSL bash, not Windows PowerShell, when running npm commands.
-
-### Watch Mode (Development)
-
-For automatic rebuilding when you edit CSS:
-
-**Locally:**
-```bash
-cd web
-npm run watch:css
-```
-
-**In Docker:**
-```bash
-docker exec -it ai-news-web npm run watch:css
-```
-
-This will watch `src/input.css` and automatically rebuild when you save changes.
-
-### After Building CSS
-
-1. **Hard refresh your browser** (Ctrl+Shift+R) to see changes
-2. **No container restart needed** - CSS is served as static files
-
-### CSS Troubleshooting
-
-**"tailwindcss: command not found"**
-
-Install dependencies first:
-```bash
-cd web
-npm install
-```
-
-**Changes not showing?**
-
-1. Hard refresh browser (Ctrl+Shift+R)
-2. Clear browser cache
-3. Check that `public/css/style.css` was updated (check file timestamp)
-
-**Need to rebuild after editing `src/input.css`?**
-
-Yes! Always run `npm run build:css` after editing the source file.
-
-## Accessing the Application
-
-### HTTP (Port 8080)
-
-- **URL**: `http://localhost:8080`
-- **Feed**: `http://localhost:8080/`
-- **Video Ideas**: `http://localhost:8080/video-ideas`
-- **Output**: `http://localhost:8080/output`
-- **Dashboard**: `http://localhost:8080/dashboard`
-- **Rationale**: `http://localhost:8080/rationale`
-
-### HTTPS (Port 8443)
-
-- **URL**: `https://localhost:8443`
-- **Feed**: `https://localhost:8443/`
-- **Video Ideas**: `https://localhost:8443/video-ideas`
-- **Output**: `https://localhost:8443/output`
-- **Dashboard**: `https://localhost:8443/dashboard`
-- **Rationale**: `https://localhost:8443/rationale`
-
-### n8n Dashboard
-
-- **URL**: `http://localhost:5678`
-- **Default Username**: `admin`
-- **Default Password**: Set in `.env` as `N8N_AUTH_PASSWORD` (default: `changeme`)
-
-### Python API
-
-- **Health Check**: `http://localhost:5001/health`
-- **News Feed**: `http://localhost:5001/api/news`
-- **Refresh Feed**: `POST http://localhost:5001/api/refresh`
-
-## Troubleshooting
-
 ### View Logs
-
-Monitor container logs in real-time:
 
 ```bash
 # All services
@@ -335,116 +39,225 @@ docker logs -f ai-news-web
 docker logs -f ai-news-n8n
 ```
 
-Press `Ctrl+C` to stop following logs.
-
-### Browser Cache Issues
-
-If you see old navigation links or content:
-
-1. **Hard Refresh**:
-   - **Chrome/Edge**: `Ctrl + Shift + R` (Windows) or `Cmd + Shift + R` (Mac)
-   - **Firefox**: `Ctrl + F5` (Windows) or `Cmd + Shift + R` (Mac)
-
-2. **Clear Cache**:
-   - Open DevTools (F12)
-   - Right-click the refresh button
-   - Select "Empty Cache and Hard Reload"
-
-3. **Incognito/Private Mode**:
-   - Open a new incognito window
-   - Access `http://localhost:8080` or `https://localhost:8443`
-
-### SSL Errors
-
-**Error: "ERR_SSL_PROTOCOL_ERROR" or "Invalid Response"**
-
-**Solution**: Make sure you're using the correct port:
-- ✅ **HTTPS**: `https://localhost:8443` (port 8443)
-- ❌ **NOT**: `https://localhost:8080` (port 8080 is HTTP only)
-
-**Error: "Your connection is not private" (Self-signed certificate)**
-
-This is **normal** for development. To proceed:
-
-1. Click **"Advanced"** or **"Show Details"**
-2. Click **"Proceed to localhost"** or **"Accept the Risk"**
-3. The browser will remember this choice
-
-**If HTTPS Still Doesn't Work**
-
-1. **Check if HTTPS server is running**:
-   ```bash
-   docker logs ai-news-web | grep HTTPS
-   ```
-   Should show: `HTTPS server running on port 8443`
-
-2. **Verify SSL certificates exist**:
-   ```bash
-   docker exec ai-news-web ls -la /app/ssl/
-   ```
-   Should show `cert.pem` and `key.pem`
-
-3. **Regenerate SSL certificates** (if needed):
-   ```bash
-   cd web
-   bash generate-ssl.sh
-   docker-compose restart web-server
-   ```
-
-### Container Issues
-
-**Container won't start?**
-
-1. Check logs: `docker logs <container-name>`
-2. Verify environment variables in `.env`
-3. Check port conflicts: `netstat -tulpn | grep <port>`
-4. Rebuild with cache clear: `docker-compose build --no-cache <service>`
-
-**Changes not appearing?**
-
-1. For volume-mounted files (CSS, JS, HTML):
-   - Hard refresh browser (Ctrl+Shift+R)
-   - Restart container: `docker restart <container-name>`
-
-2. For code changes in containers:
-   - Rebuild with `--no-cache`: `docker-compose build --no-cache <service>`
-   - Restart: `docker-compose up -d <service>`
-
-**Python app not responding?**
-
-1. Check health endpoint: `curl http://localhost:5001/health`
-2. View logs: `docker logs ai-news-python`
-3. Verify Python app is running: `docker ps | grep ai-news-python`
-4. Restart: `docker-compose restart python-app`
-
-**Routes return 404?**
-
-1. Check server.js has the route defined
-2. Restart container: `docker-compose restart web-server`
-3. Check logs for errors: `docker logs ai-news-web`
-
-### Quick Reference
+### Service Status
 
 ```bash
-# Full rebuild (cache clear)
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker-compose ps
+docker ps | grep ai-news
+```
 
-# Rebuild specific service
-docker-compose build --no-cache <service>
-docker-compose up -d <service>
+## Pipeline Commands
 
-# Restart service
-docker-compose restart <service>
+### Run Full Pipeline
 
-# View logs
-docker logs -f <container-name>
+```bash
+# Production mode (30 articles default)
+bash app/scripts/run_pipeline.sh
 
-# Build CSS
+# Test mode (5 articles, no images)
+bash app/scripts/run_pipeline.sh --test
+
+# Custom limit
+bash app/scripts/run_pipeline.sh --limit 10
+
+# With image limit
+bash app/scripts/run_pipeline.sh --limit 10 --image-limit 5
+```
+
+### Trigger Pipeline via n8n Webhook
+
+```bash
+# Manual trigger
+bash app/scripts/webhook_trigger.sh
+
+# Cron trigger
+bash app/scripts/webhook_trigger.sh "cron"
+
+# With metadata
+bash app/scripts/webhook_trigger.sh "manual" "user:admin"
+```
+
+### Individual Pipeline Steps
+
+```bash
+# RSS Scraper
+docker exec ai-news-python python3 /app/app/scripts/rss_scraper.py
+
+# Summarizer (reads from stdin or file)
+docker exec -i ai-news-python python3 /app/app/scripts/summarizer.py < app/data/raw_news.json
+
+# Video Idea Generator
+docker exec -i ai-news-python python3 /app/app/scripts/video_idea_generator.py < app/data/summaries.json
+
+# Data Manager (merge into feed.json)
+docker exec ai-news-python python3 /app/app/scripts/data_manager.py --limit 30
+
+# Generate Tag Images
+bash app/scripts/generate_tag_images.sh
+bash app/scripts/generate_tag_images.sh --limit 20
+```
+
+### Pipeline via API
+
+```bash
+# Refresh feed (merges data files)
+curl -X POST http://localhost:5001/api/refresh
+
+# Trigger pipeline via n8n webhook (if configured)
+curl -X POST http://localhost:5678/webhook/run-pipeline \
+  -H "Content-Type: application/json" \
+  -d '{"trigger_source":"manual","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
+```
+
+## Test Commands
+
+### Run API Tests
+
+```bash
+# All tests
+pytest app/tests/test_api.py -v
+
+# With coverage
+pytest app/tests/test_api.py -v --cov=app
+
+# Specific test
+pytest app/tests/test_api.py::test_health_endpoint -v
+
+# Verbose output
+pytest app/tests/test_api.py -v -s
+```
+
+### Test Summarizer
+
+```bash
+# Test first article
+bash app/scripts/test_summarizer.sh
+
+# Test specific article
+bash app/scripts/test_summarizer.sh 5
+
+# Test multiple articles
+bash app/scripts/test_summarizer.sh 1 3
+```
+
+### Health Checks
+
+```bash
+# Python API health
+curl http://localhost:5001/health
+
+# Web server
+curl http://localhost:8080
+
+# n8n dashboard
+curl http://localhost:5678
+
+# News feed endpoint
+curl http://localhost:5001/api/news
+```
+
+## Development Commands
+
+### Build CSS
+
+```bash
+# In Docker container
 docker exec ai-news-web npm run build:css
 
-# Check health
-curl http://localhost:5001/health
-curl http://localhost:8080
+# Install dev dependencies first (if needed)
+docker exec ai-news-web npm install --include=dev
+
+# Watch mode (auto-rebuild on changes)
+docker exec -it ai-news-web npm run watch:css
+```
+
+### Access Application URLs
+
+```bash
+# HTTP
+http://localhost:8080
+
+# HTTPS
+https://localhost:8443
+
+# n8n Dashboard
+http://localhost:5678
+
+# Python API
+http://localhost:5001/health
+http://localhost:5001/api/news
+```
+
+### View Data Files
+
+```bash
+# List data files
+ls -la app/data/
+
+# View feed
+cat app/data/feed.json | jq .
+
+# View display data
+cat app/data/display.json | jq .
+
+# View pipeline logs
+ls -la app/logs/
+tail -f app/logs/pipeline_*.log
+```
+
+### Python Script Execution
+
+```bash
+# Run Python script in container
+docker exec ai-news-python python3 /app/app/scripts/<script>.py
+
+# Run with stdin input
+docker exec -i ai-news-python python3 /app/app/scripts/<script>.py < input.json
+
+# Interactive Python shell
+docker exec -it ai-news-python python3
+```
+
+## Troubleshooting
+
+### Container Won't Start
+
+```bash
+# Check logs
+docker logs <container-name>
+
+# Check port conflicts
+netstat -tulpn | grep -E '5001|8080|5678'
+
+# Rebuild with cache clear
+docker-compose build --no-cache <service>
+```
+
+### Changes Not Appearing
+
+```bash
+# For volume-mounted files (CSS, JS, HTML)
+# Hard refresh browser (Ctrl+Shift+R)
+# Or restart container
+docker restart <container-name>
+
+# For code changes in containers
+docker-compose build --no-cache <service>
+docker-compose up -d <service>
+```
+
+### Pipeline Errors
+
+```bash
+# Check pipeline logs
+tail -f app/logs/pipeline_*.log
+
+# Check execution log
+cat app/data/pipeline_execution.log
+
+# Verify data files exist
+ls -la app/data/*.json
+
+# Test individual steps
+bash app/scripts/test_summarizer.sh
 ```
