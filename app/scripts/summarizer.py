@@ -8,6 +8,7 @@ Falls back to transformers if sumy is not available.
 import re
 import html
 from typing import List, Dict, Any, Optional
+from bs4 import BeautifulSoup
 from app.config import settings
 from app.scripts.data_manager import load_json, save_json
 from app.scripts.tag_categorizer import assign_visual_tags_to_articles
@@ -104,6 +105,7 @@ def get_summarizer():
 def clean_html_and_entities(text: str) -> str:
     """
     Remove HTML tags and decode HTML entities from text.
+    Uses BeautifulSoup for better HTML parsing, extracting only text content.
     
     Args:
         text: Text that may contain HTML tags and entities
@@ -114,26 +116,47 @@ def clean_html_and_entities(text: str) -> str:
     if not text:
         return ""
     
-    # First decode HTML entities (e.g., &#8217; -> ', &amp; -> &)
-    text = html.unescape(text)
-    
-    # Remove HTML tags using regex
-    text = re.sub(r'<[^>]+>', '', text)
-    
-    # Remove common HTML artifacts
-    text = re.sub(r'&nbsp;', ' ', text)
-    text = re.sub(r'&amp;', '&', text)
-    text = re.sub(r'&lt;', '<', text)
-    text = re.sub(r'&gt;', '>', text)
-    text = re.sub(r'&quot;', '"', text)
-    text = re.sub(r'&#8217;', "'", text)
-    text = re.sub(r'&#8230;', '...', text)
-    
-    # Clean up extra whitespace
-    text = re.sub(r'\s+', ' ', text)
-    text = text.strip()
-    
-    return text
+    try:
+        # Parse HTML with BeautifulSoup for better extraction
+        soup = BeautifulSoup(text, 'html.parser')
+        
+        # Remove script, style, code, and pre elements completely
+        for element in soup(["script", "style", "code", "pre", "img"]):
+            element.decompose()
+        
+        # Get text content (this automatically removes all tags)
+        text = soup.get_text(separator=' ', strip=True)
+        
+        # Decode HTML entities
+        text = html.unescape(text)
+        
+        # Clean up extra whitespace
+        text = re.sub(r'\s+', ' ', text)
+        text = text.strip()
+        
+        return text
+    except Exception:
+        # Fallback to regex-based cleaning if BeautifulSoup fails
+        # First decode HTML entities
+        text = html.unescape(text)
+        
+        # Remove HTML tags using regex
+        text = re.sub(r'<[^>]+>', '', text)
+        
+        # Remove common HTML artifacts
+        text = re.sub(r'&nbsp;', ' ', text)
+        text = re.sub(r'&amp;', '&', text)
+        text = re.sub(r'&lt;', '<', text)
+        text = re.sub(r'&gt;', '>', text)
+        text = re.sub(r'&quot;', '"', text)
+        text = re.sub(r'&#8217;', "'", text)
+        text = re.sub(r'&#8230;', '...', text)
+        
+        # Clean up extra whitespace
+        text = re.sub(r'\s+', ' ', text)
+        text = text.strip()
+        
+        return text
 
 
 def summarize_with_sumy(text: str, max_words: int = 150, language: str = "english") -> str:
@@ -176,8 +199,8 @@ def summarize_with_sumy(text: str, max_words: int = 150, language: str = "englis
         
         return summary
         
-    except Exception as e:
-        # logger.warning(f"sumy summarization failed: {e}, falling back to transformers")
+    except Exception:
+        # Expected failure - sumy not available or failed, fallback to transformers
         return None
 
 
@@ -196,7 +219,6 @@ def summarize_article(text: str, max_words: int = None) -> str:
         max_words = settings.SUMMARY_MAX_WORDS
     
     if not text or len(text.strip()) == 0:
-        # logger.warning("Empty text provided for summarization")
         return ""
     
     # Validate and sanitize input before passing to Hugging Face
@@ -214,27 +236,20 @@ def summarize_article(text: str, max_words: int = None) -> str:
         
         # Try fast sumy summarization first
         if SUMY_AVAILABLE:
-            # logger.debug(f"Using sumy for fast extractive summarization ({len(text)} chars)")
             start_time = time.time()
             summary = summarize_with_sumy(text, max_words=max_words)
             if summary:
                 elapsed = time.time() - start_time
-                # logger.info(f"sumy summarization completed in {elapsed:.2f} seconds")
                 summary = clean_html_and_entities(summary)
                 return summary
-            else:
-                # logger.warning("sumy failed, falling back to transformers")
         
         # Fallback to transformers (slow)
-        # logger.debug(f"Using transformers summarization ({len(text)} chars)")
         summarizer = get_summarizer()
         
         # Calculate max_length and min_length based on word count
         # Rough estimate: 1 word ≈ 1.3 tokens
         max_length = int(max_words * 1.3)
         min_length = int(settings.SUMMARY_MIN_WORDS * 1.3)
-        
-        # logger.info(f"Calling transformers with max_length={max_length}, min_length={min_length}")
         
         start_time = time.time()
         result = summarizer(
@@ -244,10 +259,8 @@ def summarize_article(text: str, max_words: int = None) -> str:
             do_sample=False
         )
         elapsed = time.time() - start_time
-        # logger.info(f"Transformers call completed in {elapsed:.1f} seconds")
         
         summary = result[0]['summary_text'] if result else ""
-        # logger.debug(f"Generated summary ({len(summary)} chars)")
         
         # Clean HTML tags and entities from summary
         summary = clean_html_and_entities(summary)
@@ -271,21 +284,15 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
     Returns:
         List of news items with added 'summary' field (if not present or enhanced)
     """
-    # logger.info(f"Summarizing {len(news_items)} news articles")
-    
     # Pre-load transformers model only if sumy is not available
+    summarized_items = []
     if not SUMY_AVAILABLE:
-        # logger.info("Pre-loading transformers model (sumy not available)...")
         try:
             summarizer = get_summarizer()
-            # logger.info("Transformers model pre-loaded successfully, starting batch processing...")
         except Exception as e:
             # logger.error(f"Failed to pre-load transformers model: {e}", exc_info=True)
             raise
-    else:
-        # logger.info("Using fast sumy extractive summarization (no model loading needed)")
     
-    summarized_items = []
     import time
     batch_start = time.time()
     
@@ -293,31 +300,26 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
         try:
             # Combine title and summary for better context
             title = item.get('title', '')
-            existing_summary = item.get('summary', '')
+            # Check for both 'summary' and 'full_summary' fields (filtered_news.json uses 'full_summary')
+            existing_summary = item.get('full_summary', '') or item.get('summary', '')
+            
+            # Clean HTML from existing summary if present
+            if existing_summary:
+                existing_summary = clean_html_and_entities(existing_summary)
             
             # Use existing summary if it's already good, otherwise summarize
             if existing_summary and len(existing_summary.split()) >= settings.SUMMARY_MIN_WORDS:
-                summary = clean_html_and_entities(existing_summary)
-                # logger.debug(f"Item {i}/{len(news_items)}: Using existing summary (cleaned)")
+                summary = existing_summary
             else:
                 # Combine title and summary for full context
                 text_to_summarize = f"{title}. {existing_summary}" if existing_summary else title
                 
                 if not text_to_summarize.strip():
-                    # logger.warning(f"Item {i}/{len(news_items)}: No text to summarize")
                     summary = ""
                 else:
                     item_start = time.time()
                     summary = summarize_article(text_to_summarize)
                     item_time = time.time() - item_start
-                    # logger.info(f"Item {i}/{len(news_items)}: Generated summary in {item_time:.1f}s ({len(summary.split())} words)")
-                    
-                    # Log progress every 10 items
-                    if i % 10 == 0:
-                        elapsed = time.time() - batch_start
-                        avg_time = elapsed / i
-                        remaining = (len(news_items) - i) * avg_time
-                        # logger.info(f"Progress: {i}/{len(news_items)} ({i*100//len(news_items)}%) - Est. remaining: {remaining/60:.1f} min")
             
             # Create new item with summary
             summarized_item = item.copy()
@@ -338,8 +340,6 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
     
     total_time = time.time() - batch_start
     successful = sum(1 for item in summarized_items if item.get('summary_generated', False))
-    # logger.info(f"Batch summarization complete: {successful}/{len(news_items)} successful in {total_time/60:.1f} minutes")
-    # logger.info(f"Average time per article: {total_time/len(news_items):.1f} seconds")
     
     return summarized_items
 
@@ -350,50 +350,38 @@ def main():
     import json
     
     try:
-        # logger.info("Starting summarization process")
-        
         # Try to read from stdin first (for pipeline usage), otherwise use file
         news_items = None
         if not sys.stdin.isatty():
             # Reading from stdin (pipeline mode)
-            # logger.info("Reading news items from stdin")
             try:
                 stdin_data = sys.stdin.read()
                 if stdin_data and stdin_data.strip():
                     data = json.loads(stdin_data)
                     news_items = data.get('items', [])
-                    # logger.info(f"Loaded {len(news_items)} news items from stdin")
-                else:
-                    # logger.warning("stdin is empty, falling back to file")
             except (json.JSONDecodeError, ValueError) as e:
                 # logger.error(f"Failed to parse JSON from stdin: {e}")
-                # logger.info("Falling back to file input")
+                pass
         
         # If stdin didn't work, load from filtered_news.json (pre-filtered top 30)
         if news_items is None:
             # Try filtered_news.json first (guaranteed to be filtered to top 30)
             filtered_file = settings.DATA_DIR / "filtered_news.json"
             input_file = str(filtered_file)
-            # logger.info(f"Loading news items from {input_file} (pre-filtered)")
             
             try:
                 data = load_json(input_file)
                 news_items = data.get('items', [])
-                # logger.info(f"Loaded {len(news_items)} news items from filtered file")
             except FileNotFoundError:
                 # Fallback to raw_news.json if filtered_news.json doesn't exist
-                # logger.warning(f"Filtered file not found, falling back to {settings.RAW_NEWS_FILE}")
                 input_file = settings.RAW_NEWS_FILE
                 data = load_json(input_file)
                 news_items = data.get('items', [])
-                # logger.info(f"Loaded {len(news_items)} news items from raw file")
         
         if not news_items:
-            # logger.warning("No news items to summarize")
             return 0
         
         # Assign visual tags to articles before summarizing
-        # logger.info("Assigning visual tags to articles...")
         news_items = assign_visual_tags_to_articles(news_items)
         
         # Summarize articles
@@ -424,7 +412,6 @@ def main():
         }
         save_json(output_data, output_file)
         
-        # logger.info("Summarization completed successfully")
         return 0
         
     except Exception as e:
@@ -435,5 +422,9 @@ def main():
 if __name__ == "__main__":
     """Command-line execution."""
     import sys
+    # Initialize error logging for this script
+    from app.scripts.error_logger import initialize_error_logging
+    initialize_error_logging()
+    
     exit_code = main()
     sys.exit(exit_code)

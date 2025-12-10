@@ -6,8 +6,11 @@ Fetches and parses RSS feeds from multiple sources to collect AI news articles.
 
 import feedparser
 import requests
+import re
+import html
 from typing import List, Dict, Any
 from datetime import datetime
+from bs4 import BeautifulSoup
 from app.config import settings
 from app.scripts.data_manager import save_json
 
@@ -47,6 +50,50 @@ def fetch_rss_feeds(feed_urls: List[str] = None) -> List[Dict[str, Any]]:
     return feeds
 
 
+def extract_text_from_html(html_content: str) -> str:
+    """
+    Extract only text content from HTML, removing all tags (including code, img, a, etc.).
+    
+    Args:
+        html_content: HTML string that may contain tags
+        
+    Returns:
+        Clean text content without any HTML tags
+    """
+    if not html_content:
+        return ''
+    
+    try:
+        # Parse HTML with BeautifulSoup
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Remove script and style elements completely
+        for script in soup(["script", "style", "code", "pre"]):
+            script.decompose()
+        
+        # Get text content (this automatically removes all tags)
+        text = soup.get_text(separator=' ', strip=True)
+        
+        # Decode HTML entities
+        text = html.unescape(text)
+        
+        # Clean up extra whitespace
+        text = re.sub(r'\s+', ' ', text)
+        text = text.strip()
+        
+        return text
+    except Exception:
+        # Fallback to regex-based cleaning if BeautifulSoup fails
+        # Remove HTML tags using regex
+        text = re.sub(r'<[^>]+>', '', html_content)
+        # Decode HTML entities
+        text = html.unescape(text)
+        # Clean up extra whitespace
+        text = re.sub(r'\s+', ' ', text)
+        text = text.strip()
+        return text
+
+
 def parse_feed_entries(entries: List[Any]) -> List[Dict[str, Any]]:
     """
     Parse feedparser entries into structured news items.
@@ -81,13 +128,16 @@ def parse_feed_entries(entries: List[Any]) -> List[Dict[str, Any]]:
                 if not text:
                     return ''
                 # Remove control characters except newlines, tabs, and carriage returns
-                import re
                 # Keep \n, \r, \t, but remove other control chars (0x00-0x1F except 0x09, 0x0A, 0x0D)
                 return re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F]', '', str(text))
             
+            # Extract summary and clean HTML tags
+            raw_summary = getattr(entry, 'summary', '')
+            cleaned_summary = extract_text_from_html(raw_summary) if raw_summary else ''
+            
             news_item = {
                 'title': clean_text(getattr(entry, 'title', '')),
-                'summary': clean_text(getattr(entry, 'summary', '')),
+                'summary': clean_text(cleaned_summary),
                 'source': clean_text(getattr(entry, 'source', {}).get('title', '') if hasattr(entry, 'source') else ''),
                 'source_url': getattr(entry, 'link', ''),
                 'published_date': published_date,
@@ -148,6 +198,10 @@ def main():
 if __name__ == "__main__":
     """Command-line execution."""
     import sys
+    # Initialize error logging for this script
+    from app.scripts.error_logger import initialize_error_logging
+    initialize_error_logging()
+    
     exit_code = main()
     sys.exit(exit_code)
 

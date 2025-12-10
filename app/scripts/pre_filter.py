@@ -171,5 +171,9 @@ def main():
 
 
 if __name__ == "__main__":
+    # Initialize error logging for this script
+    from app.scripts.error_logger import initialize_error_logging
+    initialize_error_logging()
+    
     main()
 

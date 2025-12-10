@@ -153,14 +153,12 @@ def calculate_relevance_score(item: Dict[str, Any]) -> float:
         # Very lenient check: if article has tag_relevance_score >= 1, it already matched AI topics
         # Just verify there's at least 1 AI keyword mention (tag_relevance_score already indicates AI relevance)
         if ai_keyword_mentions < 1:
-            # logger.debug(f"Article '{item.get('title', '')[:50]}...' has tag_relevance_score={tag_relevance_score} but no AI keywords found - REJECTED")
             return 0.0
         # For articles with tag_relevance_score >= 1, calculate a score based on AI keyword density
         # but don't reject if percentage is low - trust the tag_relevance_score
     else:
         # Strict: require > 50% AI content for articles without tag_relevance_score
         if ai_percentage < 0.5:
-            # logger.debug(f"Article '{item.get('title', '')[:50]}...' has {ai_percentage:.1%} AI content (required: >50%) - REJECTED")
             return 0.0
     
     # Penalize low-relevance keywords
@@ -363,8 +361,6 @@ def deduplicate_items(items: List[Dict[str, Any]], similarity_threshold: float =
     Returns:
         List of deduplicated items (keeps first occurrence of duplicates)
     """
-    # logger.info(f"Deduplicating {len(items)} items (threshold: {similarity_threshold})")
-    
     unique_items = []
     seen_titles = set()
     
@@ -377,23 +373,18 @@ def deduplicate_items(items: List[Dict[str, Any]], similarity_threshold: float =
         
         # Check for exact duplicates
         if title in seen_titles:
-            # logger.debug(f"Skipping duplicate: {title[:50]}...")
             continue
         
         # Check for similar items
         is_dup = False
         for existing in unique_items:
             if is_duplicate(item, existing, similarity_threshold):
-                # logger.debug(f"Skipping similar item: {title[:50]}... (similar to {existing.get('title', '')[:50]}...)")
                 is_dup = True
                 break
         
         if not is_dup:
             unique_items.append(item)
             seen_titles.add(title)
-    
-    removed = len(items) - len(unique_items)
-    # logger.info(f"Deduplication complete: {len(unique_items)} unique items (removed {removed} duplicates)")
     
     return unique_items
 
@@ -409,8 +400,6 @@ def filter_by_relevance(items: List[Dict[str, Any]], min_score: float = 0.1) -> 
     Returns:
         List of filtered items with relevance scores above threshold
     """
-    # logger.info(f"Filtering {len(items)} items by relevance (min_score: {min_score})")
-    
     filtered = []
     for item in items:
         score = calculate_relevance_score(item)
@@ -419,10 +408,7 @@ def filter_by_relevance(items: List[Dict[str, Any]], min_score: float = 0.1) -> 
         if score >= min_score:
             filtered.append(item)
         else:
-            # logger.debug(f"Filtered out low-relevance item: {item.get('title', '')[:50]}... (score: {score:.2f})")
-    
-    removed = len(items) - len(filtered)
-    # logger.info(f"Relevance filtering complete: {len(filtered)} items kept (removed {removed} low-relevance items)")
+            pass
     
     return filtered
 
@@ -439,8 +425,6 @@ def filter_by_composite_score(items: List[Dict[str, Any]], min_score: float = 0.
     Returns:
         List of top-ranked items sorted by composite score (highest first)
     """
-    # logger.info(f"Filtering {len(items)} items by composite score (min_score: {min_score}, max_items: {max_items})")
-    
     # Calculate composite scores for all items
     scored_items = []
     for item in items:
@@ -454,19 +438,13 @@ def filter_by_composite_score(items: List[Dict[str, Any]], min_score: float = 0.
         if composite_score >= min_score:
             scored_items.append(item)
         else:
-            # logger.debug(f"Filtered out low-score item: {item.get('title', '')[:50]}... (score: {composite_score:.2f})")
+            pass
     
     # Sort by composite score (highest first)
     scored_items.sort(key=lambda x: x.get('composite_score', 0.0), reverse=True)
     
     # Return top N items
     top_items = scored_items[:max_items]
-    
-    removed = len(items) - len(top_items)
-    # logger.info(f"Composite filtering complete: {len(top_items)} top items selected (removed {removed} items)")
-    
-    if top_items:
-        # logger.info(f"Score range: {top_items[-1].get('composite_score', 0):.2f} - {top_items[0].get('composite_score', 0):.2f}")
     
     return top_items
 
@@ -485,8 +463,6 @@ def filter_by_user_criteria(items: List[Dict[str, Any]], max_items: int = 30) ->
     Returns:
         Filtered list of items that meet user criteria, sorted by relevance_score (highest first)
     """
-    # logger.info(f"Filtering {len(items)} items by user criteria (tag_relevance_score >= 1, relevance_to_ai > 50%, no negative keywords)")
-    
     filtered_items = []
     rejected_count = 0
     rejection_reasons = {}
@@ -497,7 +473,6 @@ def filter_by_user_criteria(items: List[Dict[str, Any]], max_items: int = 30) ->
         if tag_relevance_score < 1:
             rejected_count += 1
             rejection_reasons['tag_relevance_score'] = rejection_reasons.get('tag_relevance_score', 0) + 1
-            # logger.debug(f"Rejected '{item.get('title', '')[:50]}...' - tag_relevance_score {tag_relevance_score} < 1")
             continue
         
         # Check 2: relevance_to_ai > 50% (relevance_score > 0.0)
@@ -506,7 +481,6 @@ def filter_by_user_criteria(items: List[Dict[str, Any]], max_items: int = 30) ->
         if relevance_score <= 0.0:
             rejected_count += 1
             rejection_reasons['relevance_to_ai'] = rejection_reasons.get('relevance_to_ai', 0) + 1
-            # logger.debug(f"Rejected '{item.get('title', '')[:50]}...' - relevance_to_ai <= 50% (score: {relevance_score:.2f})")
             continue
         
         # Check 3: No negative keywords in title
@@ -515,7 +489,6 @@ def filter_by_user_criteria(items: List[Dict[str, Any]], max_items: int = 30) ->
         if has_title_negative:
             rejected_count += 1
             rejection_reasons['title_negative_keywords'] = rejection_reasons.get('title_negative_keywords', 0) + 1
-            # logger.debug(f"Rejected '{item.get('title', '')[:50]}...' - negative keywords in title")
             continue
         
         # Check 4: No negative keywords in body (unless strongly AI-related)
@@ -530,7 +503,6 @@ def filter_by_user_criteria(items: List[Dict[str, Any]], max_items: int = 30) ->
             if strong_ai_count < 3:
                 rejected_count += 1
                 rejection_reasons['negative_keywords'] = rejection_reasons.get('negative_keywords', 0) + 1
-                # logger.debug(f"Rejected '{item.get('title', '')[:50]}...' - negative keywords, only {strong_ai_count} AI keywords")
                 continue
         
         # Item passed all checks
@@ -541,14 +513,6 @@ def filter_by_user_criteria(items: List[Dict[str, Any]], max_items: int = 30) ->
     
     # Return top N items
     top_items = filtered_items[:max_items]
-    
-    removed = len(items) - len(top_items)
-    # logger.info(f"User criteria filtering complete: {len(top_items)} items kept (removed {removed} items)")
-    if rejection_reasons:
-        # logger.info(f"Rejection reasons: {rejection_reasons}")
-    
-    if top_items:
-        # logger.info(f"Relevance score range: {top_items[-1].get('relevance_score', 0):.2f} - {top_items[0].get('relevance_score', 0):.2f}")
     
     return top_items
 
@@ -574,15 +538,11 @@ def filter_and_deduplicate(items: List[Dict[str, Any]],
     Returns:
         Filtered, deduplicated, and top-ranked list of items
     """
-    # logger.info(f"Applying filtering and deduplication to {len(items)} items (max_items: {max_items})")
-    
     # First deduplicate
     unique_items = deduplicate_items(items, similarity_threshold)
     
     # Then filter by user criteria (tag_relevance_score >= 1, relevance_to_ai > 50%, no negative keywords)
     top_items = filter_by_user_criteria(unique_items, max_items=max_items)
-    
-    # logger.info(f"Filtering complete: {len(top_items)} top items selected")
     
     return top_items
 

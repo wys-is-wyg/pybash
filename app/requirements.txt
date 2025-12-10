@@ -16,3 +16,4 @@ sumy
 nltk
 transformers
 torch
+beautifulsoup4

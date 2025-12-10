@@ -66,7 +66,6 @@ class InputValidator:
         # Check length
         if len(text) > InputValidator.MAX_INPUT_LENGTH:
             reason = f"Input too long ({len(text)} chars, max {InputValidator.MAX_INPUT_LENGTH})"
-            # logger.warning(f"Input validation failed: {reason}")
             if strict_mode:
                 return False, reason
 
@@ -74,17 +73,13 @@ class InputValidator:
         for pattern in InputValidator.INJECTION_PATTERNS:
             if re.search(pattern, text, re.IGNORECASE):
                 reason = f"Detected suspicious pattern: {pattern}"
-                # logger.warning(f"Input validation failed: {reason}")
                 if strict_mode:
                     return False, reason
-                else:
-                    # logger.warning(f"Strict mode disabled; allowing content anyway")
 
         # Check for control characters (except newlines, tabs, carriage returns)
         control_chars = re.findall(r"[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]", text)
         if control_chars:
             reason = f"Detected {len(control_chars)} control characters"
-            # logger.warning(f"Input validation failed: {reason}")
             if strict_mode:
                 return False, reason
 
@@ -94,7 +89,6 @@ class InputValidator:
 
         if special_ratio > InputValidator.MAX_SPECIAL_CHAR_RATIO:
             reason = f"Excessive special characters ({special_ratio:.1%}, max {InputValidator.MAX_SPECIAL_CHAR_RATIO:.1%})"
-            # logger.warning(f"Input validation failed: {reason}")
             if strict_mode:
                 return False, reason
 
@@ -104,7 +98,6 @@ class InputValidator:
         repeated_special = re.search(r"[^\w\s\.\,\-\:\!\?\'\"\(\)]{8,}", text)
         if repeated_special:
             reason = f"Detected repeated special characters: {repeated_special.group()[:20]}..."
-            # logger.warning(f"Input validation failed: {reason}")
             if strict_mode:
                 return False, reason
 

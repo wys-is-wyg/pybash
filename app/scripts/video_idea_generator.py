@@ -25,7 +25,6 @@ try:
     LLAMA_AVAILABLE = True
 except ImportError:
     LLAMA_AVAILABLE = False
-    # logger.warning("llama-cpp-python not installed, video idea generation will fail")
 
 # Global model instance (shared with summarizer) - cached per process
 _llm_model = None
@@ -61,7 +60,6 @@ def get_llm_model():
         return None
     
     try:
-        # logger.info(f"Loading LLM model for video ideas: {model_path}")
         model = Llama(
             model_path=model_path,
             n_ctx=settings.LLM_N_CTX,
@@ -74,7 +72,6 @@ def get_llm_model():
         _llm_model = model
         set_cached("llm_model", model, ttl=None)
         
-        # logger.info("LLM model loaded successfully for video ideas")
         return model
     except Exception as e:
         # logger.error(f"Failed to load LLM model: {e}", exc_info=True)
@@ -138,7 +135,6 @@ def extract_key_topics(text: str, max_topics: int = 5) -> List[str]:
     # Validate and sanitize input before processing
     is_valid, sanitized_text, reason = validate_for_video_ideas(text)
     if not is_valid:
-        # logger.warning(f"Input validation failed for topic extraction: {reason}")
         return []
     
     # Use sanitized text
@@ -303,7 +299,6 @@ def generate_batch_video_ideas_with_llm(
         combined_text = f"{title} {summary}"
         is_valid, sanitized_text, reason = validate_for_video_ideas(combined_text)
         if not is_valid:
-            # logger.warning(f"Input validation failed: {reason}")
             return []
         
         # Extract topics and AI angle for context
@@ -362,7 +357,6 @@ Return ONLY the JSON array, no other text.<|eot_id|><|start_header_id|>assistant
 """
         
         # Generate with LLM using grammar
-        # logger.debug(f"Generating {num_ideas} video ideas in batch with LLM...")
         import signal
         import time
         
@@ -390,9 +384,7 @@ Return ONLY the JSON array, no other text.<|eot_id|><|start_header_id|>assistant
                 echo=False
             )
             elapsed = time.time() - start_time
-            # logger.debug(f"LLM batch generation completed in {elapsed:.1f}s")
         except TimeoutError:
-            # logger.warning(f"LLM generation timed out after {timeout_seconds}s")
             return []
         finally:
             try:
@@ -406,14 +398,11 @@ Return ONLY the JSON array, no other text.<|eot_id|><|start_header_id|>assistant
             try:
                 ideas = json.loads(response_text)
                 if isinstance(ideas, list):
-                    # logger.debug(f"Successfully parsed {len(ideas)} ideas from LLM response")
                     return ideas
                 else:
-                    # logger.warning("LLM returned non-array, wrapping in list")
                     return [ideas] if isinstance(ideas, dict) else []
             except json.JSONDecodeError as e:
                 # logger.error(f"Failed to parse JSON from LLM response: {e}")
-                # logger.debug(f"Response text: {response_text[:200]}")
                 return []
         else:
             # logger.error("Unexpected response format from LLM")
@@ -451,7 +440,6 @@ def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 2) -
         combined_text = f"{title} {summary}"
         is_valid, sanitized_text, reason = validate_for_video_ideas(combined_text)
         if not is_valid:
-            # logger.warning(f"Input validation failed for video idea generation: {reason}")
             return []
         
         # Extract main topic and AI angle
@@ -467,11 +455,9 @@ def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 2) -
         is_strategy_shift = any(word in text_lower for word in ['strategy', 'pivot', 'shift', 'change', 'new direction'])
         
         # Generate all ideas in a single batch LLM call
-        # logger.info(f"Generating {num_ideas} video ideas for: {title[:50]}...")
         raw_ideas = generate_batch_video_ideas_with_llm(item, num_ideas=num_ideas)
         
         if not raw_ideas:
-            # logger.warning(f"No video ideas generated for: {title[:50]}...")
             return []
         
         # Process and format the ideas - minimal output only
@@ -487,7 +473,6 @@ def generate_video_ideas_for_article(item: Dict[str, Any], num_ideas: int = 2) -
                 'video_description': idea_data.get('concept_summary', '').strip(),  # Just LLM's concept_summary
             })
         
-        # logger.debug(f"Generated {len(processed_ideas)} video ideas for: {title[:50]}...")
         return processed_ideas
         
     except Exception as e:
@@ -543,8 +528,6 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
     Returns:
         List of video idea dictionaries
     """
-    # logger.info(f"Generating video ideas from {len(summaries)} summaries")
-    
     video_ideas = []
     max_ideas_per_article = settings.MAX_VIDEO_IDEAS_PER_ARTICLE
     
@@ -583,13 +566,11 @@ def generate_video_ideas(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 }
                 
                 video_ideas.append(video_idea)
-                # logger.debug(f"Generated idea {idea_num + 1}/{num_ideas} for article {i}/{len(summaries)}")
             
         except Exception as e:
             # logger.error(f"Failed to generate video idea for item {i}/{len(summaries)}: {e}")
             continue
     
-    # logger.info(f"Successfully generated {len(video_ideas)} video ideas")
     return video_ideas
 
 
@@ -599,49 +580,39 @@ def main():
     import json
     
     try:
-        # logger.info("Starting video idea generation process")
-        
         # Try to read from stdin first (for pipeline usage), otherwise use file
         summaries = None
         if not sys.stdin.isatty():
             # Reading from stdin (pipeline mode)
-            # logger.info("Reading summaries from stdin")
             try:
                 stdin_data = sys.stdin.read()
                 if stdin_data and stdin_data.strip():
                     data = json.loads(stdin_data)
                     summaries = data.get('items', [])
-                    # logger.info(f"Loaded {len(summaries)} summaries from stdin")
                 else:
-                    # logger.warning("stdin is empty, falling back to file")
-            except (json.JSONDecodeError, ValueError) as e:
-                # logger.error(f"Failed to parse JSON from stdin: {e}")
-                # logger.info("Falling back to file input")
+                    pass
+            except (json.JSONDecodeError, ValueError):
+                pass
         
         # If stdin didn't work, load from file
         if summaries is None:
             input_file = settings.SUMMARIES_FILE
-            # logger.info(f"Loading summaries from {input_file}")
             
             try:
                 data = load_json(input_file)
                 summaries = data.get('items', [])
-                # logger.info(f"Loaded {len(summaries)} summaries from file")
             except FileNotFoundError:
                 # logger.error(f"Input file not found: {input_file}")
                 return 1
         
         if not summaries:
-            # logger.warning("No summaries to process")
             return 0
         
         # Safety check: Limit to top 30 summaries if more than expected
         EXPECTED_MAX_SUMMARIES = 30
         if len(summaries) > EXPECTED_MAX_SUMMARIES:
-            # logger.warning(f"Found {len(summaries)} summaries, but expected max {EXPECTED_MAX_SUMMARIES}. Limiting to top {EXPECTED_MAX_SUMMARIES}.")
             # Keep top 30 (they should already be sorted by relevance from pre-filter)
             summaries = summaries[:EXPECTED_MAX_SUMMARIES]
-            # logger.info(f"Limited to {len(summaries)} summaries for processing")
         
         # Generate video ideas
         video_ideas = generate_video_ideas(summaries)
@@ -655,7 +626,6 @@ def main():
         }
         save_json(output_data, output_file)
         
-        # logger.info("Video idea generation completed successfully")
         return 0
         
     except Exception as e:
@@ -666,5 +636,9 @@ def main():
 if __name__ == "__main__":
     """Command-line execution."""
     import sys
+    # Initialize error logging for this script
+    from app.scripts.error_logger import initialize_error_logging
+    initialize_error_logging()
+    
     exit_code = main()
     sys.exit(exit_code)

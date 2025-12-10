@@ -76,6 +76,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 APP_DIR="$PROJECT_ROOT/app"
 DATA_DIR="$APP_DIR/data"
+LOGS_DIR="$APP_DIR/logs"
 ENV_FILE="$PROJECT_ROOT/.env"
 
 # Python executable - use Docker container if available, otherwise local python3

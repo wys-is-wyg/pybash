@@ -50,8 +50,6 @@ def generate_tag_images(output_dir: Path, limit: int = 30) -> List[Dict[str, Any
     # Limit to requested number
     tags_to_generate = all_tags[:limit]
     
-    # logger.info(f"Generating {len(tags_to_generate)} tag images (limit: {limit})")
-    
     generated_images = []
     
     for i, tag_info in enumerate(tags_to_generate, 1):
@@ -71,8 +69,6 @@ def generate_tag_images(output_dir: Path, limit: int = 30) -> List[Dict[str, Any
             f"polished futuristic UI design. "
             f"STRICT: no text, no words, no letters, no symbols, no logos. Pure imagery only."
         )
-        
-        # logger.info(f"Generating image {i}/{len(tags_to_generate)}: {tag} ({category_name})")
         
         try:
             # Generate thumbnail with PhotoReal model
@@ -111,15 +107,14 @@ def generate_tag_images(output_dir: Path, limit: int = 30) -> List[Dict[str, Any
                                 "status": "success"
                             }
                             generated_images.append(image_metadata)
-                            # logger.info(f"✓ Generated tag_{i:03d}.png for '{tag}'")
                         else:
-                            # logger.warning(f"✗ Failed to download image for tag '{tag}'")
+                            pass
                     else:
-                        # logger.warning(f"✗ No image URL for tag '{tag}'")
+                        pass
                 else:
-                    # logger.warning(f"✗ Generation failed for tag '{tag}': {status_result.get('status')}")
+                    pass
             else:
-                # logger.warning(f"✗ Failed to start generation for tag '{tag}'")
+                pass
                 
         except Exception as e:
             # logger.error(f"Error generating image for tag '{tag}': {e}")
@@ -136,9 +131,6 @@ def generate_tag_images(output_dir: Path, limit: int = 30) -> List[Dict[str, Any
     
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, indent=2)
-    
-    # logger.info(f"Generated {len(generated_images)} tag images")
-    # logger.info(f"Metadata saved to: {metadata_file}")
     
     return generated_images
 
@@ -163,5 +155,9 @@ def main():
 
 if __name__ == "__main__":
     import sys
+    # Initialize error logging for this script
+    from app.scripts.error_logger import initialize_error_logging
+    initialize_error_logging()
+    
     sys.exit(main())
 

@@ -25,8 +25,11 @@ from flask_cors import CORS
 # from flask_limiter import Limiter
 # from flask_limiter.util import get_remote_address
 from app.config import settings
-from app.scripts.logger import setup_logger
+from app.scripts.error_logger import initialize_error_logging
 from app.scripts.data_manager import load_json, save_json, merge_feeds, generate_feed_json, build_display_data
+
+# Initialize centralized error logging (catches all unhandled exceptions)
+initialize_error_logging()
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -45,8 +48,7 @@ CORS(app)
 #     storage_uri="memory://"  # Use in-memory storage (use Redis in production)
 # )
 
-# Initialize logger
-logger = setup_logger(__name__)
+# Error logging is handled by error_logger module (no need for logger here)
 
 # Pipeline progress tracking
 pipeline_progress = {
@@ -65,7 +67,7 @@ def cleanup_old_data():
     Clean up old feed data files before starting a new pipeline run.
     Deletes all JSON files except display.json (which is only removed after new one is successfully created).
     """
-    logger.info("Cleaning up old feed data and images")
+    # logger.info("Cleaning up old feed data and images")
     
     data_dir = settings.DATA_DIR
     removed_count = 0
@@ -78,16 +80,16 @@ def cleanup_old_data():
                 try:
                     json_file.unlink()
                     removed_count += 1
-                    logger.info(f"Removed: {json_file.name}")
-                except Exception as e:
-                    logger.warning(f"Failed to remove {json_file.name}: {e}")
-    except Exception as e:
-        logger.warning(f"Error scanning for JSON files: {e}")
+                    # logger.info(f"Removed: {json_file.name}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
     
     if removed_count > 0:
-        logger.info(f"Cleanup complete: removed {removed_count} file(s)")
+        pass
     else:
-        logger.info("No old data to clean up")
+        pass
 
 
 @app.route('/health', methods=['GET'])
@@ -124,25 +126,26 @@ def get_news_feed():
         # Old structure (backward compat): { "items": [...] } or just [...]
         # Expect new structure with centralized data lookup
         if 'data' in display_data and 'items' in display_data:
-            logger.info(f"Returning {len(display_data['items'])} display items with {len(display_data['data'])} data entries from {settings.DISPLAY_FILE}")
+            # logger.info(f"Returning {len(display_data['items'])} display items with {len(display_data['data'])} data entries from {settings.DISPLAY_FILE}")
             return jsonify(display_data), 200
         else:
-            logger.error(f"Invalid display.json structure: expected {{ data: {{...}}, items: [...] }}, got keys: {list(display_data.keys())}")
+            # logger.error(f"Invalid display.json structure: expected {{ data: {{...}}, items: [...] }}, got keys: {list(display_data.keys())}")
             return jsonify({'error': 'Invalid display.json structure. Please re-run the pipeline.'}), 500
     except FileNotFoundError:
         # Fallback to feed.json for backward compatibility during migration
         try:
             feed_data = load_json(settings.FEED_FILE)
             items = feed_data.get('items', [])
-            logger.warning(f"Display file not found, using fallback {settings.FEED_FILE}")
-            logger.info(f"Returning {len(items)} feed items")
+            # logger.warning(f"Display file not found, using fallback {settings.FEED_FILE}")
+            # logger.info(f"Returning {len(items)} feed items")
             return jsonify(items), 200
         except FileNotFoundError:
-            logger.warning(f"Neither {settings.DISPLAY_FILE} nor {settings.FEED_FILE} found")
+            # logger.warning(f"Neither {settings.DISPLAY_FILE} nor {settings.FEED_FILE} found")
             return jsonify([]), 200
     except Exception as e:
-        logger.error(f"Error loading feed: {e}")
-        return jsonify({'error': 'Failed to load feed'}), 500
+        from app.scripts.error_logger import log_exception
+        log_exception(e, context="get_news_feed")
+        return jsonify({'error': f'Failed to load feed: {str(e)}'}), 500
 
 
 @app.route('/api/merge', methods=['POST'])
@@ -166,7 +169,7 @@ def merge_data():
             if data and 'limit' in data:
                 feed_limit = int(data.get('limit', 30))
         
-        logger.info(f"Merging data files with limit: {feed_limit}")
+        # logger.info(f"Merging data files with limit: {feed_limit}")
         
         # Load all pipeline outputs
         filtered_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
@@ -177,7 +180,7 @@ def merge_data():
             }), 404
         
         news_items = load_json(str(filtered_file)).get('items', [])
-        logger.info(f"Loaded {len(news_items)} filtered news items")
+        # logger.info(f"Loaded {len(news_items)} filtered news items")
         
         # Load summaries and merge by article_id
         summaries_file = settings.get_data_file_path("summaries.json")
@@ -193,18 +196,18 @@ def merge_data():
                         item['title'] = summary_item.get('title', '')
                     if 'source_url' not in item or not item.get('source_url'):
                         item['source_url'] = summary_item.get('source_url', '')
-            logger.info(f"Merged {len(summaries_lookup)} summaries into news items")
+            # logger.info(f"Merged {len(summaries_lookup)} summaries into news items")
         else:
-            logger.warning("summaries.json not found, news items will not have summaries")
+            pass
         
         # Load video ideas
         video_ideas_file = settings.get_data_file_path(settings.VIDEO_IDEAS_FILE)
         if not video_ideas_file.exists():
-            logger.warning(f"{settings.VIDEO_IDEAS_FILE} not found, merging without video ideas")
+            # logger.warning(f"{settings.VIDEO_IDEAS_FILE} not found, merging without video ideas")
             video_ideas = []
         else:
             video_ideas = load_json(str(video_ideas_file)).get('items', [])
-            logger.info(f"Loaded {len(video_ideas)} video ideas")
+            # logger.info(f"Loaded {len(video_ideas)} video ideas")
         
         # Merge and generate feed
         merged_data = merge_feeds(news_items, video_ideas, apply_filtering=True, max_items=feed_limit)
@@ -214,7 +217,7 @@ def merge_data():
         news_count = len([x for x in merged_data if x.get('type') == 'news'])
         video_idea_count = len([x for x in merged_data if x.get('type') == 'video_idea'])
         
-        logger.info(f"Merge complete: {item_count} items ({news_count} news, {video_idea_count} video ideas)")
+        # logger.info(f"Merge complete: {item_count} items ({news_count} news, {video_idea_count} video ideas)")
         
         return jsonify({
             'status': 'success',
@@ -225,13 +228,13 @@ def merge_data():
         }), 200
         
     except FileNotFoundError as e:
-        logger.error(f"Required data file not found: {e}")
+        # logger.error(f"Required data file not found: {e}")
         return jsonify({
             'status': 'error',
             'message': f'Required data file not found: {str(e)}'
         }), 404
     except Exception as e:
-        logger.error(f"Error merging data: {e}", exc_info=True)
+        # logger.error(f"Error merging data: {e}", exc_info=True)
         return jsonify({
             'status': 'error',
             'message': f'Failed to merge data: {str(e)}'
@@ -263,7 +266,7 @@ def refresh_feed():
         
         # For GET requests, always merge from data files
         if request.method == 'GET':
-            logger.info("Merging feed from data files (GET request)")
+            # logger.info("Merging feed from data files (GET request)")
             try:
                 # Load all pipeline outputs using new structure
                 filtered_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
@@ -294,10 +297,10 @@ def refresh_feed():
                     'total_items': len(display_result['items'])
                 }
                 save_json(display_data, str(display_file))
-                logger.info(f"Saved display data to {settings.DISPLAY_FILE}")
+                # logger.info(f"Saved display data to {settings.DISPLAY_FILE}")
                 
                 item_count = len(display_result['items'])
-                logger.info(f"Feed refreshed with {item_count} items from data files")
+                # logger.info(f"Feed refreshed with {item_count} items from data files")
                 
                 return jsonify({
                     'status': 'success',
@@ -305,13 +308,13 @@ def refresh_feed():
                     'items_count': item_count
                 }), 200
             except FileNotFoundError as e:
-                logger.error(f"Required data file not found: {e}")
+                # logger.error(f"Required data file not found: {e}")
                 return jsonify({
                     'status': 'error',
                     'message': f'Required data file not found: {str(e)}'
                 }), 404
             except Exception as e:
-                logger.error(f"Error merging feed from data files: {e}", exc_info=True)
+                # logger.error(f"Error merging feed from data files: {e}", exc_info=True)
                 return jsonify({'error': f'Failed to merge feed: {str(e)}'}), 500
         
         # POST request: try to get JSON body, but fall back to merging from files if no body
@@ -321,7 +324,7 @@ def refresh_feed():
         
         # If no body provided or not JSON, merge from data files
         if not data:
-            logger.info("Merging feed from data files (POST without body)")
+            # logger.info("Merging feed from data files (POST without body)")
             try:
                 # Load all pipeline outputs using new structure
                 filtered_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
@@ -352,10 +355,10 @@ def refresh_feed():
                     'total_items': len(display_result['items'])
                 }
                 save_json(display_data, str(display_file))
-                logger.info(f"Saved display data to {settings.DISPLAY_FILE}")
+                # logger.info(f"Saved display data to {settings.DISPLAY_FILE}")
                 
                 item_count = len(display_result['items'])
-                logger.info(f"Feed refreshed with {item_count} items from data files")
+                # logger.info(f"Feed refreshed with {item_count} items from data files")
                 
                 return jsonify({
                     'status': 'success',
@@ -363,13 +366,13 @@ def refresh_feed():
                     'items_count': item_count
                 }), 200
             except FileNotFoundError as e:
-                logger.error(f"Required data file not found: {e}")
+                # logger.error(f"Required data file not found: {e}")
                 return jsonify({
                     'status': 'error',
                     'message': f'Required data file not found: {str(e)}'
                 }), 404
             except Exception as e:
-                logger.error(f"Error merging feed from data files: {e}", exc_info=True)
+                # logger.error(f"Error merging feed from data files: {e}", exc_info=True)
                 return jsonify({'error': f'Failed to merge feed: {str(e)}'}), 500
         
         # POST with body: validate and save directly
@@ -380,7 +383,7 @@ def refresh_feed():
         save_json(data, settings.FEED_FILE)
         
         item_count = len(data.get('items', []))
-        logger.info(f"Feed refreshed with {item_count} items from POST body")
+        # logger.info(f"Feed refreshed with {item_count} items from POST body")
         
         return jsonify({
             'status': 'success',
@@ -389,7 +392,7 @@ def refresh_feed():
         }), 200
         
     except Exception as e:
-        logger.error(f"Error refreshing feed: {e}")
+        # logger.error(f"Error refreshing feed: {e}")
         return jsonify({'error': 'Failed to refresh feed'}), 500
 
 
@@ -405,7 +408,7 @@ def scrape_feeds():
         # Clean up old data before starting new pipeline
         cleanup_old_data()
         
-        logger.info("Triggering RSS feed scraping")
+        # logger.info("Triggering RSS feed scraping")
         result = subprocess.run(
             ['python', '/app/app/scripts/rss_scraper.py'],
             capture_output=True,
@@ -414,13 +417,13 @@ def scrape_feeds():
         )
         
         if result.returncode == 0:
-            logger.info("RSS scraping completed successfully")
+            # logger.info("RSS scraping completed successfully")
             return jsonify({
                 'status': 'success',
                 'message': 'RSS feeds scraped successfully'
             }), 200
         else:
-            logger.error(f"RSS scraping failed: {result.stderr}")
+            # logger.error(f"RSS scraping failed: {result.stderr}")
             return jsonify({
                 'status': 'error',
                 'message': 'RSS scraping failed',
@@ -428,10 +431,10 @@ def scrape_feeds():
             }), 500
             
     except subprocess.TimeoutExpired:
-        logger.error("RSS scraping timed out")
+        # logger.error("RSS scraping timed out")
         return jsonify({'error': 'Scraping timed out'}), 500
     except Exception as e:
-        logger.error(f"Error triggering RSS scraping: {e}")
+        # logger.error(f"Error triggering RSS scraping: {e}")
         return jsonify({'error': 'Failed to trigger scraping'}), 500
 
 
@@ -444,10 +447,10 @@ def pre_filter_articles():
         JSON response with pre-filtering status
     """
     try:
-        logger.info("Triggering article pre-filtering")
+        # logger.info("Triggering article pre-filtering")
         # Use settings.FEED_LIMIT (default: 30, only --test flag changes to 5)
         feed_limit = settings.FEED_LIMIT
-        logger.info(f"Pre-filtering with limit: {feed_limit}")
+        # logger.info(f"Pre-filtering with limit: {feed_limit}")
         
         result = subprocess.run(
             ['python', '/app/app/scripts/pre_filter.py', '--limit', str(feed_limit)],
@@ -457,13 +460,13 @@ def pre_filter_articles():
         )
         
         if result.returncode == 0:
-            logger.info(f"Pre-filtering completed successfully (limit: {feed_limit})")
+            # logger.info(f"Pre-filtering completed successfully (limit: {feed_limit})")
             return jsonify({
                 'status': 'success',
                 'message': f'Articles pre-filtered successfully (limit: {feed_limit})'
             }), 200
         else:
-            logger.error(f"Pre-filtering failed: {result.stderr}")
+            # logger.error(f"Pre-filtering failed: {result.stderr}")
             return jsonify({
                 'status': 'error',
                 'message': 'Pre-filtering failed',
@@ -471,10 +474,10 @@ def pre_filter_articles():
             }), 500
             
     except subprocess.TimeoutExpired:
-        logger.error("Pre-filtering timed out")
+        # logger.error("Pre-filtering timed out")
         return jsonify({'error': 'Pre-filtering timed out'}), 500
     except Exception as e:
-        logger.error(f"Error triggering pre-filtering: {e}")
+        # logger.error(f"Error triggering pre-filtering: {e}")
         return jsonify({'error': 'Failed to trigger pre-filtering'}), 500
 
 
@@ -487,7 +490,7 @@ def summarize_articles():
         JSON response with summarization status
     """
     try:
-        logger.info("Triggering article summarization")
+        # logger.info("Triggering article summarization")
         # Increased timeout to 1200 seconds (20 minutes) to account for model loading on first run
         result = subprocess.run(
             ['python', '/app/app/scripts/summarizer.py'],
@@ -497,13 +500,13 @@ def summarize_articles():
         )
         
         if result.returncode == 0:
-            logger.info("Summarization completed successfully")
+            # logger.info("Summarization completed successfully")
             return jsonify({
                 'status': 'success',
                 'message': 'Articles summarized successfully'
             }), 200
         else:
-            logger.error(f"Summarization failed: {result.stderr}")
+            # logger.error(f"Summarization failed: {result.stderr}")
             return jsonify({
                 'status': 'error',
                 'message': 'Summarization failed',
@@ -511,10 +514,10 @@ def summarize_articles():
             }), 500
             
     except subprocess.TimeoutExpired:
-        logger.error("Summarization timed out")
+        # logger.error("Summarization timed out")
         return jsonify({'error': 'Summarization timed out'}), 500
     except Exception as e:
-        logger.error(f"Error triggering summarization: {e}")
+        # logger.error(f"Error triggering summarization: {e}")
         return jsonify({'error': 'Failed to trigger summarization'}), 500
 
 
@@ -527,7 +530,7 @@ def generate_ideas():
         JSON response with generation status
     """
     try:
-        logger.info("Triggering video idea generation")
+        # logger.info("Triggering video idea generation")
         # Timeout based on actual VPS performance: ~29 articles × ~29s per article = ~14 minutes
         # Using 1200s (20 min) to allow for overhead and slower generations
         result = subprocess.run(
@@ -538,13 +541,13 @@ def generate_ideas():
         )
         
         if result.returncode == 0:
-            logger.info("Video idea generation completed successfully")
+            # logger.info("Video idea generation completed successfully")
             return jsonify({
                 'status': 'success',
                 'message': 'Video ideas generated successfully'
             }), 200
         else:
-            logger.error(f"Video idea generation failed: {result.stderr}")
+            # logger.error(f"Video idea generation failed: {result.stderr}")
             return jsonify({
                 'status': 'error',
                 'message': 'Video idea generation failed',
@@ -552,10 +555,10 @@ def generate_ideas():
             }), 500
             
     except subprocess.TimeoutExpired:
-        logger.error("Video idea generation timed out")
+        # logger.error("Video idea generation timed out")
         return jsonify({'error': 'Generation timed out'}), 500
     except Exception as e:
-        logger.error(f"Error triggering video idea generation: {e}")
+        # logger.error(f"Error triggering video idea generation: {e}")
         return jsonify({'error': 'Failed to trigger generation'}), 500
 
 
@@ -583,7 +586,7 @@ def n8n_webhook():
         workflow = data.get('workflow', 'unknown')
         status = data.get('status', 'unknown')
         
-        logger.info(f"Received n8n webhook: workflow={workflow}, status={status}")
+        # logger.info(f"Received n8n webhook: workflow={workflow}, status={status}")
         
         # If workflow completed successfully, merge data and update feed
         if status == 'completed' and 'data' in data:
@@ -614,13 +617,14 @@ def n8n_webhook():
                         'total_items': len(display_result['items'])
                     }
                     save_json(display_data, str(display_file))
-                    logger.info(f"Saved display data to {settings.DISPLAY_FILE}")
+                    # logger.info(f"Saved display data to {settings.DISPLAY_FILE}")
                     
-                    logger.info(f"Feed updated from n8n webhook: {len(display_result['items'])} items")
+                    # logger.info(f"Feed updated from n8n webhook: {len(display_result['items'])} items")
                 else:
-                    logger.warning(f"{settings.FILTERED_NEWS_FILE} not found, skipping feed update")
+                    pass
             except Exception as e:
-                logger.error(f"Error processing webhook data: {e}")
+                from app.scripts.error_logger import log_exception
+                log_exception(e, context="n8n_webhook")
         
         return jsonify({
             'status': 'received',
@@ -628,7 +632,7 @@ def n8n_webhook():
         }), 200
         
     except Exception as e:
-        logger.error(f"Error processing n8n webhook: {e}")
+        # logger.error(f"Error processing n8n webhook: {e}")
         return jsonify({'error': 'Failed to process webhook'}), 500
 
 
@@ -680,7 +684,7 @@ def parse_video_ideas_log():
         return completed_count, None, avg_seconds_per_article, start_time, last_time
     
     except Exception as e:
-        logger.debug(f"Error parsing video ideas log: {e}")
+        # logger.debug(f"Error parsing video ideas log: {e}")
         return None, None, None, None, None
 
 
@@ -735,7 +739,7 @@ def monitor_pipeline_progress():
                             pipeline_progress['progress_percent'] = 100
                             pipeline_progress['estimated_seconds_remaining'] = 0
                             pipeline_progress['message'] = 'Pipeline completed successfully'
-                        logger.info("Pipeline completed successfully")
+                        # logger.info("Pipeline completed successfully")
                         return
                     else:
                         # Merging stage
@@ -823,7 +827,7 @@ def monitor_pipeline_progress():
             pipeline_progress['status'] = 'timeout'
             pipeline_progress['current_step'] = 'Pipeline taking longer than expected'
             pipeline_progress['message'] = 'Pipeline may still be running'
-    logger.warning("Pipeline progress monitoring timed out")
+    # logger.warning("Pipeline progress monitoring timed out")
 
 
 @app.route('/api/validate-pipeline-password', methods=['POST'])
@@ -845,7 +849,7 @@ def validate_pipeline_password():
         # If ADMIN_PWD is not set, allow any password (for development)
         # In production, ADMIN_PWD should be set in .env
         if not admin_pwd:
-            logger.warning("ADMIN_PWD not set in environment - allowing any password (development mode)")
+            # logger.warning("ADMIN_PWD not set in environment - allowing any password (development mode)")
             return jsonify({
                 'valid': True,
                 'message': 'Password validated (development mode - no password set)'
@@ -864,7 +868,7 @@ def validate_pipeline_password():
             }), 401
             
     except Exception as e:
-        logger.error(f"Error validating password: {e}")
+        # logger.error(f"Error validating password: {e}")
         return jsonify({
             'valid': False,
             'message': 'Error validating password'
@@ -914,9 +918,9 @@ def trigger_pipeline():
             # Use Docker service name for container-to-container communication
             n8n_port = settings.N8N_PORT
             webhook_url = f"http://n8n:{n8n_port}/webhook/run-pipeline"
-            logger.info(f"Using Docker service webhook URL: {webhook_url}")
+            # logger.info(f"Using Docker service webhook URL: {webhook_url}")
         else:
-            logger.info(f"Using configured webhook URL from environment")
+            pass
         
         # Initialize progress tracking
         with progress_lock:
@@ -935,7 +939,7 @@ def trigger_pipeline():
             "triggered_by": "web_ui_button"
         }
         
-        logger.info(f"Triggering n8n webhook: {webhook_url}")
+        # logger.info(f"Triggering n8n webhook: {webhook_url}")
         
         # Send webhook request
         webhook_triggered = False
@@ -948,18 +952,18 @@ def trigger_pipeline():
             )
             
             if response.status_code in [200, 201, 202]:
-                logger.info(f"Webhook acknowledged with status {response.status_code}")
+                # logger.info(f"Webhook acknowledged with status {response.status_code}")
                 webhook_triggered = True
             else:
-                logger.warning(f"Webhook returned unexpected status {response.status_code}: {response.text}")
+                # logger.warning(f"Webhook returned unexpected status {response.status_code}: {response.text}")
                 webhook_triggered = True
                 
         except requests.exceptions.Timeout:
             # Timeout is OK - n8n may have accepted the request but not responded yet
-            logger.info("Webhook request timed out (workflow may still be running)")
+            # logger.info("Webhook request timed out (workflow may still be running)")
             webhook_triggered = True
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"Failed to connect to n8n webhook: {e}")
+            # logger.error(f"Failed to connect to n8n webhook: {e}")
             with progress_lock:
                 pipeline_progress['status'] = 'error'
                 pipeline_progress['message'] = f'Failed to connect to n8n: {str(e)}'
@@ -968,7 +972,7 @@ def trigger_pipeline():
                 'message': f'Failed to connect to n8n: {str(e)}'
             }), 500
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error sending webhook request: {e}")
+            # logger.error(f"Error sending webhook request: {e}")
             with progress_lock:
                 pipeline_progress['status'] = 'error'
                 pipeline_progress['message'] = f'Failed to trigger webhook: {str(e)}'
@@ -998,7 +1002,7 @@ def trigger_pipeline():
         }), 200
         
     except Exception as e:
-        logger.error(f"Error triggering pipeline: {e}", exc_info=True)
+        # logger.error(f"Error triggering pipeline: {e}", exc_info=True)
         with progress_lock:
             pipeline_progress['status'] = 'error'
             pipeline_progress['message'] = f'Failed to trigger pipeline: {str(e)}'
@@ -1089,7 +1093,7 @@ This message was sent from the AI News Tracker contact form.
             smtp_server.send_message(msg)
             smtp_server.quit()
             
-            logger.info(f"Contact form submitted: {name} ({email}) - {subject}")
+            # logger.info(f"Contact form submitted: {name} ({email}) - {subject}")
             
             return jsonify({
                 'status': 'success',
@@ -1097,13 +1101,13 @@ This message was sent from the AI News Tracker contact form.
             }), 200
             
         except Exception as e:
-            logger.error(f"Error sending email: {e}")
+            # logger.error(f"Error sending email: {e}")
             return jsonify({
                 'error': 'Failed to send email. Please try again later.'
             }), 500
         
     except Exception as e:
-        logger.error(f"Error processing contact form: {e}")
+        # logger.error(f"Error processing contact form: {e}")
         return jsonify({'error': 'Failed to process contact form'}), 500
 
 
@@ -1116,7 +1120,7 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     """Handle 500 errors."""
-    logger.error(f"Internal server error: {error}", exc_info=True)
+    # logger.error(f"Internal server error: {error}", exc_info=True)
     return jsonify({'error': 'Internal server error'}), 500
 
 
@@ -1137,7 +1141,7 @@ def get_cache_stats():
             'cache_stats': stats
         }), 200
     except Exception as e:
-        logger.error(f"Error getting cache stats: {e}")
+        # logger.error(f"Error getting cache stats: {e}")
         return jsonify({'error': 'Failed to get cache stats'}), 500
 
 
@@ -1161,13 +1165,13 @@ def clear_cache_endpoint():
             'message': f'Cache cleared{" for key: " + cache_key if cache_key else ""}'
         }), 200
     except Exception as e:
-        logger.error(f"Error clearing cache: {e}")
+        # logger.error(f"Error clearing cache: {e}")
         return jsonify({'error': 'Failed to clear cache'}), 500
 
 
 def preload_models():
     """Preload models on startup to improve first-request performance."""
-    logger.info("Preloading models in background...")
+    # logger.info("Preloading models in background...")
     
     def _preload():
         try:
@@ -1175,9 +1179,10 @@ def preload_models():
             from app.scripts.video_idea_generator import get_llm_model
             llm = get_llm_model()
             if llm:
-                logger.info("LLM model preloaded successfully")
+                pass
         except Exception as e:
-            logger.warning(f"Failed to preload LLM model: {e}")
+            from app.scripts.error_logger import log_exception
+            log_exception(e, context="preload_llm_model")
         
         try:
             # Preload summarizer (only if sumy not available)
@@ -1185,9 +1190,10 @@ def preload_models():
             if not SUMY_AVAILABLE:
                 summarizer = get_summarizer()
                 if summarizer:
-                    logger.info("Transformers summarizer preloaded successfully")
+                    pass
         except Exception as e:
-            logger.warning(f"Failed to preload summarizer: {e}")
+            from app.scripts.error_logger import log_exception
+            log_exception(e, context="preload_summarizer")
     
     # Run in background thread to not block startup
     thread = threading.Thread(target=_preload, daemon=True)
