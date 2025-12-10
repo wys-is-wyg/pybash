@@ -533,6 +533,39 @@ function setupNavigation() {
         // Update URL hash without triggering navigation
         window.history.pushState(null, "", href);
 
+        // Special handling for #demo hash - open modal directly
+        if (targetSection === "demo") {
+          openDemoModal();
+          // Set feed as active section in background
+          const feedSection = document.getElementById("feed");
+          const feedNavLink = document.querySelector('[data-section="feed"]');
+          if (feedSection && feedNavLink) {
+            navLinks.forEach((l) => l.classList.remove("active"));
+            feedNavLink.classList.add("active");
+            sections.forEach((s) => {
+              if (s.id === "feed") {
+                s.style.display = "block";
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    s.classList.add("active");
+                  });
+                });
+              } else {
+                if (s.classList.contains("active")) {
+                  s.classList.remove("active");
+                  setTimeout(() => {
+                    s.style.display = "none";
+                  }, 400);
+                } else {
+                  s.style.display = "none";
+                }
+              }
+            });
+            loadFeed();
+          }
+          return;
+        }
+
         // Update active nav link
         navLinks.forEach((l) => l.classList.remove("active"));
         link.classList.add("active");
@@ -568,9 +601,81 @@ function setupNavigation() {
     });
   });
 
+  // Handle hash changes (e.g., direct navigation to #demo)
+  window.addEventListener("hashchange", () => {
+    const hash = window.location.hash.slice(1) || "feed";
+    
+    // Special handling for #demo hash - open modal directly
+    if (hash === "demo") {
+      openDemoModal();
+      // Set feed as active section in background
+      const feedSection = document.getElementById("feed");
+      const feedNavLink = document.querySelector('[data-section="feed"]');
+      if (feedSection && feedNavLink) {
+        navLinks.forEach((l) => l.classList.remove("active"));
+        feedNavLink.classList.add("active");
+        sections.forEach((s) => {
+          if (s.id === "feed") {
+            s.style.display = "block";
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                s.classList.add("active");
+              });
+            });
+          } else {
+            if (s.classList.contains("active")) {
+              s.classList.remove("active");
+              setTimeout(() => {
+                s.style.display = "none";
+              }, 400);
+            } else {
+              s.style.display = "none";
+            }
+          }
+        });
+        loadFeed();
+      }
+      return;
+    }
+  });
+
   // Handle browser back/forward buttons
   window.addEventListener("popstate", () => {
     const hash = window.location.hash.slice(1) || "feed";
+    
+    // Special handling for #demo hash - open modal directly
+    if (hash === "demo") {
+      openDemoModal();
+      // Set feed as active section in background
+      const feedSection = document.getElementById("feed");
+      const feedNavLink = document.querySelector('[data-section="feed"]');
+      if (feedSection && feedNavLink) {
+        navLinks.forEach((l) => l.classList.remove("active"));
+        feedNavLink.classList.add("active");
+        sections.forEach((s) => {
+          if (s.id === "feed") {
+            s.style.display = "block";
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                s.classList.add("active");
+              });
+            });
+          } else {
+            if (s.classList.contains("active")) {
+              s.classList.remove("active");
+              setTimeout(() => {
+                s.style.display = "none";
+              }, 400);
+            } else {
+              s.style.display = "none";
+            }
+          }
+        });
+        loadFeed();
+      }
+      return;
+    }
+    
     const section = document.getElementById(hash);
     const navLink = document.querySelector(`[data-section="${hash}"]`);
 
@@ -622,6 +727,9 @@ async function loadSectionContent(sectionId) {
     case "output":
       await loadOutputFeed();
       break;
+    case "demo":
+      openDemoModal();
+      break;
     case "contact":
       // Contact form is static, no loading needed
       break;
@@ -644,6 +752,60 @@ async function loadFeed() {
       error.message || "Failed to load feed. Please try again later."
     );
   }
+}
+
+/**
+ * Opens the demo video modal
+ */
+function openDemoModal() {
+  const modal = document.getElementById("demo-modal");
+  const closeBtn = document.getElementById("demo-modal-close");
+  const videoPlayer = document.getElementById("demo-video-player");
+
+  if (!modal) return;
+
+  // Helper function to stop video playback
+  function stopVideo() {
+    if (videoPlayer) {
+      videoPlayer.pause();
+      videoPlayer.currentTime = 0; // Reset to beginning
+    }
+  }
+
+  // Helper function to close modal and stop video
+  function closeModal() {
+    stopVideo();
+    modal.classList.remove("active");
+    // Navigate back to feed after closing
+    window.history.pushState(null, "", "#feed");
+    const feedLink = document.querySelector('[data-section="feed"]');
+    if (feedLink) {
+      feedLink.click();
+    }
+  }
+
+  // Set up close button handler
+  if (closeBtn) {
+    closeBtn.onclick = closeModal;
+  }
+
+  // Close on background click
+  modal.onclick = function (e) {
+    if (e.target === modal) {
+      closeModal();
+    }
+  };
+
+  // Close on Escape key
+  document.addEventListener("keydown", function demoEscapeHandler(e) {
+    if (e.key === "Escape" && modal.classList.contains("active")) {
+      closeModal();
+      document.removeEventListener("keydown", demoEscapeHandler);
+    }
+  });
+
+  // Show modal
+  modal.classList.add("active");
 }
 
 /**
@@ -1006,34 +1168,59 @@ function initialize() {
   const hash = window.location.hash.slice(1);
   const initialSection = hash || "feed";
 
-  // Activate the correct section
-  const section = document.getElementById(initialSection);
-  const navLink = document.querySelector(`[data-section="${initialSection}"]`);
-
-  if (section && navLink) {
-    // Hide all sections (remove from DOM flow)
-    document.querySelectorAll(".content-section").forEach((s) => {
-      s.classList.remove("active");
-      s.style.display = "none";
-    });
-    // Show target section with fade in
-    section.style.display = "block";
-    // Force reflow to ensure display is set before animation
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        section.classList.add("active");
+  // Special handling for #demo hash - open modal directly
+  if (hash === "demo") {
+    openDemoModal();
+    // Set feed as active section in background
+    const feedSection = document.getElementById("feed");
+    const feedNavLink = document.querySelector('[data-section="feed"]');
+    if (feedSection && feedNavLink) {
+      document.querySelectorAll(".content-section").forEach((s) => {
+        s.classList.remove("active");
+        s.style.display = "none";
       });
-    });
-    // Update nav
-    document.querySelectorAll(".nav-link").forEach((l) => {
-      l.classList.remove("active");
-    });
-    navLink.classList.add("active");
-    // Load section content
-    loadSectionContent(initialSection);
+      feedSection.style.display = "block";
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          feedSection.classList.add("active");
+        });
+      });
+      document.querySelectorAll(".nav-link").forEach((l) => {
+        l.classList.remove("active");
+      });
+      feedNavLink.classList.add("active");
+      loadFeed();
+    }
   } else {
-    // Fallback: load feed
-    loadFeed();
+    // Activate the correct section
+    const section = document.getElementById(initialSection);
+    const navLink = document.querySelector(`[data-section="${initialSection}"]`);
+
+    if (section && navLink) {
+      // Hide all sections (remove from DOM flow)
+      document.querySelectorAll(".content-section").forEach((s) => {
+        s.classList.remove("active");
+        s.style.display = "none";
+      });
+      // Show target section with fade in
+      section.style.display = "block";
+      // Force reflow to ensure display is set before animation
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          section.classList.add("active");
+        });
+      });
+      // Update nav
+      document.querySelectorAll(".nav-link").forEach((l) => {
+        l.classList.remove("active");
+      });
+      navLink.classList.add("active");
+      // Load section content
+      loadSectionContent(initialSection);
+    } else {
+      // Fallback: load feed
+      loadFeed();
+    }
   }
 
   // Setup tag filters

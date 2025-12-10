@@ -33,13 +33,16 @@
               >
             </li>
             <li>
-              <a href="#contact" class="nav-link" data-section="contact"
-                >Get in Touch</a
-              >
+              <a href="#demo" class="nav-link" data-section="demo">Demo</a>
             </li>
             <li>
               <a href="#rationale" class="nav-link" data-section="rationale"
                 >Rationale</a
+              >
+            </li>
+            <li>
+              <a href="#contact" class="nav-link" data-section="contact"
+                >Get in Touch</a
               >
             </li>
           </ul>
@@ -114,6 +117,21 @@
           >
             Submit
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Demo Video Modal -->
+    <div id="demo-modal" class="summary-modal">
+      <div class="summary-modal-content">
+        <div class="summary-modal-header">
+          <button class="summary-modal-close" id="demo-modal-close">&times;</button>
+        </div>
+        <div class="summary-modal-body" style="display: flex; align-items: center; justify-content: center; padding: 2rem;">
+          <video id="demo-video-player" controls style="width: 100%; max-width: 800px; border-radius: 8px;">
+            <source src="/kiwilab.mp4" type="video/mp4">
+            <p>Your browser does not support the video tag. Please <a href="/kiwilab.mp4" download>download the video</a> to view it.</p>
+          </video>
         </div>
       </div>
     </div>
@@ -336,6 +354,9 @@
                 </pre
           >
         </div>
+      </section>
+
+      <!-- Demo Video Section -->
       </section>
 
       <!-- Contact Form Section (Hidden by default) -->
