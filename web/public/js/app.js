@@ -450,12 +450,20 @@ function updateFeedTimestamp() {
   const timestampElement = document.getElementById("feed-timestamp");
   if (!timestampElement) return;
 
-  const now = new Date();
-  timestampElement.textContent = now.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  // Use the generated_at timestamp from display.json
+  if (currentFeedData && currentFeedData.generated_at) {
+    const timestamp = new Date(currentFeedData.generated_at);
+    timestampElement.textContent = timestamp.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  } else {
+    timestampElement.textContent = "Never";
+  }
 }
 
 /**
