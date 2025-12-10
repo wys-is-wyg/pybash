@@ -63,30 +63,26 @@ progress_lock = threading.Lock()
 def cleanup_old_data():
     """
     Clean up old feed data files before starting a new pipeline run.
+    Deletes all JSON files except display.json (which is only removed after new one is successfully created).
     """
     logger.info("Cleaning up old feed data and images")
     
     data_dir = settings.DATA_DIR
     removed_count = 0
     
-    # Remove JSON data files
-    data_files = [
-        settings.RAW_NEWS_FILE,
-        settings.SUMMARIES_FILE,
-        settings.VIDEO_IDEAS_FILE,
-        settings.THUMBNAILS_FILE,
-        settings.FEED_FILE,
-    ]
-    
-    for filename in data_files:
-        file_path = settings.get_data_file_path(filename)
-        if file_path.exists():
-            try:
-                file_path.unlink()
-                removed_count += 1
-                logger.info(f"Removed: {filename}")
-            except Exception as e:
-                logger.warning(f"Failed to remove {filename}: {e}")
+    # Delete all JSON files in data directory EXCEPT display.json
+    # display.json is kept until a new one is successfully created
+    try:
+        for json_file in data_dir.glob("*.json"):
+            if json_file.name != settings.DISPLAY_FILE:
+                try:
+                    json_file.unlink()
+                    removed_count += 1
+                    logger.info(f"Removed: {json_file.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove {json_file.name}: {e}")
+    except Exception as e:
+        logger.warning(f"Error scanning for JSON files: {e}")
     
     if removed_count > 0:
         logger.info(f"Cleanup complete: removed {removed_count} file(s)")
@@ -439,6 +435,49 @@ def scrape_feeds():
         return jsonify({'error': 'Failed to trigger scraping'}), 500
 
 
+@app.route('/api/pre-filter', methods=['GET', 'POST'])
+def pre_filter_articles():
+    """
+    Trigger pre-filtering of articles for AI relevance.
+    
+    Returns:
+        JSON response with pre-filtering status
+    """
+    try:
+        logger.info("Triggering article pre-filtering")
+        # Use settings.FEED_LIMIT (default: 30, only --test flag changes to 5)
+        feed_limit = settings.FEED_LIMIT
+        logger.info(f"Pre-filtering with limit: {feed_limit}")
+        
+        result = subprocess.run(
+            ['python', '/app/app/scripts/pre_filter.py', '--limit', str(feed_limit)],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            logger.info(f"Pre-filtering completed successfully (limit: {feed_limit})")
+            return jsonify({
+                'status': 'success',
+                'message': f'Articles pre-filtered successfully (limit: {feed_limit})'
+            }), 200
+        else:
+            logger.error(f"Pre-filtering failed: {result.stderr}")
+            return jsonify({
+                'status': 'error',
+                'message': 'Pre-filtering failed',
+                'error': result.stderr
+            }), 500
+            
+    except subprocess.TimeoutExpired:
+        logger.error("Pre-filtering timed out")
+        return jsonify({'error': 'Pre-filtering timed out'}), 500
+    except Exception as e:
+        logger.error(f"Error triggering pre-filtering: {e}")
+        return jsonify({'error': 'Failed to trigger pre-filtering'}), 500
+
+
 @app.route('/api/summarize', methods=['GET', 'POST'])
 def summarize_articles():
     """
@@ -559,7 +598,8 @@ def n8n_webhook():
                     video_ideas = load_json(str(video_ideas_file)).get('items', []) if video_ideas_file.exists() else []
                     
                     # Use new build_display_data function
-                    feed_limit = getattr(settings, 'FEED_LIMIT', 30)
+                    # Default to 30 articles (only --test flag in shell script should change to 5)
+                    feed_limit = settings.FEED_LIMIT
                     display_result = build_display_data(filtered_news, summaries, video_ideas, max_items=feed_limit)
                     
                     # Save to both feed.json (for backward compatibility) and display.json (new structure)

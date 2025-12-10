@@ -30,6 +30,19 @@
     {
       "parameters": {
         "method": "POST",
+        "url": "http://python-app:5001/api/pre-filter",
+        "sendBody": false,
+        "options": {}
+      },
+      "id": "pre-filter-articles",
+      "name": "Pre-Filter Articles",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
         "url": "http://python-app:5001/api/summarize",
         "sendBody": true,
         "specifyBody": "json",
@@ -44,7 +57,7 @@
       "name": "Summarize Articles",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [650, 300]
+      "position": [850, 300]
     },
     {
       "parameters": {
@@ -63,7 +76,7 @@
       "name": "Generate Video Ideas",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [850, 300]
+      "position": [1050, 300]
     },
     {
       "parameters": {
@@ -76,7 +89,7 @@
       "name": "Refresh Feed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [1250, 300]
+      "position": [1450, 300]
     },
     {
       "parameters": {
@@ -88,7 +101,7 @@
       "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1450, 300]
+      "position": [1650, 300]
     }
   ],
   "connections": {
@@ -104,6 +117,17 @@
       ]
     },
     "Scrape RSS Feeds": {
+      "main": [
+        [
+          {
+            "node": "Pre-Filter Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pre-Filter Articles": {
       "main": [
         [
           {

@@ -36,8 +36,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 APP_DIR="$PROJECT_ROOT/app"
-LOGS_DIR="$APP_DIR/logs"
-LOG_FILE="$LOGS_DIR/webhook_trigger_$(date +%Y%m%d_%H%M%S).log"
 ENV_FILE="$PROJECT_ROOT/.env"
 
 # Parameters
@@ -163,8 +161,7 @@ EOF
     log "INFO" "=========================================="
     log "INFO" "Webhook trigger completed"
     log "INFO" "=========================================="
-    log "INFO" "Logs saved to: $LOG_FILE"
 
-} 2>&1 | tee -a "$LOG_FILE"
+}
 
 exit 0

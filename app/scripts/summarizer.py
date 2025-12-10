@@ -9,13 +9,10 @@ import re
 import html
 from typing import List, Dict, Any, Optional
 from app.config import settings
-from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json
 from app.scripts.tag_categorizer import assign_visual_tags_to_articles
 from app.scripts.input_validator import validate_for_summarization
 from app.scripts.cache_manager import cached, get_cached, set_cached
-
-logger = setup_logger(__name__)
 
 # Try to import sumy for fast extractive summarization
 try:
@@ -39,25 +36,20 @@ try:
         try:
             nltk.data.find('tokenizers/punkt_tab')
         except LookupError:
-            logger.info("Downloading NLTK punkt_tab tokenizer (required for sumy)...")
             nltk.download('punkt_tab', quiet=True, download_dir=nltk_data_dir)
-            logger.info("NLTK punkt_tab downloaded successfully")
         
         # Download stopwords if not already present
         try:
             nltk.data.find('corpora/stopwords')
         except LookupError:
-            logger.info("Downloading NLTK stopwords...")
             nltk.download('stopwords', quiet=True, download_dir=nltk_data_dir)
-            logger.info("NLTK stopwords downloaded successfully")
             
-    except Exception as e:
-        logger.warning(f"Failed to download NLTK data: {e}, sumy may not work correctly")
+    except Exception:
+        pass
     
     SUMY_AVAILABLE = True
 except ImportError:
     SUMY_AVAILABLE = False
-    logger.warning("sumy not available, will use transformers fallback")
 
 # Initialize transformers summarizer (fallback, lazy loading) - cached per process
 _summarizer = None
@@ -85,8 +77,6 @@ def get_summarizer():
         _summarizer = cached_summarizer
         return cached_summarizer
     
-    logger.info("Initializing transformers summarization model (fallback)...")
-    logger.info("Model: facebook/bart-large-cnn (~1.6GB download on first run)")
     try:
         from transformers import pipeline
         import time
@@ -100,7 +90,6 @@ def get_summarizer():
         )
         
         load_time = time.time() - start_time
-        logger.info(f"Transformers model loaded successfully in {load_time:.1f} seconds")
         
         # Store in both caches
         _summarizer = summarizer
@@ -108,7 +97,7 @@ def get_summarizer():
         
         return summarizer
     except Exception as e:
-        logger.error(f"Failed to load transformers model: {e}", exc_info=True)
+        pass
         raise
 
 
@@ -188,7 +177,7 @@ def summarize_with_sumy(text: str, max_words: int = 150, language: str = "englis
         return summary
         
     except Exception as e:
-        logger.warning(f"sumy summarization failed: {e}, falling back to transformers")
+        # logger.warning(f"sumy summarization failed: {e}, falling back to transformers")
         return None
 
 
@@ -207,13 +196,13 @@ def summarize_article(text: str, max_words: int = None) -> str:
         max_words = settings.SUMMARY_MAX_WORDS
     
     if not text or len(text.strip()) == 0:
-        logger.warning("Empty text provided for summarization")
+        # logger.warning("Empty text provided for summarization")
         return ""
     
     # Validate and sanitize input before passing to Hugging Face
     is_valid, sanitized_text, reason = validate_for_summarization(text)
     if not is_valid:
-        logger.error(f"Input validation failed for summarization: {reason}")
+        # logger.error(f"Input validation failed for summarization: {reason}")
         # Return empty string rather than processing potentially dangerous input
         return ""
     
@@ -225,19 +214,19 @@ def summarize_article(text: str, max_words: int = None) -> str:
         
         # Try fast sumy summarization first
         if SUMY_AVAILABLE:
-            logger.debug(f"Using sumy for fast extractive summarization ({len(text)} chars)")
+            # logger.debug(f"Using sumy for fast extractive summarization ({len(text)} chars)")
             start_time = time.time()
             summary = summarize_with_sumy(text, max_words=max_words)
             if summary:
                 elapsed = time.time() - start_time
-                logger.info(f"sumy summarization completed in {elapsed:.2f} seconds")
+                # logger.info(f"sumy summarization completed in {elapsed:.2f} seconds")
                 summary = clean_html_and_entities(summary)
                 return summary
             else:
-                logger.warning("sumy failed, falling back to transformers")
+                # logger.warning("sumy failed, falling back to transformers")
         
         # Fallback to transformers (slow)
-        logger.debug(f"Using transformers summarization ({len(text)} chars)")
+        # logger.debug(f"Using transformers summarization ({len(text)} chars)")
         summarizer = get_summarizer()
         
         # Calculate max_length and min_length based on word count
@@ -245,7 +234,7 @@ def summarize_article(text: str, max_words: int = None) -> str:
         max_length = int(max_words * 1.3)
         min_length = int(settings.SUMMARY_MIN_WORDS * 1.3)
         
-        logger.info(f"Calling transformers with max_length={max_length}, min_length={min_length}")
+        # logger.info(f"Calling transformers with max_length={max_length}, min_length={min_length}")
         
         start_time = time.time()
         result = summarizer(
@@ -255,10 +244,10 @@ def summarize_article(text: str, max_words: int = None) -> str:
             do_sample=False
         )
         elapsed = time.time() - start_time
-        logger.info(f"Transformers call completed in {elapsed:.1f} seconds")
+        # logger.info(f"Transformers call completed in {elapsed:.1f} seconds")
         
         summary = result[0]['summary_text'] if result else ""
-        logger.debug(f"Generated summary ({len(summary)} chars)")
+        # logger.debug(f"Generated summary ({len(summary)} chars)")
         
         # Clean HTML tags and entities from summary
         summary = clean_html_and_entities(summary)
@@ -266,7 +255,7 @@ def summarize_article(text: str, max_words: int = None) -> str:
         return summary
         
     except Exception as e:
-        logger.error(f"Failed to summarize article: {e}")
+        # logger.error(f"Failed to summarize article: {e}")
         # Fallback: return first N words
         words = text.split()[:max_words]
         return " ".join(words)
@@ -282,19 +271,19 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
     Returns:
         List of news items with added 'summary' field (if not present or enhanced)
     """
-    logger.info(f"Summarizing {len(news_items)} news articles")
+    # logger.info(f"Summarizing {len(news_items)} news articles")
     
     # Pre-load transformers model only if sumy is not available
     if not SUMY_AVAILABLE:
-        logger.info("Pre-loading transformers model (sumy not available)...")
+        # logger.info("Pre-loading transformers model (sumy not available)...")
         try:
             summarizer = get_summarizer()
-            logger.info("Transformers model pre-loaded successfully, starting batch processing...")
+            # logger.info("Transformers model pre-loaded successfully, starting batch processing...")
         except Exception as e:
-            logger.error(f"Failed to pre-load transformers model: {e}", exc_info=True)
+            # logger.error(f"Failed to pre-load transformers model: {e}", exc_info=True)
             raise
     else:
-        logger.info("Using fast sumy extractive summarization (no model loading needed)")
+        # logger.info("Using fast sumy extractive summarization (no model loading needed)")
     
     summarized_items = []
     import time
@@ -309,26 +298,26 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
             # Use existing summary if it's already good, otherwise summarize
             if existing_summary and len(existing_summary.split()) >= settings.SUMMARY_MIN_WORDS:
                 summary = clean_html_and_entities(existing_summary)
-                logger.debug(f"Item {i}/{len(news_items)}: Using existing summary (cleaned)")
+                # logger.debug(f"Item {i}/{len(news_items)}: Using existing summary (cleaned)")
             else:
                 # Combine title and summary for full context
                 text_to_summarize = f"{title}. {existing_summary}" if existing_summary else title
                 
                 if not text_to_summarize.strip():
-                    logger.warning(f"Item {i}/{len(news_items)}: No text to summarize")
+                    # logger.warning(f"Item {i}/{len(news_items)}: No text to summarize")
                     summary = ""
                 else:
                     item_start = time.time()
                     summary = summarize_article(text_to_summarize)
                     item_time = time.time() - item_start
-                    logger.info(f"Item {i}/{len(news_items)}: Generated summary in {item_time:.1f}s ({len(summary.split())} words)")
+                    # logger.info(f"Item {i}/{len(news_items)}: Generated summary in {item_time:.1f}s ({len(summary.split())} words)")
                     
                     # Log progress every 10 items
                     if i % 10 == 0:
                         elapsed = time.time() - batch_start
                         avg_time = elapsed / i
                         remaining = (len(news_items) - i) * avg_time
-                        logger.info(f"Progress: {i}/{len(news_items)} ({i*100//len(news_items)}%) - Est. remaining: {remaining/60:.1f} min")
+                        # logger.info(f"Progress: {i}/{len(news_items)} ({i*100//len(news_items)}%) - Est. remaining: {remaining/60:.1f} min")
             
             # Create new item with summary
             summarized_item = item.copy()
@@ -339,7 +328,7 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
             summarized_items.append(summarized_item)
             
         except Exception as e:
-            logger.error(f"Failed to summarize item {i}/{len(news_items)}: {e}")
+            # logger.error(f"Failed to summarize item {i}/{len(news_items)}: {e}")
             # Keep original item without summary
             item_copy = item.copy()
             item_copy['summary'] = item.get('summary', '')
@@ -349,8 +338,8 @@ def batch_summarize_news(news_items: List[Dict[str, Any]]) -> List[Dict[str, Any
     
     total_time = time.time() - batch_start
     successful = sum(1 for item in summarized_items if item.get('summary_generated', False))
-    logger.info(f"Batch summarization complete: {successful}/{len(news_items)} successful in {total_time/60:.1f} minutes")
-    logger.info(f"Average time per article: {total_time/len(news_items):.1f} seconds")
+    # logger.info(f"Batch summarization complete: {successful}/{len(news_items)} successful in {total_time/60:.1f} minutes")
+    # logger.info(f"Average time per article: {total_time/len(news_items):.1f} seconds")
     
     return summarized_items
 
@@ -361,50 +350,50 @@ def main():
     import json
     
     try:
-        logger.info("Starting summarization process")
+        # logger.info("Starting summarization process")
         
         # Try to read from stdin first (for pipeline usage), otherwise use file
         news_items = None
         if not sys.stdin.isatty():
             # Reading from stdin (pipeline mode)
-            logger.info("Reading news items from stdin")
+            # logger.info("Reading news items from stdin")
             try:
                 stdin_data = sys.stdin.read()
                 if stdin_data and stdin_data.strip():
                     data = json.loads(stdin_data)
                     news_items = data.get('items', [])
-                    logger.info(f"Loaded {len(news_items)} news items from stdin")
+                    # logger.info(f"Loaded {len(news_items)} news items from stdin")
                 else:
-                    logger.warning("stdin is empty, falling back to file")
+                    # logger.warning("stdin is empty, falling back to file")
             except (json.JSONDecodeError, ValueError) as e:
-                logger.error(f"Failed to parse JSON from stdin: {e}")
-                logger.info("Falling back to file input")
+                # logger.error(f"Failed to parse JSON from stdin: {e}")
+                # logger.info("Falling back to file input")
         
         # If stdin didn't work, load from filtered_news.json (pre-filtered top 30)
         if news_items is None:
             # Try filtered_news.json first (guaranteed to be filtered to top 30)
             filtered_file = settings.DATA_DIR / "filtered_news.json"
             input_file = str(filtered_file)
-            logger.info(f"Loading news items from {input_file} (pre-filtered)")
+            # logger.info(f"Loading news items from {input_file} (pre-filtered)")
             
             try:
                 data = load_json(input_file)
                 news_items = data.get('items', [])
-                logger.info(f"Loaded {len(news_items)} news items from filtered file")
+                # logger.info(f"Loaded {len(news_items)} news items from filtered file")
             except FileNotFoundError:
                 # Fallback to raw_news.json if filtered_news.json doesn't exist
-                logger.warning(f"Filtered file not found, falling back to {settings.RAW_NEWS_FILE}")
+                # logger.warning(f"Filtered file not found, falling back to {settings.RAW_NEWS_FILE}")
                 input_file = settings.RAW_NEWS_FILE
                 data = load_json(input_file)
                 news_items = data.get('items', [])
-                logger.info(f"Loaded {len(news_items)} news items from raw file")
+                # logger.info(f"Loaded {len(news_items)} news items from raw file")
         
         if not news_items:
-            logger.warning("No news items to summarize")
+            # logger.warning("No news items to summarize")
             return 0
         
         # Assign visual tags to articles before summarizing
-        logger.info("Assigning visual tags to articles...")
+        # logger.info("Assigning visual tags to articles...")
         news_items = assign_visual_tags_to_articles(news_items)
         
         # Summarize articles
@@ -435,11 +424,11 @@ def main():
         }
         save_json(output_data, output_file)
         
-        logger.info("Summarization completed successfully")
+        # logger.info("Summarization completed successfully")
         return 0
         
     except Exception as e:
-        logger.error(f"Summarization failed: {e}", exc_info=True)
+        # logger.error(f"Summarization failed: {e}", exc_info=True)
         return 1
 
 

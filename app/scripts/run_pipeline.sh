@@ -76,9 +76,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 APP_DIR="$PROJECT_ROOT/app"
 DATA_DIR="$APP_DIR/data"
-LOGS_DIR="$APP_DIR/logs"
-LOG_FILE="$LOGS_DIR/pipeline_$(date +%Y%m%d_%H%M%S).log"
-EXECUTION_LOG="$DATA_DIR/pipeline_execution.log"
 ENV_FILE="$PROJECT_ROOT/.env"
 
 # Python executable - use Docker container if available, otherwise local python3
@@ -107,25 +104,19 @@ mkdir -p "$DATA_DIR" "$LOGS_DIR"
 cleanup_old_data() {
     log "INFO" "=== CLEANUP: Removing old feed data and images ==="
     
-    # Remove JSON data files (recreate all files each run)
-    # NOTE: display.json is NOT deleted here - it's only removed after new one is successfully created
-    local data_files=(
-        "$DATA_DIR/raw_news.json"
-        "$DATA_DIR/filtered_news.json"
-        "$DATA_DIR/summaries.json"
-        "$DATA_DIR/video_ideas.json"
-        "$DATA_DIR/thumbnails.json"
-        "$DATA_DIR/feed.json"
-    )
-    
+    # Remove ALL JSON files EXCEPT display.json
+    # display.json is kept until a new one is successfully created
     local removed_count=0
-    for file in "${data_files[@]}"; do
-        if [ -f "$file" ]; then
-            rm -f "$file"
-            removed_count=$((removed_count + 1))
-            log "INFO" "Removed: $(basename "$file")"
-        fi
-    done
+    if [ -d "$DATA_DIR" ]; then
+        while IFS= read -r -d '' json_file; do
+            local filename=$(basename "$json_file")
+            if [ "$filename" != "display.json" ]; then
+                rm -f "$json_file"
+                removed_count=$((removed_count + 1))
+                log "INFO" "Removed: $filename"
+            fi
+        done < <(find "$DATA_DIR" -maxdepth 1 -name "*.json" -type f -print0 2>/dev/null)
+    fi
     
     # Remove thumbnail image files (thumbnail_*.png)
     if [ -d "$DATA_DIR" ]; then
@@ -202,16 +193,6 @@ trap 'error_exit ${LINENO} $?' ERR
     log "INFO" "Python: $PYTHON"
     log "INFO" ""
 
-    # Initialize execution log (handle permission errors gracefully)
-    if touch "$EXECUTION_LOG" 2>/dev/null; then
-        echo "=== Pipeline Execution Log ===" > "$EXECUTION_LOG"
-        echo "Start Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> "$EXECUTION_LOG"
-        echo "" >> "$EXECUTION_LOG"
-        EXECUTION_LOG_WRITABLE=true
-    else
-        log "WARN" "Cannot write to execution log at $EXECUTION_LOG (permission denied), continuing without log..."
-        EXECUTION_LOG_WRITABLE=false
-    fi
     
     PIPELINE_START=$(date +%s)
 
@@ -220,7 +201,6 @@ trap 'error_exit ${LINENO} $?' ERR
     cleanup_old_data
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 0 (Cleanup): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
 
     # Step 1: Fetch news from all feeds (RSS scraper, Reddit, Twitter/X)
     STEP_START=$(date +%s)
@@ -229,19 +209,13 @@ trap 'error_exit ${LINENO} $?' ERR
         log "INFO" "Running RSS scraper..."
         if [ -n "$DOCKER_EXEC" ]; then
             # Script writes to file directly, just capture stderr for errors
-            $DOCKER_EXEC $PYTHON "/app/app/scripts/rss_scraper.py" 2>"$DATA_DIR/rss_scraper_stderr.log" || {
+            $DOCKER_EXEC $PYTHON "/app/app/scripts/rss_scraper.py" || {
                 log "ERROR" "RSS scraper failed"
-                if [ -f "$DATA_DIR/rss_scraper_stderr.log" ]; then
-                    log "ERROR" "Error output: $(cat "$DATA_DIR/rss_scraper_stderr.log" | tail -10)"
-                fi
                 exit 1
             }
         else
-            $PYTHON "$APP_DIR/scripts/rss_scraper.py" 2>"$DATA_DIR/rss_scraper_stderr.log" || {
+            $PYTHON "$APP_DIR/scripts/rss_scraper.py" || {
                 log "ERROR" "RSS scraper failed"
-                if [ -f "$DATA_DIR/rss_scraper_stderr.log" ]; then
-                    log "ERROR" "Error output: $(cat "$DATA_DIR/rss_scraper_stderr.log" | tail -10)"
-                fi
                 exit 1
             }
         fi
@@ -253,7 +227,6 @@ trap 'error_exit ${LINENO} $?' ERR
     fi
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 1 (RSS Scraping): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 2: Pre-filter articles for AI relevance (before summarization)
@@ -262,19 +235,13 @@ trap 'error_exit ${LINENO} $?' ERR
     if [ -f "$APP_DIR/scripts/pre_filter.py" ]; then
         log "INFO" "Running pre-filter with limit: $FEED_LIMIT..."
         if [ -n "$DOCKER_EXEC" ]; then
-            $DOCKER_EXEC $PYTHON "/app/app/scripts/pre_filter.py" --limit "$FEED_LIMIT" 2>"$DATA_DIR/pre_filter_stderr.log" || {
+            $DOCKER_EXEC $PYTHON "/app/app/scripts/pre_filter.py" --limit "$FEED_LIMIT" || {
                 log "ERROR" "Pre-filter failed"
-                if [ -f "$DATA_DIR/pre_filter_stderr.log" ]; then
-                    log "ERROR" "Error output: $(cat "$DATA_DIR/pre_filter_stderr.log" | tail -10)"
-                fi
                 exit 1
             }
         else
-            $PYTHON "$APP_DIR/scripts/pre_filter.py" --limit "$FEED_LIMIT" 2>"$DATA_DIR/pre_filter_stderr.log" || {
+            $PYTHON "$APP_DIR/scripts/pre_filter.py" --limit "$FEED_LIMIT" || {
                 log "ERROR" "Pre-filter failed"
-                if [ -f "$DATA_DIR/pre_filter_stderr.log" ]; then
-                    log "ERROR" "Error output: $(cat "$DATA_DIR/pre_filter_stderr.log" | tail -10)"
-                fi
                 exit 1
             }
         fi
@@ -285,7 +252,6 @@ trap 'error_exit ${LINENO} $?' ERR
     fi
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 2 (Pre-filtering): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 3: Summarize filtered articles
@@ -296,11 +262,8 @@ trap 'error_exit ${LINENO} $?' ERR
         if [ -n "$DOCKER_EXEC" ]; then
             # Script reads from filtered_news.json via stdin or file fallback
             if [ -f "$DATA_DIR/filtered_news.json" ]; then
-                cat "$DATA_DIR/filtered_news.json" | $DOCKER_EXEC_I $PYTHON "/app/app/scripts/summarizer.py" 2>"$DATA_DIR/summarizer_stderr.log" || {
+                cat "$DATA_DIR/filtered_news.json" | $DOCKER_EXEC_I $PYTHON "/app/app/scripts/summarizer.py" || {
                     log "ERROR" "Summarizer failed"
-                    if [ -f "$DATA_DIR/summarizer_stderr.log" ]; then
-                        log "ERROR" "Error output: $(cat "$DATA_DIR/summarizer_stderr.log" | tail -10)"
-                    fi
                     exit 1
                 }
             else
@@ -310,13 +273,10 @@ trap 'error_exit ${LINENO} $?' ERR
         else
             # Local execution
             if [ -f "$DATA_DIR/filtered_news.json" ]; then
-                cat "$DATA_DIR/filtered_news.json" | $PYTHON "$APP_DIR/scripts/summarizer.py" 2>"$DATA_DIR/summarizer_stderr.log" || {
+                cat "$DATA_DIR/filtered_news.json" | $PYTHON "$APP_DIR/scripts/summarizer.py" || {
                     log "ERROR" "Summarizer failed"
-                    if [ -f "$DATA_DIR/summarizer_stderr.log" ]; then
-                        log "ERROR" "Error output: $(cat "$DATA_DIR/summarizer_stderr.log" | tail -10)"
-                    fi
                     exit 1
-                }
+            }
             else
                 log "ERROR" "filtered_news.json not found"
                 exit 1
@@ -330,7 +290,6 @@ trap 'error_exit ${LINENO} $?' ERR
     fi
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 3 (Summarization): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 4: Generate video ideas from summaries
@@ -341,11 +300,8 @@ trap 'error_exit ${LINENO} $?' ERR
         if [ -n "$DOCKER_EXEC" ]; then
             # Use docker exec -i to enable stdin forwarding
             if [ -f "$DATA_DIR/summaries.json" ]; then
-                cat "$DATA_DIR/summaries.json" | $DOCKER_EXEC_I $PYTHON "/app/app/scripts/video_idea_generator.py" 2>"$DATA_DIR/video_ideas_stderr.log" || {
+                cat "$DATA_DIR/summaries.json" | $DOCKER_EXEC_I $PYTHON "/app/app/scripts/video_idea_generator.py" || {
                     log "ERROR" "Video idea generator failed"
-                    if [ -f "$DATA_DIR/video_ideas_stderr.log" ]; then
-                        log "ERROR" "Error output: $(cat "$DATA_DIR/video_ideas_stderr.log" | tail -10)"
-                    fi
                     exit 1
                 }
             else
@@ -354,11 +310,8 @@ trap 'error_exit ${LINENO} $?' ERR
             fi
         else
             # Local execution - pipe works fine
-            cat "$DATA_DIR/summaries.json" | $PYTHON "$APP_DIR/scripts/video_idea_generator.py" 2>"$DATA_DIR/video_ideas_stderr.log" || {
+            cat "$DATA_DIR/summaries.json" | $PYTHON "$APP_DIR/scripts/video_idea_generator.py" || {
                 log "ERROR" "Video idea generator failed"
-                if [ -f "$DATA_DIR/video_ideas_stderr.log" ]; then
-                    log "ERROR" "Error output: $(cat "$DATA_DIR/video_ideas_stderr.log" | tail -10)"
-                fi
                 exit 1
             }
         fi
@@ -377,7 +330,6 @@ trap 'error_exit ${LINENO} $?' ERR
     log "INFO" "Tag images should be generated separately using: bash app/scripts/generate_tag_images.sh"
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 5 (Tag Images - skipped): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 6: Merge all data into unified feed (tag images assigned based on visual_tags)
@@ -425,7 +377,6 @@ trap 'error_exit ${LINENO} $?' ERR
     
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 6 (Merging): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Step 7: Update Flask API with new feed
@@ -468,7 +419,6 @@ trap 'error_exit ${LINENO} $?' ERR
     fi
     STEP_END=$(date +%s)
     STEP_DURATION=$((STEP_END - STEP_START))
-    [ "$EXECUTION_LOG_WRITABLE" = true ] && echo "Step 7 (Flask API Update): ${STEP_DURATION}s" >> "$EXECUTION_LOG"
     log "INFO" ""
 
     # Calculate total pipeline duration
@@ -476,14 +426,6 @@ trap 'error_exit ${LINENO} $?' ERR
     PIPELINE_DURATION=$((PIPELINE_END - PIPELINE_START))
     
     # Write final summary to execution log
-    if [ "$EXECUTION_LOG_WRITABLE" = true ]; then
-        echo "" >> "$EXECUTION_LOG"
-        echo "=== Pipeline Summary ===" >> "$EXECUTION_LOG"
-        echo "End Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> "$EXECUTION_LOG"
-        echo "Total Duration: ${PIPELINE_DURATION}s ($(awk "BEGIN {printf \"%.1f\", ${PIPELINE_DURATION}/60}") minutes)" >> "$EXECUTION_LOG"
-        echo "" >> "$EXECUTION_LOG"
-        log "INFO" "Execution log saved to: $EXECUTION_LOG"
-    fi
 
     # Summary
     log "INFO" "=========================================="
@@ -497,10 +439,9 @@ trap 'error_exit ${LINENO} $?' ERR
     log "INFO" "  - video_ideas.json (video ideas with article_id)"
     log "INFO" "  - tag_images/ (pre-generated tag images, see generate_tag_images.sh)"
     log "INFO" "  - feed.json (final merged feed, version 2.0)"
-    log "INFO" "Logs saved to: $LOG_FILE"
     log "INFO" ""
 
-} 2>&1 | tee -a "$LOG_FILE"
+}
 
 # Exit with success
 exit 0

@@ -12,7 +12,6 @@ from typing import List, Dict, Any
 from datetime import datetime
 
 from app.config import settings
-from app.scripts.logger import setup_logger
 from app.scripts.tag_categorizer import AI_TOPICS
 from app.scripts.leonardo_api import (
     initialize_leonardo_client,
@@ -21,7 +20,6 @@ from app.scripts.leonardo_api import (
     download_generated_image
 )
 
-logger = setup_logger(__name__)
 
 
 def generate_tag_images(output_dir: Path, limit: int = 30) -> List[Dict[str, Any]]:
@@ -52,7 +50,7 @@ def generate_tag_images(output_dir: Path, limit: int = 30) -> List[Dict[str, Any
     # Limit to requested number
     tags_to_generate = all_tags[:limit]
     
-    logger.info(f"Generating {len(tags_to_generate)} tag images (limit: {limit})")
+    # logger.info(f"Generating {len(tags_to_generate)} tag images (limit: {limit})")
     
     generated_images = []
     
@@ -74,7 +72,7 @@ def generate_tag_images(output_dir: Path, limit: int = 30) -> List[Dict[str, Any
             f"STRICT: no text, no words, no letters, no symbols, no logos. Pure imagery only."
         )
         
-        logger.info(f"Generating image {i}/{len(tags_to_generate)}: {tag} ({category_name})")
+        # logger.info(f"Generating image {i}/{len(tags_to_generate)}: {tag} ({category_name})")
         
         try:
             # Generate thumbnail with PhotoReal model
@@ -113,18 +111,18 @@ def generate_tag_images(output_dir: Path, limit: int = 30) -> List[Dict[str, Any
                                 "status": "success"
                             }
                             generated_images.append(image_metadata)
-                            logger.info(f"✓ Generated tag_{i:03d}.png for '{tag}'")
+                            # logger.info(f"✓ Generated tag_{i:03d}.png for '{tag}'")
                         else:
-                            logger.warning(f"✗ Failed to download image for tag '{tag}'")
+                            # logger.warning(f"✗ Failed to download image for tag '{tag}'")
                     else:
-                        logger.warning(f"✗ No image URL for tag '{tag}'")
+                        # logger.warning(f"✗ No image URL for tag '{tag}'")
                 else:
-                    logger.warning(f"✗ Generation failed for tag '{tag}': {status_result.get('status')}")
+                    # logger.warning(f"✗ Generation failed for tag '{tag}': {status_result.get('status')}")
             else:
-                logger.warning(f"✗ Failed to start generation for tag '{tag}'")
+                # logger.warning(f"✗ Failed to start generation for tag '{tag}'")
                 
         except Exception as e:
-            logger.error(f"Error generating image for tag '{tag}': {e}")
+            # logger.error(f"Error generating image for tag '{tag}': {e}")
             continue
     
     # Save metadata
@@ -139,8 +137,8 @@ def generate_tag_images(output_dir: Path, limit: int = 30) -> List[Dict[str, Any
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, indent=2)
     
-    logger.info(f"Generated {len(generated_images)} tag images")
-    logger.info(f"Metadata saved to: {metadata_file}")
+    # logger.info(f"Generated {len(generated_images)} tag images")
+    # logger.info(f"Metadata saved to: {metadata_file}")
     
     return generated_images
 
@@ -159,7 +157,7 @@ def main():
         generate_tag_images(output_dir, limit=args.limit)
         return 0
     except Exception as e:
-        logger.error(f"Tag image generation failed: {e}", exc_info=True)
+        # logger.error(f"Tag image generation failed: {e}", exc_info=True)
         return 1
 
 

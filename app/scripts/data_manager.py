@@ -12,11 +12,8 @@ import hashlib
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from app.config import settings
-from app.scripts.logger import setup_logger
 from app.scripts.filtering import filter_and_deduplicate
 from app.scripts.tag_categorizer import assign_visual_tags_to_articles, AI_TOPICS
-
-logger = setup_logger(__name__)
 
 
 def generate_article_id(source_url: str) -> str:
@@ -83,18 +80,18 @@ def load_json(file_path: str) -> Dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"JSON file not found: {path}")
     
-    logger.debug(f"Loading JSON from: {path}")
+    # logger.debug(f"Loading JSON from: {path}")
     
     try:
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        logger.debug(f"Successfully loaded JSON from {path}")
+        # logger.debug(f"Successfully loaded JSON from {path}")
         return data
     except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in {path}: {e}")
+        # logger.error(f"Invalid JSON in {path}: {e}")
         raise
     except Exception as e:
-        logger.error(f"Failed to load JSON from {path}: {e}")
+        # logger.error(f"Failed to load JSON from {path}: {e}")
         raise
 
 
@@ -117,20 +114,20 @@ def save_json(data: Dict[str, Any], file_path: str) -> None:
     # Ensure directory exists
     path.parent.mkdir(parents=True, exist_ok=True)
     
-    logger.debug(f"Saving JSON to: {path}")
+    # logger.debug(f"Saving JSON to: {path}")
     
     try:
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        logger.info(f"Successfully saved JSON to {path}")
+        # logger.info(f"Successfully saved JSON to {path}")
     except (UnicodeEncodeError, TypeError) as e:
         # If there are encoding issues, try with ensure_ascii=True to escape non-ASCII
-        logger.warning(f"Encoding issue saving JSON, retrying with ASCII encoding: {e}")
+        # logger.warning(f"Encoding issue saving JSON, retrying with ASCII encoding: {e}")
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=True)
-        logger.info(f"Successfully saved JSON to {path} (with ASCII encoding)")
+        # logger.info(f"Successfully saved JSON to {path} (with ASCII encoding)")
     except OSError as e:
-        logger.error(f"Failed to save JSON to {path}: {e}")
+        # logger.error(f"Failed to save JSON to {path}: {e}")
         raise
 
 
@@ -281,13 +278,13 @@ def merge_feeds(
         List of merged feed items with unified structure
     """
     if thumbnails:
-        logger.debug(f"Ignoring {len(thumbnails)} thumbnails (deprecated)")
+        # logger.debug(f"Ignoring {len(thumbnails)} thumbnails (deprecated)")
     
-    logger.info(f"Merging {len(news_items)} news items, {len(video_ideas)} video ideas")
+    # logger.info(f"Merging {len(news_items)} news items, {len(video_ideas)} video ideas")
     
     # Apply filtering to news items if requested
     if apply_filtering and news_items:
-        logger.info(f"Applying filtering to news items (max_items: {max_items})")
+        # logger.info(f"Applying filtering to news items (max_items: {max_items})")
         news_items = filter_and_deduplicate(news_items, similarity_threshold=0.7, min_relevance=0.1, max_items=max_items)
     
     # Create lookup map of video ideas by article_id
@@ -299,7 +296,7 @@ def merge_feeds(
                 video_ideas_by_article[article_id] = []
             video_ideas_by_article[article_id].append(idea)
     
-    logger.info(f"Grouped {len(video_ideas)} video ideas into {len(video_ideas_by_article)} articles")
+    # logger.info(f"Grouped {len(video_ideas)} video ideas into {len(video_ideas_by_article)} articles")
     
     # Assign visual tags to news items
     news_items_with_tags = assign_visual_tags_to_articles(news_items.copy())
@@ -384,10 +381,10 @@ def merge_feeds(
             standalone_ideas.append(feed_item)
     
     if standalone_ideas:
-        logger.info(f"Adding {len(standalone_ideas)} standalone video ideas")
+        # logger.info(f"Adding {len(standalone_ideas)} standalone video ideas")
         merged_feed.extend(standalone_ideas)
     
-    logger.info(f"Merged feed contains {len(merged_feed)} items ({len([x for x in merged_feed if x.get('type') == 'news'])} news, {len([x for x in merged_feed if x.get('type') == 'video_idea'])} video ideas)")
+    # logger.info(f"Merged feed contains {len(merged_feed)} items ({len([x for x in merged_feed if x.get('type') == 'news'])} news, {len([x for x in merged_feed if x.get('type') == 'video_idea'])} video ideas)")
     return merged_feed
 
 
@@ -425,7 +422,7 @@ def build_display_data(
     Returns:
         Dictionary with 'data' lookup and 'items' array
     """
-    logger.info(f"Building display data from {len(filtered_news)} news, {len(summaries)} summaries, {len(video_ideas)} video ideas")
+    # logger.info(f"Building display data from {len(filtered_news)} news, {len(summaries)} summaries, {len(video_ideas)} video ideas")
     
     # Create lookups by article_id
     summaries_lookup = {s.get('article_id'): s for s in summaries}
@@ -516,7 +513,7 @@ def build_display_data(
         
         display_items.append(display_item)
     
-    logger.info(f"Built {len(display_items)} display items with {len(data_lookup)} data entries")
+    # logger.info(f"Built {len(display_items)} display items with {len(data_lookup)} data entries")
     
     return {
         'data': data_lookup,
@@ -545,7 +542,7 @@ def generate_feed_json(merged_data: List[Dict[str, Any]], output_file: str = Non
     }
     
     save_json(feed_data, output_file)
-    logger.info(f"Generated feed.json with {len(merged_data)} items")
+    # logger.info(f"Generated feed.json with {len(merged_data)} items")
 
 
 if __name__ == "__main__":
@@ -584,16 +581,16 @@ if __name__ == "__main__":
         args = parser.parse_args()
         feed_limit = args.limit
         
-        logger.info(f"Running data manager in pipeline mode (feed limit: {feed_limit})")
+        # logger.info(f"Running data manager in pipeline mode (feed limit: {feed_limit})")
         
         try:
             # Load all pipeline outputs
             filtered_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
             if filtered_file.exists():
                 news_items = load_json(str(filtered_file)).get('items', [])
-                logger.info(f"Loaded {len(news_items)} filtered news items from {settings.FILTERED_NEWS_FILE}")
+                # logger.info(f"Loaded {len(news_items)} filtered news items from {settings.FILTERED_NEWS_FILE}")
             else:
-                logger.warning(f"{settings.FILTERED_NEWS_FILE} not found, falling back to {settings.RAW_NEWS_FILE}")
+                # logger.warning(f"{settings.FILTERED_NEWS_FILE} not found, falling back to {settings.RAW_NEWS_FILE}")
                 news_items = load_json(settings.RAW_NEWS_FILE).get('items', [])
             
             # Load summaries and merge by article_id
@@ -610,18 +607,18 @@ if __name__ == "__main__":
                             item['title'] = summary_item.get('title', '')
                         if 'source_url' not in item or not item.get('source_url'):
                             item['source_url'] = summary_item.get('source_url', '')
-                logger.info(f"Merged {len(summaries_lookup)} summaries into news items")
+                # logger.info(f"Merged {len(summaries_lookup)} summaries into news items")
             else:
-                logger.warning("summaries.json not found, news items will not have summaries")
+                # logger.warning("summaries.json not found, news items will not have summaries")
             
             video_ideas = load_json(settings.VIDEO_IDEAS_FILE).get('items', [])
             
-            logger.info(f"Loaded {len(news_items)} news items, {len(video_ideas)} video ideas")
+            # logger.info(f"Loaded {len(news_items)} news items, {len(video_ideas)} video ideas")
             
             # Merge with filtering and limit
             merged_data = merge_feeds(news_items, video_ideas, apply_filtering=True, max_items=feed_limit)
             
-            logger.info(f"Final feed contains {len(merged_data)} items ({len([x for x in merged_data if x.get('type') == 'news'])} news, {len([x for x in merged_data if x.get('type') == 'video_idea'])} video ideas)")
+            # logger.info(f"Final feed contains {len(merged_data)} items ({len([x for x in merged_data if x.get('type') == 'news'])} news, {len([x for x in merged_data if x.get('type') == 'video_idea'])} video ideas)")
             
             # Generate feed.json
             feed_data = {
@@ -631,7 +628,7 @@ if __name__ == "__main__":
                 'total_items': len(merged_data),
             }
             save_json(feed_data, settings.FEED_FILE)
-            logger.info(f"Feed saved to {settings.FEED_FILE}")
+            # logger.info(f"Feed saved to {settings.FEED_FILE}")
             
             # Also generate display.json using build_display_data (new structure)
             try:
@@ -654,13 +651,13 @@ if __name__ == "__main__":
                 
                 display_file = settings.get_data_file_path(settings.DISPLAY_FILE)
                 save_json(display_data, str(display_file))
-                logger.info(f"Display data saved to {settings.DISPLAY_FILE}")
+                # logger.info(f"Display data saved to {settings.DISPLAY_FILE}")
             except Exception as e:
-                logger.warning(f"Failed to generate display.json: {e} (feed.json was created successfully)")
+                # logger.warning(f"Failed to generate display.json: {e} (feed.json was created successfully)")
             
         except FileNotFoundError as e:
-            logger.error(f"Required data file not found: {e}")
+            # logger.error(f"Required data file not found: {e}")
             sys.exit(1)
         except Exception as e:
-            logger.error(f"Data manager failed: {e}", exc_info=True)
+            # logger.error(f"Data manager failed: {e}", exc_info=True)
             sys.exit(1)

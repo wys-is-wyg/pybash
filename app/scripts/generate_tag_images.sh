@@ -45,8 +45,6 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 APP_DIR="$PROJECT_ROOT/app"
 DATA_DIR="$APP_DIR/data"
 TAG_IMAGES_DIR="$DATA_DIR/tag_images"
-LOGS_DIR="$APP_DIR/logs"
-LOG_FILE="$LOGS_DIR/tag_images_$(date +%Y%m%d_%H%M%S).log"
 ENV_FILE="$PROJECT_ROOT/.env"
 
 # Python executable - use Docker container if available, otherwise local python3
@@ -96,9 +94,9 @@ fi
 log "INFO" "Generating images for visual tag categories..."
 
 if [ -n "$DOCKER_EXEC" ]; then
-    $DOCKER_EXEC $PYTHON "/app/app/scripts/generate_tag_images.py" --limit "$IMAGE_LIMIT" --output-dir "/app/app/data/tag_images" 2>&1 | tee -a "$LOG_FILE"
+    $DOCKER_EXEC $PYTHON "/app/app/scripts/generate_tag_images.py" --limit "$IMAGE_LIMIT" --output-dir "/app/app/data/tag_images"
 else
-    $PYTHON "$APP_DIR/scripts/generate_tag_images.py" --limit "$IMAGE_LIMIT" --output-dir "$TAG_IMAGES_DIR" 2>&1 | tee -a "$LOG_FILE"
+    $PYTHON "$APP_DIR/scripts/generate_tag_images.py" --limit "$IMAGE_LIMIT" --output-dir "$TAG_IMAGES_DIR"
 fi
 
 if [ $? -eq 0 ]; then

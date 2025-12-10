@@ -5,9 +5,7 @@ Assigns visual tags to articles based on content analysis for Leonardo AI image 
 """
 
 from typing import List, Dict, Any, Tuple
-from app.scripts.logger import setup_logger
 
-logger = setup_logger(__name__)
 
 # Negative keywords that indicate non-AI/tech content (should be rejected)
 # Articles with these in the TITLE should be rejected immediately, regardless of other content
@@ -150,7 +148,7 @@ def categorize_article(article: Dict[str, Any], min_matches: int = 1) -> Tuple[L
     title_lower = title.lower()
     has_title_negative = any(neg in title_lower for neg in TITLE_NEGATIVE_KEYWORDS)
     if has_title_negative:
-        logger.debug(f"Article '{title[:50]}...' has negative keywords in title - REJECTED")
+        # logger.debug(f"Article '{title[:50]}...' has negative keywords in title - REJECTED")
         return [], 0
     
     # SECOND CHECK: Reject multi-part articles (Part 1, Part 2, etc.) - these are usually low-value
@@ -160,7 +158,7 @@ def categorize_article(article: Dict[str, Any], min_matches: int = 1) -> Tuple[L
         "part i", "part ii", "part iii", "part iv", "part v"
     ])
     if has_part_number:
-        logger.debug(f"Article '{title[:50]}...' is a multi-part article - REJECTED")
+        # logger.debug(f"Article '{title[:50]}...' is a multi-part article - REJECTED")
         return [], 0
     
     # THIRD CHECK: Reject articles with negative keywords in body (unless they have strong AI keywords)
@@ -173,7 +171,7 @@ def categorize_article(article: Dict[str, Any], min_matches: int = 1) -> Tuple[L
         strong_ai_count = sum(1 for ai_kw in strong_ai_keywords if ai_kw in combined_text)
         # Require at least 3 strong AI keyword mentions to override negative keywords
         if strong_ai_count < 3:
-            logger.debug(f"Article '{title[:50]}...' contains negative keywords and only {strong_ai_count} strong AI keywords (required: 3+) - REJECTED")
+            # logger.debug(f"Article '{title[:50]}...' contains negative keywords and only {strong_ai_count} strong AI keywords (required: 3+) - REJECTED")
             return [], 0
     
     # Match article against AI topics (excluding generic "ai" since all articles are AI-related)
@@ -213,7 +211,7 @@ def categorize_article(article: Dict[str, Any], min_matches: int = 1) -> Tuple[L
     
     # Check if we have enough matches
     if len(matched_topics) < min_matches:
-        logger.debug(f"Article '{title[:50]}...' matched {len(matched_topics)} topics (required: {min_matches}+) - REJECTED")
+        # logger.debug(f"Article '{title[:50]}...' matched {len(matched_topics)} topics (required: {min_matches}+) - REJECTED")
         return [], len(matched_topics)
     
     # Sort by weight (descending) and get top 1-3 tags (reduced from 5 to avoid too many tags)
@@ -221,7 +219,7 @@ def categorize_article(article: Dict[str, Any], min_matches: int = 1) -> Tuple[L
     tags = [topic for topic, weight in matched_topics[:3]]  # Top 3 matching topics
     
     match_count = len(matched_topics)
-    logger.debug(f"Article '{title[:50]}...' assigned tags: {tags} (matches: {match_count})")
+    # logger.debug(f"Article '{title[:50]}...' assigned tags: {tags} (matches: {match_count})")
     return tags, match_count
 
 
@@ -252,14 +250,14 @@ def assign_visual_tags_to_articles(articles: List[Dict[str, Any]], min_matches: 
             else:
                 rejected_count += 1
                 title = article.get('title', 'Unknown')[:60]
-                logger.info(f"Rejected article (matches {match_count} < {min_matches}): {title}")
+                # logger.info(f"Rejected article (matches {match_count} < {min_matches}): {title}")
         else:
             # Include all articles, even if they have no tags
             filtered_articles.append(article)
     
     if filter_low_relevance and rejected_count > 0:
-        logger.info(f"Filtered out {rejected_count} low-relevance articles (below {min_matches} matches)")
-        logger.info(f"Kept {len(filtered_articles)} relevant articles")
+        # logger.info(f"Filtered out {rejected_count} low-relevance articles (below {min_matches} matches)")
+        # logger.info(f"Kept {len(filtered_articles)} relevant articles")
     
     return filtered_articles
 

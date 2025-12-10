@@ -11,10 +11,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from app.config import settings
-from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json
 
-logger = setup_logger(__name__)
 
 # Global API client state
 _api_key = None
@@ -38,7 +36,7 @@ def initialize_leonardo_client(api_key: str = None) -> None:
     
     # Log API key status (masked for security)
     api_key_preview = f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else "***"
-    logger.info(f"Leonardo API key loaded (preview: {api_key_preview}, length: {len(api_key)})")
+    # logger.info(f"Leonardo API key loaded (preview: {api_key_preview}, length: {len(api_key)})")
     
     _api_key = api_key
     _api_headers = {
@@ -46,7 +44,7 @@ def initialize_leonardo_client(api_key: str = None) -> None:
         "Content-Type": "application/json",
     }
     
-    logger.info("Leonardo API client initialized")
+    # logger.info("Leonardo API client initialized")
 
 
 def generate_thumbnail(prompt: str, model_id: str = None, use_alchemy: bool = None, model_type: str = "photoreal", tags: List[str] = None) -> Dict[str, Any]:
@@ -125,14 +123,14 @@ def generate_thumbnail(prompt: str, model_id: str = None, use_alchemy: bool = No
         # If Alchemy is disabled, include modelId for all model types
         payload["modelId"] = model_id
     
-    logger.debug(f"Generating thumbnail with prompt: {prompt[:50]}...")
+    # logger.debug(f"Generating thumbnail with prompt: {prompt[:50]}...")
     
     try:
-        logger.info(f"Request URL: {url}")
-        logger.info(f"Request payload: {payload}")
+        # logger.info(f"Request URL: {url}")
+        # logger.info(f"Request payload: {payload}")
         # Log Authorization header (masked)
         auth_header_preview = _api_headers.get("Authorization", "")[:20] + "..." if _api_headers.get("Authorization") else "None"
-        logger.info(f"Authorization header: {auth_header_preview}")
+        # logger.info(f"Authorization header: {auth_header_preview}")
         
         response = requests.post(
             url,
@@ -142,14 +140,14 @@ def generate_thumbnail(prompt: str, model_id: str = None, use_alchemy: bool = No
         )
         
         # Log response details for debugging
-        logger.info(f"Response status: {response.status_code}")
+        # logger.info(f"Response status: {response.status_code}")
         
         # Try to get response body even on error
         try:
             response_data = response.json()
-            logger.info(f"Response body: {response_data}")
+            # logger.info(f"Response body: {response_data}")
         except:
-            logger.info(f"Response text: {response.text[:500]}")
+            # logger.info(f"Response text: {response.text[:500]}")
         
         response.raise_for_status()
         
@@ -157,10 +155,10 @@ def generate_thumbnail(prompt: str, model_id: str = None, use_alchemy: bool = No
         generation_id = data.get("sdGenerationJob", {}).get("generationId")
         
         if not generation_id:
-            logger.error(f"No generation ID in response: {data}")
+            # logger.error(f"No generation ID in response: {data}")
             raise ValueError("No generation ID returned from API")
         
-        logger.info(f"Thumbnail generation started: {generation_id}")
+        # logger.info(f"Thumbnail generation started: {generation_id}")
         
         return {
             "generation_id": generation_id,
@@ -176,13 +174,13 @@ def generate_thumbnail(prompt: str, model_id: str = None, use_alchemy: bool = No
             error_msg += f": {error_body}"
         except:
             error_msg += f": {e.response.text[:200]}"
-        logger.error(f"Failed to generate thumbnail: {error_msg}")
+        # logger.error(f"Failed to generate thumbnail: {error_msg}")
         raise Exception(f"Leonardo API error: {error_msg}") from e
     except requests.RequestException as e:
-        logger.error(f"Failed to generate thumbnail: {e}")
+        # logger.error(f"Failed to generate thumbnail: {e}")
         raise
     except Exception as e:
-        logger.error(f"Unexpected error generating thumbnail: {e}")
+        # logger.error(f"Unexpected error generating thumbnail: {e}")
         raise
 
 
@@ -205,7 +203,7 @@ def get_generation_status(generation_id: str) -> Dict[str, Any]:
     timeout = settings.LEONARDO_GENERATION_TIMEOUT
     poll_interval = settings.LEONARDO_POLL_INTERVAL
     
-    logger.debug(f"Polling generation status: {generation_id}")
+    # logger.debug(f"Polling generation status: {generation_id}")
     
     while True:
         try:
@@ -224,14 +222,14 @@ def get_generation_status(generation_id: str) -> Dict[str, Any]:
                 generations = data.get("generations_by_pk", {}).get("generated_images", [])
                 if generations:
                     image_url = generations[0].get("url", "")
-                    logger.info(f"Generation complete: {generation_id}")
+                    # logger.info(f"Generation complete: {generation_id}")
                     return {
                         "generation_id": generation_id,
                         "status": "complete",
                         "image_url": image_url,
                     }
                 else:
-                    logger.warning(f"Generation complete but no image URL: {generation_id}")
+                    # logger.warning(f"Generation complete but no image URL: {generation_id}")
                     return {
                         "generation_id": generation_id,
                         "status": "complete",
@@ -239,7 +237,7 @@ def get_generation_status(generation_id: str) -> Dict[str, Any]:
                     }
             
             elif status == "FAILED":
-                logger.error(f"Generation failed: {generation_id}")
+                # logger.error(f"Generation failed: {generation_id}")
                 return {
                     "generation_id": generation_id,
                     "status": "failed",
@@ -249,7 +247,7 @@ def get_generation_status(generation_id: str) -> Dict[str, Any]:
             # Check timeout
             elapsed = time.time() - start_time
             if elapsed > timeout:
-                logger.error(f"Generation timeout: {generation_id}")
+                # logger.error(f"Generation timeout: {generation_id}")
                 return {
                     "generation_id": generation_id,
                     "status": "timeout",
@@ -260,12 +258,12 @@ def get_generation_status(generation_id: str) -> Dict[str, Any]:
             time.sleep(poll_interval)
             
         except requests.RequestException as e:
-            logger.error(f"Error polling generation status: {e}")
+            # logger.error(f"Error polling generation status: {e}")
             # Retry on network errors
             time.sleep(poll_interval)
             continue
         except Exception as e:
-            logger.error(f"Unexpected error polling status: {e}")
+            # logger.error(f"Unexpected error polling status: {e}")
             raise
 
 
@@ -281,11 +279,11 @@ def download_generated_image(image_url: str, save_path: str) -> bool:
         True if successful, False otherwise
     """
     if not image_url:
-        logger.warning("No image URL provided")
+        # logger.warning("No image URL provided")
         return False
     
     try:
-        logger.debug(f"Downloading image from {image_url} to {save_path}")
+        # logger.debug(f"Downloading image from {image_url} to {save_path}")
         
         response = requests.get(image_url, timeout=30, stream=True)
         response.raise_for_status()
@@ -299,14 +297,14 @@ def download_generated_image(image_url: str, save_path: str) -> bool:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
         
-        logger.info(f"Image downloaded successfully: {save_path}")
+        # logger.info(f"Image downloaded successfully: {save_path}")
         return True
         
     except requests.RequestException as e:
-        logger.error(f"Failed to download image: {e}")
+        # logger.error(f"Failed to download image: {e}")
         return False
     except Exception as e:
-        logger.error(f"Unexpected error downloading image: {e}")
+        # logger.error(f"Unexpected error downloading image: {e}")
         return False
 
 
@@ -334,7 +332,7 @@ def batch_generate_thumbnails(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
-    logger.info(f"Starting batch thumbnail generation for {len(video_ideas)} video ideas")
+    # logger.info(f"Starting batch thumbnail generation for {len(video_ideas)} video ideas")
     
     thumbnails = []
     max_retries = settings.MAX_RETRIES
@@ -353,7 +351,7 @@ def batch_generate_thumbnails(
         # Use visual_tags for image generation (not RSS tags)
         tags = visual_tags
         
-        logger.info(f"Processing {i}/{len(video_ideas)}: {idea_title} (visual tags: {', '.join(tags[:3]) if tags else 'none'})")
+        # logger.info(f"Processing {i}/{len(video_ideas)}: {idea_title} (visual tags: {', '.join(tags[:3]) if tags else 'none'})")
         
         # Retry logic
         for attempt in range(max_retries):
@@ -388,16 +386,16 @@ def batch_generate_thumbnails(
                             "generated_at": datetime.utcnow().isoformat(),
                         }
                         thumbnails.append(thumbnail)
-                        logger.info(f"Successfully generated thumbnail {i}/{len(video_ideas)}")
+                        # logger.info(f"Successfully generated thumbnail {i}/{len(video_ideas)}")
                         break
                     else:
-                        logger.warning(f"Failed to download image for {idea_title}")
+                        # logger.warning(f"Failed to download image for {idea_title}")
                 else:
-                    logger.warning(f"Generation failed for {idea_title}: {status_result.get('status')}")
+                    # logger.warning(f"Generation failed for {idea_title}: {status_result.get('status')}")
                 
                 # If we get here, generation failed - retry if attempts remain
                 if attempt < max_retries - 1:
-                    logger.info(f"Retrying {idea_title} (attempt {attempt + 2}/{max_retries})")
+                    # logger.info(f"Retrying {idea_title} (attempt {attempt + 2}/{max_retries})")
                     time.sleep(retry_delay)
                 else:
                     # Final attempt failed
@@ -411,10 +409,10 @@ def batch_generate_thumbnails(
                         "generated_at": datetime.utcnow().isoformat(),
                     }
                     thumbnails.append(thumbnail)
-                    logger.error(f"Failed to generate thumbnail for {idea_title} after {max_retries} attempts")
+                    # logger.error(f"Failed to generate thumbnail for {idea_title} after {max_retries} attempts")
                 
             except Exception as e:
-                logger.error(f"Error generating thumbnail for {idea_title} (attempt {attempt + 1}): {e}")
+                # logger.error(f"Error generating thumbnail for {idea_title} (attempt {attempt + 1}): {e}")
                 if attempt < max_retries - 1:
                     time.sleep(retry_delay)
                 else:
@@ -435,7 +433,7 @@ def batch_generate_thumbnails(
         if i < len(video_ideas):
             time.sleep(1)
     
-    logger.info(f"Batch generation complete: {len([t for t in thumbnails if t['status'] == 'success'])}/{len(video_ideas)} successful")
+    # logger.info(f"Batch generation complete: {len([t for t in thumbnails if t['status'] == 'success'])}/{len(video_ideas)} successful")
     return thumbnails
 
 
@@ -450,7 +448,7 @@ def main():
     args = parser.parse_args()
     
     try:
-        logger.info("Starting thumbnail generation process")
+        # logger.info("Starting thumbnail generation process")
         
         # Initialize client
         initialize_leonardo_client()
@@ -460,7 +458,7 @@ def main():
             input_file = args.input
         else:
             input_file = settings.VIDEO_IDEAS_FILE
-        logger.info(f"Loading video ideas from {input_file}")
+        # logger.info(f"Loading video ideas from {input_file}")
         
         try:
             data = load_json(input_file)
@@ -470,13 +468,13 @@ def main():
             if args.limit and args.limit > 0:
                 original_count = len(video_ideas)
                 video_ideas = video_ideas[:args.limit]
-                logger.info(f"Limited video ideas from {original_count} to {len(video_ideas)}")
+                # logger.info(f"Limited video ideas from {original_count} to {len(video_ideas)}")
         except FileNotFoundError:
-            logger.error(f"Input file not found: {input_file}")
+            # logger.error(f"Input file not found: {input_file}")
             return 1
         
         if not video_ideas:
-            logger.warning("No video ideas to process")
+            # logger.warning("No video ideas to process")
             return 0
         
         # Generate thumbnails with Photoreal model and Alchemy
@@ -494,11 +492,11 @@ def main():
         }
         save_json(output_data, output_file)
         
-        logger.info("Thumbnail generation completed successfully")
+        # logger.info("Thumbnail generation completed successfully")
         return 0
         
     except Exception as e:
-        logger.error(f"Thumbnail generation failed: {e}", exc_info=True)
+        # logger.error(f"Thumbnail generation failed: {e}", exc_info=True)
         return 1
 
 

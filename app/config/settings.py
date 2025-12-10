@@ -79,12 +79,6 @@ class Settings:
     FEED_FILE: str = "feed.json"
     DISPLAY_FILE: str = "display.json"  # New: merged display data for frontend
     
-    # Logging Configuration
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
-    LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
-    LOG_FILE_MAX_BYTES: int = 10 * 1024 * 1024  # 10MB
-    LOG_FILE_BACKUP_COUNT: int = 5
     
     # Batch Processing Parameters
     BATCH_SIZE: int = 10  # Process items in batches
@@ -97,6 +91,9 @@ class Settings:
     
     # Video Idea Generation Configuration
     MAX_VIDEO_IDEAS_PER_ARTICLE: int = 3
+    
+    # Feed Limit Configuration
+    FEED_LIMIT: int = int(os.getenv("FEED_LIMIT", "30"))  # Default: 30 articles (only --test flag should change to 5)
     
     # API Server Configuration
     PYTHON_APP_PORT: int = int(os.getenv("PYTHON_APP_PORT", "5001"))

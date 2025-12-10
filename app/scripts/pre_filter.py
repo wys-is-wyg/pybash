@@ -8,7 +8,6 @@ relevant articles proceed to summarization and video idea generation.
 import sys
 from typing import List, Dict, Any
 from app.config import settings
-from app.scripts.logger import setup_logger
 from app.scripts.data_manager import load_json, save_json
 from app.scripts.filtering import (
     filter_and_deduplicate,
@@ -17,8 +16,6 @@ from app.scripts.filtering import (
     calculate_interest_score
 )
 from app.scripts.tag_categorizer import TITLE_NEGATIVE_KEYWORDS, NEGATIVE_KEYWORDS, categorize_article
-
-logger = setup_logger(__name__)
 
 
 def pre_filter_articles(news_items: List[Dict[str, Any]], max_items: int = 30) -> List[Dict[str, Any]]:
@@ -37,8 +34,6 @@ def pre_filter_articles(news_items: List[Dict[str, Any]], max_items: int = 30) -
     Returns:
         Filtered list of AI-relevant articles
     """
-    logger.info(f"Pre-filtering {len(news_items)} articles before summarization")
-    
     filtered_items = []
     rejected_count = 0
     rejection_reasons = {}
@@ -53,7 +48,6 @@ def pre_filter_articles(news_items: List[Dict[str, Any]], max_items: int = 30) -
         if has_title_negative:
             rejected_count += 1
             rejection_reasons['title_negative_keywords'] = rejection_reasons.get('title_negative_keywords', 0) + 1
-            logger.debug(f"Rejected '{item.get('title', '')[:50]}...' - negative keywords in title")
             continue
         
         # Check 2: Reject multi-part articles
@@ -65,7 +59,6 @@ def pre_filter_articles(news_items: List[Dict[str, Any]], max_items: int = 30) -
         if has_part:
             rejected_count += 1
             rejection_reasons['multi_part'] = rejection_reasons.get('multi_part', 0) + 1
-            logger.debug(f"Rejected '{item.get('title', '')[:50]}...' - multi-part article")
             continue
         
         # Check 3: Categorize article - must have visual tags (AI-relevant)
@@ -73,7 +66,6 @@ def pre_filter_articles(news_items: List[Dict[str, Any]], max_items: int = 30) -
         if not visual_tags or match_count < 1:
             rejected_count += 1
             rejection_reasons['no_ai_category'] = rejection_reasons.get('no_ai_category', 0) + 1
-            logger.debug(f"Rejected '{item.get('title', '')[:50]}...' - no AI topic matches (matches: {match_count})")
             continue
         
         # Check 4: Reject articles with negative keywords in body (unless strongly AI-related)
@@ -86,7 +78,6 @@ def pre_filter_articles(news_items: List[Dict[str, Any]], max_items: int = 30) -
             if strong_ai_count < 3:
                 rejected_count += 1
                 rejection_reasons['negative_keywords'] = rejection_reasons.get('negative_keywords', 0) + 1
-                logger.debug(f"Rejected '{item.get('title', '')[:50]}...' - negative keywords, only {strong_ai_count} AI keywords")
                 continue
         
         # Article passed all checks - add visual tags and keep it
@@ -94,14 +85,8 @@ def pre_filter_articles(news_items: List[Dict[str, Any]], max_items: int = 30) -
         item['tag_relevance_score'] = match_count
         filtered_items.append(item)
     
-    logger.info(f"Pre-filtering complete: {len(filtered_items)} articles kept, {rejected_count} rejected")
-    if rejection_reasons:
-        logger.info(f"Rejection reasons: {rejection_reasons}")
-    
     # Limit to top N articles by relevance score (deduplicate and rank)
-    logger.info(f"Limiting to top {max_items} articles by relevance score...")
     top_items = filter_and_deduplicate(filtered_items, max_items=max_items)
-    logger.info(f"Selected top {len(top_items)} articles for summarization")
     
     return top_items
 
@@ -119,11 +104,8 @@ def main():
     try:
         # Load raw news
         raw_news_file = settings.RAW_NEWS_FILE
-        logger.info(f"Loading raw news from {raw_news_file}")
         raw_data = load_json(raw_news_file)
         news_items = raw_data.get('items', [])
-        
-        logger.info(f"Loaded {len(news_items)} raw news items")
         
         # Pre-filter articles
         filtered_items = pre_filter_articles(news_items, max_items=args.limit)
@@ -183,10 +165,8 @@ def main():
         
         filtered_news_file = settings.get_data_file_path(settings.FILTERED_NEWS_FILE)
         save_json(filtered_data, str(filtered_news_file))
-        logger.info(f"Saved {len(minimal_items)} filtered articles to {filtered_news_file}")
         
-    except Exception as e:
-        logger.error(f"Pre-filtering failed: {e}", exc_info=True)
+    except Exception:
         sys.exit(1)
 
 

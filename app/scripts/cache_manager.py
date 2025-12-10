@@ -8,9 +8,7 @@ import functools
 import threading
 import time
 from typing import Any, Callable, Optional, Dict
-from app.scripts.logger import setup_logger
 
-logger = setup_logger(__name__)
 
 # Thread-safe cache storage
 _cache: Dict[str, Any] = {}
@@ -46,15 +44,15 @@ def cached(key: str, ttl: Optional[int] = None, max_size: int = 10):
                         if cache_key in _cache:
                             del _cache[cache_key]
                         del _cache_timestamps[cache_key]
-                        logger.debug(f"Cache expired for {cache_key}")
+                        # logger.debug(f"Cache expired for {cache_key}")
                 
                 # Return cached value if exists
                 if cache_key in _cache:
-                    logger.debug(f"Cache hit for {cache_key}")
+                    # logger.debug(f"Cache hit for {cache_key}")
                     return _cache[cache_key]
             
             # Compute and cache result
-            logger.debug(f"Cache miss for {cache_key}, computing...")
+            # logger.debug(f"Cache miss for {cache_key}, computing...")
             result = func(*args, **kwargs)
             
             with _cache_lock:
@@ -63,7 +61,7 @@ def cached(key: str, ttl: Optional[int] = None, max_size: int = 10):
                     oldest_key = min(_cache_timestamps.items(), key=lambda x: x[1])[0]
                     del _cache[oldest_key]
                     del _cache_timestamps[oldest_key]
-                    logger.debug(f"Evicted {oldest_key} from cache")
+                    # logger.debug(f"Evicted {oldest_key} from cache")
                 
                 _cache[cache_key] = result
                 _cache_timestamps[cache_key] = time.time()
@@ -107,11 +105,11 @@ def clear_cache(key: Optional[str] = None):
                 del _cache[key]
             if key in _cache_timestamps:
                 del _cache_timestamps[key]
-            logger.info(f"Cleared cache for key: {key}")
+            # logger.info(f"Cleared cache for key: {key}")
         else:
             _cache.clear()
             _cache_timestamps.clear()
-            logger.info("Cleared all cache")
+            # logger.info("Cleared all cache")
 
 
 def get_cache_stats() -> Dict[str, Any]:
